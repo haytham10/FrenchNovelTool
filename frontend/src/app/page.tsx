@@ -106,13 +106,32 @@ export default function Home() {
   return (
     <Box sx={{ minHeight: 'calc(100vh - 64px)', py: { xs: 4, md: 8 } }} className="hero-aura">
         <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 1 }}>
-          {/* Hero Section */}
+          {/* Hero Section - Enhanced */}
         <Box sx={{ textAlign: 'center', mb: 6 }}>
-          <Typography variant="h1" sx={{ mb: 2 }} className="gradient-text">
+          <Typography 
+            variant="h1" 
+            sx={{ 
+              mb: 2,
+              fontSize: { xs: '2.5rem', md: '3.5rem' },
+              fontWeight: 700,
+            }} 
+            className="gradient-text"
+          >
             Process French Novels with AI
           </Typography>
-          <Typography variant="h5" color="text.secondary" sx={{ mb: 4, maxWidth: '800px', mx: 'auto' }}>
-            Upload PDFs, normalize sentences with Gemini, and export to Google Sheets.
+          <Typography 
+            variant="h5" 
+            color="text.secondary" 
+            sx={{ 
+              mb: 4, 
+              maxWidth: '800px', 
+              mx: 'auto',
+              fontSize: { xs: '1.1rem', md: '1.3rem' },
+              lineHeight: 1.6,
+            }}
+          >
+            Upload PDFs, normalize sentences with Gemini AI, and export to Google Sheets.
+            Fast, intelligent, and easy to use.
           </Typography>
           <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap', maxWidth: '640px', mx: 'auto' }}>
             {user ? (
@@ -129,16 +148,28 @@ export default function Home() {
                 </Box>
               </Box>
             )}
-            <Button variant="outlined" size="large" href="#about" sx={{ minWidth: '150px' }}>
+            <Button 
+              variant="outlined" 
+              size="large" 
+              href="#about" 
+              sx={{ 
+                minWidth: '150px',
+                '&:focus-visible': {
+                  outline: '3px solid',
+                  outlineColor: 'primary.main',
+                  outlineOffset: '2px',
+                },
+              }}
+            >
               Learn more
             </Button>
           </Box>
         </Box>
 
-        {/* Processing Stepper - Subdued */}
-        <Box sx={{ mb: 4, opacity: 0.8 }}>
+        {/* Processing Stepper - Now sticky and subdued */}
+        {(loading || sentences.length > 0) && (
           <UploadStepper activeStep={loading ? 1 : sentences.length ? 3 : 0} />
-        </Box>
+        )}
 
         {/* Empty State with Drag-and-Drop */}
         {!loading && sentences.length === 0 && user && (
@@ -223,7 +254,7 @@ export default function Home() {
                   Export to Google Sheets
                 </Button>
               </Box>
-              <ResultsTable sentences={sentences} />
+              <ResultsTable sentences={sentences} advancedOptions={advancedOptions} />
             </Box>
           </Box>
         )}

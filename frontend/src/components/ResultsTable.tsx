@@ -4,12 +4,14 @@ import { styled } from '@mui/material/styles';
 import Icon from './Icon';
 import { Edit2, Check, X, CheckSquare, AlertCircle } from 'lucide-react';
 import { useDebounce } from '@/lib/hooks';
+import type { AdvancedNormalizationOptions } from './NormalizeControls';
 
 interface ResultsTableProps {
   sentences: string[];
   originalSentences?: string[];
   onSentencesChange?: (sentences: string[]) => void;
   onExportSelected?: (selectedIndices: number[]) => void;
+  advancedOptions?: AdvancedNormalizationOptions;
 }
 
 type Order = 'asc' | 'desc';
@@ -38,7 +40,7 @@ const StyledTableRow = styled(TableRow)(({ theme }) => ({
 
 const LONG_SENTENCE_THRESHOLD = 15; // words
 
-export default function ResultsTable({ sentences, originalSentences = [], onSentencesChange, onExportSelected }: ResultsTableProps) {
+export default function ResultsTable({ sentences, originalSentences = [], onSentencesChange, onExportSelected, advancedOptions }: ResultsTableProps) {
   const [order, setOrder] = useState<Order>('asc');
   const [orderBy, setOrderBy] = useState<keyof { index: number; sentence: string }>('index');
   const [filter, setFilter] = useState<string>('');
@@ -177,34 +179,64 @@ export default function ResultsTable({ sentences, originalSentences = [], onSent
 
   return (
     <Box>
-      {/* Toolbar */}
-      <Box sx={{ mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-        <TextField
-          label="Filter sentences"
-          variant="outlined"
-          size="small"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          sx={{ flex: '1 1 300px' }}
-          aria-label="Filter sentences by text"
-        />
+      {/* Enhanced Toolbar */}
+      <Box 
+        sx={{ 
+          mb: 3, 
+          p: 2, 
+          bgcolor: 'background.paper',
+          border: 1,
+          borderColor: 'divider',
+          borderRadius: 2,
+        }}
+      >
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center', mb: 2 }}>
+          <Box sx={{ flex: '1 1 auto', display: 'flex', gap: 2, alignItems: 'center' }}>
+            <Chip 
+              label={`${filteredSentences.length} sentence${filteredSentences.length !== 1 ? 's' : ''}`}
+              color="primary"
+              variant="outlined"
+              size="small"
+            />
+            {originalSentences.length > 0 && advancedOptions?.geminiModel && (
+              <Chip 
+                label={`Model: ${advancedOptions.geminiModel.charAt(0).toUpperCase() + advancedOptions.geminiModel.slice(1)}`}
+                size="small"
+                sx={{ opacity: 0.8 }}
+              />
+            )}
+          </Box>
+        </Box>
         
-        {originalSentences.length > 0 && (
-          <ToggleButtonGroup
-            value={viewMode}
-            exclusive
-            onChange={(_, newMode) => newMode && setViewMode(newMode)}
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+          <TextField
+            label="Search sentences"
+            variant="outlined"
             size="small"
-            aria-label="View mode"
-          >
-            <ToggleButton value="normalized" aria-label="View normalized">
-              Normalized
-            </ToggleButton>
-            <ToggleButton value="original" aria-label="View original">
-              Original
-            </ToggleButton>
-          </ToggleButtonGroup>
-        )}
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            sx={{ flex: '1 1 300px' }}
+            aria-label="Filter sentences by text"
+            placeholder="Type to search..."
+          />
+          
+          {originalSentences.length > 0 && (
+            <ToggleButtonGroup
+              value={viewMode}
+              exclusive
+              onChange={(_, newMode) => newMode && setViewMode(newMode)}
+              size="small"
+              aria-label="View mode"
+            >
+              <ToggleButton value="normalized" aria-label="View normalized">
+                Normalized
+              </ToggleButton>
+              <ToggleButton value="original" aria-label="View original">
+                Original
+              </ToggleButton>
+            </ToggleButtonGroup>
+          )}
+        </Box>
       </Box>
 
       {/* Bulk Actions */}
