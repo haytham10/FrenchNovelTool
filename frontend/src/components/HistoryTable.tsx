@@ -36,7 +36,7 @@ export default function HistoryTable() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [order, setOrder] = useState<Order>('desc');
-  const [orderBy, setOrderBy] = useState<keyof HistoryEntry>('timestamp');
+  const [orderBy, setOrderBy] = useState<keyof HistoryEntry>('uploaded_at');
   const [filter, setFilter] = useState<string>('');
   const { enqueueSnackbar } = useSnackbar();
 
@@ -67,12 +67,12 @@ export default function HistoryTable() {
 
   const sortedHistory = useMemo(() => {
     const comparator = (a: HistoryEntry, b: HistoryEntry) => {
-      if (orderBy === 'timestamp') {
-        return order === 'asc' ? new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime() : new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-      } else if (orderBy === 'processed_sentences_count') {
-        return order === 'asc' ? a.processed_sentences_count - b.processed_sentences_count : b.processed_sentences_count - a.processed_sentences_count;
-      } else if (orderBy === 'original_filename') {
-        return order === 'asc' ? a.original_filename.localeCompare(b.original_filename) : b.original_filename.localeCompare(a.original_filename);
+      if (orderBy === 'uploaded_at') {
+        return order === 'asc' ? new Date(a.uploaded_at).getTime() - new Date(b.uploaded_at).getTime() : new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime();
+      } else if (orderBy === 'sentence_count') {
+        return order === 'asc' ? a.sentence_count - b.sentence_count : b.sentence_count - a.sentence_count;
+      } else if (orderBy === 'filename') {
+        return order === 'asc' ? a.filename.localeCompare(b.filename) : b.filename.localeCompare(a.filename);
       } else if (orderBy === 'spreadsheet_url') {
         const aUrl = a.spreadsheet_url || '';
         const bUrl = b.spreadsheet_url || '';
@@ -81,6 +81,8 @@ export default function HistoryTable() {
         const aError = a.error_message || '';
         const bError = b.error_message || '';
         return order === 'asc' ? aError.localeCompare(bError) : bError.localeCompare(aError);
+      } else if (orderBy === 'status') {
+        return order === 'asc' ? a.status.localeCompare(b.status) : b.status.localeCompare(a.status);
       }
       return 0;
     };
@@ -92,7 +94,7 @@ export default function HistoryTable() {
   const filteredHistory = useMemo(() => {
     if (!filter) return sortedHistory;
     return sortedHistory.filter(entry =>
-      entry.original_filename.toLowerCase().includes(filter.toLowerCase()) ||
+      entry.filename.toLowerCase().includes(filter.toLowerCase()) ||
       (entry.spreadsheet_url && entry.spreadsheet_url.toLowerCase().includes(filter.toLowerCase())) ||
       (entry.error_message && entry.error_message.toLowerCase().includes(filter.toLowerCase()))
     );
@@ -131,27 +133,27 @@ export default function HistoryTable() {
             <TableRow>
               <StyledTableCell>
                 <TableSortLabel
-                  active={orderBy === 'timestamp'}
-                  direction={orderBy === 'timestamp' ? order : 'asc'}
-                  onClick={(event) => handleRequestSort(event, 'timestamp')}
+                  active={orderBy === 'uploaded_at'}
+                  direction={orderBy === 'uploaded_at' ? order : 'asc'}
+                  onClick={(event) => handleRequestSort(event, 'uploaded_at')}
                 >
                   Timestamp
                 </TableSortLabel>
               </StyledTableCell>
               <StyledTableCell>
                 <TableSortLabel
-                  active={orderBy === 'original_filename'}
-                  direction={orderBy === 'original_filename' ? order : 'asc'}
-                  onClick={(event) => handleRequestSort(event, 'original_filename')}
+                  active={orderBy === 'filename'}
+                  direction={orderBy === 'filename' ? order : 'asc'}
+                  onClick={(event) => handleRequestSort(event, 'filename')}
                 >
                   Filename
                 </TableSortLabel>
               </StyledTableCell>
               <StyledTableCell>
                 <TableSortLabel
-                  active={orderBy === 'processed_sentences_count'}
-                  direction={orderBy === 'processed_sentences_count' ? order : 'asc'}
-                  onClick={(event) => handleRequestSort(event, 'processed_sentences_count')}
+                  active={orderBy === 'sentence_count'}
+                  direction={orderBy === 'sentence_count' ? order : 'asc'}
+                  onClick={(event) => handleRequestSort(event, 'sentence_count')}
                 >
                   Sentences
                 </TableSortLabel>
@@ -179,9 +181,9 @@ export default function HistoryTable() {
           <TableBody>
             {filteredHistory.map((entry) => (
               <StyledTableRow key={entry.id}>
-                <StyledTableCell>{new Date(entry.timestamp).toLocaleString()}</StyledTableCell>
-                <StyledTableCell>{entry.original_filename}</StyledTableCell>
-                <StyledTableCell>{entry.processed_sentences_count}</StyledTableCell>
+                <StyledTableCell>{new Date(entry.uploaded_at).toLocaleString()}</StyledTableCell>
+                <StyledTableCell>{entry.filename}</StyledTableCell>
+                <StyledTableCell>{entry.sentence_count}</StyledTableCell>
                 <StyledTableCell>
                   {entry.spreadsheet_url ? (
                     <Link href={entry.spreadsheet_url} target="_blank" rel="noopener noreferrer">
