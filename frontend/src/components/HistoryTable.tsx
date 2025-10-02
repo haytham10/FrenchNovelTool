@@ -7,6 +7,9 @@ import { useSnackbar } from 'notistack';
 import Link from 'next/link';
 import { fetchHistory, getApiErrorMessage } from '@/lib/api';
 import type { HistoryEntry } from '@/lib/types';
+import { getHistoryStatus } from '@/lib/types';
+import Icon from './Icon';
+import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
 
 type Order = 'asc' | 'desc';
 
@@ -36,7 +39,7 @@ export default function HistoryTable() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [order, setOrder] = useState<Order>('desc');
-  const [orderBy, setOrderBy] = useState<keyof HistoryEntry>('uploaded_at');
+  const [orderBy, setOrderBy] = useState<keyof HistoryEntry>('timestamp');
   const [filter, setFilter] = useState<string>('');
   const { enqueueSnackbar } = useSnackbar();
 
@@ -67,12 +70,12 @@ export default function HistoryTable() {
 
   const sortedHistory = useMemo(() => {
     const comparator = (a: HistoryEntry, b: HistoryEntry) => {
-      if (orderBy === 'uploaded_at') {
-        return order === 'asc' ? new Date(a.uploaded_at).getTime() - new Date(b.uploaded_at).getTime() : new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime();
-      } else if (orderBy === 'sentence_count') {
-        return order === 'asc' ? a.sentence_count - b.sentence_count : b.sentence_count - a.sentence_count;
-      } else if (orderBy === 'filename') {
-        return order === 'asc' ? a.filename.localeCompare(b.filename) : b.filename.localeCompare(a.filename);
+      if (orderBy === 'timestamp') {
+        return order === 'asc' ? new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime() : new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+      } else if (orderBy === 'processed_sentences_count') {
+        return order === 'asc' ? a.processed_sentences_count - b.processed_sentences_count : b.processed_sentences_count - a.processed_sentences_count;
+      } else if (orderBy === 'original_filename') {
+        return order === 'asc' ? a.original_filename.localeCompare(b.original_filename) : b.original_filename.localeCompare(a.original_filename);
       } else if (orderBy === 'spreadsheet_url') {
         const aUrl = a.spreadsheet_url || '';
         const bUrl = b.spreadsheet_url || '';
@@ -81,8 +84,6 @@ export default function HistoryTable() {
         const aError = a.error_message || '';
         const bError = b.error_message || '';
         return order === 'asc' ? aError.localeCompare(bError) : bError.localeCompare(aError);
-      } else if (orderBy === 'status') {
-        return order === 'asc' ? a.status.localeCompare(b.status) : b.status.localeCompare(a.status);
       }
       return 0;
     };
@@ -94,7 +95,7 @@ export default function HistoryTable() {
   const filteredHistory = useMemo(() => {
     if (!filter) return sortedHistory;
     return sortedHistory.filter(entry =>
-      entry.filename.toLowerCase().includes(filter.toLowerCase()) ||
+      entry.original_filename.toLowerCase().includes(filter.toLowerCase()) ||
       (entry.spreadsheet_url && entry.spreadsheet_url.toLowerCase().includes(filter.toLowerCase())) ||
       (entry.error_message && entry.error_message.toLowerCase().includes(filter.toLowerCase()))
     );
@@ -131,29 +132,30 @@ export default function HistoryTable() {
         <Table>
           <TableHead>
             <TableRow>
+              <StyledTableCell>Status</StyledTableCell>
               <StyledTableCell>
                 <TableSortLabel
-                  active={orderBy === 'uploaded_at'}
-                  direction={orderBy === 'uploaded_at' ? order : 'asc'}
-                  onClick={(event) => handleRequestSort(event, 'uploaded_at')}
+                  active={orderBy === 'timestamp'}
+                  direction={orderBy === 'timestamp' ? order : 'asc'}
+                  onClick={(event) => handleRequestSort(event, 'timestamp')}
                 >
                   Timestamp
                 </TableSortLabel>
               </StyledTableCell>
               <StyledTableCell>
                 <TableSortLabel
-                  active={orderBy === 'filename'}
-                  direction={orderBy === 'filename' ? order : 'asc'}
-                  onClick={(event) => handleRequestSort(event, 'filename')}
+                  active={orderBy === 'original_filename'}
+                  direction={orderBy === 'original_filename' ? order : 'asc'}
+                  onClick={(event) => handleRequestSort(event, 'original_filename')}
                 >
                   Filename
                 </TableSortLabel>
               </StyledTableCell>
               <StyledTableCell>
                 <TableSortLabel
-                  active={orderBy === 'sentence_count'}
-                  direction={orderBy === 'sentence_count' ? order : 'asc'}
-                  onClick={(event) => handleRequestSort(event, 'sentence_count')}
+                  active={orderBy === 'processed_sentences_count'}
+                  direction={orderBy === 'processed_sentences_count' ? order : 'asc'}
+                  onClick={(event) => handleRequestSort(event, 'processed_sentences_count')}
                 >
                   Sentences
                 </TableSortLabel>
@@ -179,25 +181,42 @@ export default function HistoryTable() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {filteredHistory.map((entry) => (
-              <StyledTableRow key={entry.id}>
-                <StyledTableCell>{new Date(entry.uploaded_at).toLocaleString()}</StyledTableCell>
-                <StyledTableCell>{entry.filename}</StyledTableCell>
-                <StyledTableCell>{entry.sentence_count}</StyledTableCell>
-                <StyledTableCell>
-                  {entry.spreadsheet_url ? (
-                    <Link href={entry.spreadsheet_url} target="_blank" rel="noopener noreferrer">
-                      View Sheet
-                    </Link>
-                  ) : (
-                    'N/A'
-                  )}
-                </StyledTableCell>
-                <StyledTableCell sx={{ color: 'error.main' }}>
-                  {entry.error_message || 'N/A'}
-                </StyledTableCell>
-              </StyledTableRow>
-            ))}
+            {filteredHistory.map((entry) => {
+              const status = getHistoryStatus(entry);
+              return (
+                <StyledTableRow key={entry.id}>
+                  <StyledTableCell>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      {status === 'success' && <Icon icon={CheckCircle} color="success" fontSize="small" />}
+                      {status === 'failed' && <Icon icon={XCircle} color="error" fontSize="small" />}
+                      {status === 'processing' && <Icon icon={Loader2} color="primary" fontSize="small" />}
+                      <Typography variant="body2" sx={{ 
+                        color: status === 'success' ? 'success.main' : status === 'failed' ? 'error.main' : 'primary.main',
+                        fontWeight: 500,
+                        textTransform: 'capitalize'
+                      }}>
+                        {status}
+                      </Typography>
+                    </Box>
+                  </StyledTableCell>
+                  <StyledTableCell>{new Date(entry.timestamp).toLocaleString()}</StyledTableCell>
+                  <StyledTableCell>{entry.original_filename}</StyledTableCell>
+                  <StyledTableCell>{entry.processed_sentences_count}</StyledTableCell>
+                  <StyledTableCell>
+                    {entry.spreadsheet_url ? (
+                      <Link href={entry.spreadsheet_url} target="_blank" rel="noopener noreferrer">
+                        View Sheet
+                      </Link>
+                    ) : (
+                      'N/A'
+                    )}
+                  </StyledTableCell>
+                  <StyledTableCell sx={{ color: 'error.main' }}>
+                    {entry.error_message || 'N/A'}
+                  </StyledTableCell>
+                </StyledTableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </TableContainer>
