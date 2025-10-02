@@ -98,11 +98,6 @@ Upload and process a PDF file to extract and normalize French sentences.
 - Body:
   - `pdf_file`: PDF file (required, max 50MB)
   - `sentence_length_limit`: Target sentence length in words (optional, 3-50, defaults to user settings)
-  - `gemini_model`: AI model to use - `balanced`, `quality`, or `speed` (optional, defaults to user settings)
-  - `ignore_dialogue`: Skip normalizing dialogue sections (optional, boolean, defaults to user settings)
-  - `preserve_formatting`: Keep original quotes and punctuation (optional, boolean, defaults to user settings)
-  - `fix_hyphenation`: Rejoin hyphenated words split across lines (optional, boolean, defaults to user settings)
-  - `min_sentence_length`: Minimum sentence length in words (optional, 1-50, defaults to user settings)
 
 **Example:**
 ```bash
@@ -110,12 +105,7 @@ curl -X POST \
   http://localhost:5000/api/v1/process-pdf \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -F "pdf_file=@document.pdf" \
-  -F "sentence_length_limit=12" \
-  -F "gemini_model=quality" \
-  -F "ignore_dialogue=false" \
-  -F "preserve_formatting=true" \
-  -F "fix_hyphenation=true" \
-  -F "min_sentence_length=3"
+  -F "sentence_length_limit=12"
 ```
 
 **Success Response:**
@@ -328,12 +318,7 @@ Retrieve processing history entries.
     "error_code": null,
     "error_details": null,
     "settings": {
-      "sentence_length_limit": 12,
-      "gemini_model": "balanced",
-      "ignore_dialogue": false,
-      "preserve_formatting": true,
-      "fix_hyphenation": true,
-      "min_sentence_length": 3
+      "sentence_length_limit": 12
     }
   },
   {
@@ -381,22 +366,12 @@ Retrieve current user settings.
 **Response:**
 ```json
 {
-  "sentence_length_limit": 8,
-  "gemini_model": "balanced",
-  "ignore_dialogue": false,
-  "preserve_formatting": true,
-  "fix_hyphenation": true,
-  "min_sentence_length": 3
+  "sentence_length_limit": 8
 }
 ```
 
 **Response Fields:**
 - `sentence_length_limit`: Maximum words per sentence (integer, 3-50)
-- `gemini_model`: AI model preference (`balanced`, `quality`, or `speed`)
-- `ignore_dialogue`: Skip normalizing dialogue sections (boolean)
-- `preserve_formatting`: Keep original quotes and punctuation (boolean)
-- `fix_hyphenation`: Rejoin hyphenated words split across lines (boolean)
-- `min_sentence_length`: Minimum sentence length in words (integer, 1-50)
 
 **Status Codes:**
 - `200 OK`: Settings retrieved successfully
@@ -418,22 +393,12 @@ Update user settings.
 - Body:
 ```json
 {
-  "sentence_length_limit": 10,
-  "gemini_model": "quality",
-  "ignore_dialogue": false,
-  "preserve_formatting": true,
-  "fix_hyphenation": true,
-  "min_sentence_length": 3
+  "sentence_length_limit": 10
 }
 ```
 
 **Parameters:**
 - `sentence_length_limit` (integer, required): Maximum words per sentence (3-50)
-- `gemini_model` (string, optional): AI model - `balanced`, `quality`, or `speed`
-- `ignore_dialogue` (boolean, optional): Skip normalizing dialogue sections
-- `preserve_formatting` (boolean, optional): Keep original quotes and punctuation
-- `fix_hyphenation` (boolean, optional): Rejoin hyphenated words split across lines
-- `min_sentence_length` (integer, optional): Minimum sentence length in words (1-50)
 
 **Example:**
 ```bash
@@ -442,12 +407,7 @@ curl -X POST \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "sentence_length_limit": 10,
-    "gemini_model": "quality",
-    "ignore_dialogue": false,
-    "preserve_formatting": true,
-    "fix_hyphenation": true,
-    "min_sentence_length": 3
+    "sentence_length_limit": 10
   }'
 ```
 
@@ -456,12 +416,7 @@ curl -X POST \
 {
   "message": "Settings saved successfully",
   "settings": {
-    "sentence_length_limit": 10,
-    "gemini_model": "quality",
-    "ignore_dialogue": false,
-    "preserve_formatting": true,
-    "fix_hyphenation": true,
-    "min_sentence_length": 3
+    "sentence_length_limit": 10
   }
 }
 ```
@@ -473,8 +428,7 @@ curl -X POST \
 {
   "error": "Invalid settings data",
   "details": {
-    "sentence_length_limit": ["Must be between 3 and 50"],
-    "gemini_model": ["Must be one of: balanced, quality, speed"]
+    "sentence_length_limit": ["Must be between 3 and 50"]
   }
 }
 ```
