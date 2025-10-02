@@ -24,7 +24,24 @@ Acceptance criteria (P0)
 
 ---
 
+
 ## P0 — Critical Path (Foundation)
+
+### [Merged: PR #2] Implemented
+
+- [x] Enhanced accessibility for all core flows (landmarks, labels, keyboard navigation, color contrast)
+- [x] Inline editing in review table (Enter to save, Esc to cancel)
+- [x] Live status indicators and progress for long-running steps (Analyze, Normalize, Export)
+- [x] Success/error toasts and inline validation for all user actions
+- [x] Sheet link and history entry shown after export
+- [x] Route guards for stepper and persistent progress
+- [x] Google connection status badge and reconnect action
+- [x] Core settings: sentence length slider, Drive folder, sheet name pattern
+- [x] Unified global navigation and header
+- [x] Constrained content width and consistent page titles
+- [x] Light/dark theme parity for all primitives
+
+---
 
 ### 1) Onboarding & Authentication
 - [ ] Replace landing with focused “Sign in with Google” CTA and clear scope explanations.
@@ -57,11 +74,11 @@ Acceptance criteria (P0)
 - [ ] Save selected settings with the processing run.
 
 ### 6) Review Results (Table — Core)
-- [ ] Virtualized table (index + normalized sentence).
-- [ ] Search/filter box (client-side).
-- [ ] Sort by index; sticky header; zebra rows.
-- [ ] Inline edit per row (Enter to save, Esc to cancel).
-- [ ] Multi-select and delete/restore selected (optional for P0 if time-boxed).
+- [x] Inline edit per row (Enter to save, Esc to cancel)
+- [x] Sort by index; sticky header; zebra rows
+- [x] Virtualized table (index + normalized sentence)
+- [ ] Search/filter box (client-side)
+- [ ] Multi-select and delete/restore selected (optional for P0 if time-boxed)
 
 ### 7) Export to Google Sheets
 - [ ] Folder picker modal (Google Drive Picker) with breadcrumb.
@@ -80,21 +97,21 @@ Acceptance criteria (P0)
 - [ ] “Save” button: primary style + confirmation toast.
 
 ### 10) Feedback & Error Handling
-- [ ] Toasts: success, warning, error.
-- [ ] Inline validation messages near fields.
-- [ ] Retry buttons for failed jobs (Analyze/Export).
-- [ ] Global banner if Google connection lost; “Reconnect” action.
+- [x] Toasts: success, warning, error
+- [x] Inline validation messages near fields
+- [x] Global banner if Google connection lost; “Reconnect” action
+- [ ] Retry buttons for failed jobs (Analyze/Export)
 
 ### 11) Accessibility (Baseline)
-- [ ] Semantic landmarks (header/nav/main/section).
-- [ ] Labels for stepper, progress bars, and upload control.
-- [ ] Keyboard navigation for upload, table row edit, export form.
-- [ ] Color contrast meets 4.5:1 for text.
+- [x] Semantic landmarks (header/nav/main/section)
+- [x] Labels for stepper, progress bars, and upload control
+- [x] Keyboard navigation for upload, table row edit, export form
+- [x] Color contrast meets 4.5:1 for text
 
 ### 12) Design System (Minimum)
-- [ ] Select UI library (Material 3 or shadcn/ui + Tailwind) and lock tokens (colors, spacing, radius).
-- [ ] Typography scale standardized; button, input, card, table primitives.
-- [ ] Light and dark theme parity for core components.
+- [x] Select UI library (Material 3 or shadcn/ui + Tailwind) and lock tokens (colors, spacing, radius)
+- [x] Typography scale standardized; button, input, card, table primitives
+- [x] Light and dark theme parity for core components
 
 ### 13) Performance & Reliability (Baseline)
 - [ ] Web Workers or async processing to keep UI responsive on parsing.
