@@ -12,7 +12,11 @@ class HistoryService:
         original_filename,
         processed_sentences_count,
         spreadsheet_url=None,
-        error_message=None
+        error_message=None,
+        failed_step=None,
+        error_code=None,
+        error_details=None,
+        processing_settings=None
     ):
         """
         Add a new history entry for a processed PDF.
@@ -23,6 +27,10 @@ class HistoryService:
             processed_sentences_count: Number of sentences processed
             spreadsheet_url: URL of exported Google Sheet (optional)
             error_message: Error message if processing failed (optional)
+            failed_step: Step where processing failed (optional)
+            error_code: Error code for categorizing errors (optional)
+            error_details: Additional error context as JSON (optional)
+            processing_settings: Settings used for processing (optional)
             
         Returns:
             History: The created history entry
@@ -32,7 +40,11 @@ class HistoryService:
             original_filename=original_filename,
             processed_sentences_count=processed_sentences_count,
             spreadsheet_url=spreadsheet_url,
-            error_message=error_message
+            error_message=error_message,
+            failed_step=failed_step,
+            error_code=error_code,
+            error_details=error_details,
+            processing_settings=processing_settings
         )
         db.session.add(history_entry)
         db.session.commit()
