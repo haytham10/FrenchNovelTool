@@ -16,14 +16,16 @@ import GoogleLoginButton from '@/components/GoogleLoginButton';
 
 import type { AdvancedNormalizationOptions } from '@/components/NormalizeControls';
 import type { ExportOptions } from '@/components/ExportDialog';
+import { useLocalStorage } from '@/lib/hooks';
 
 export default function Home() {
   const { user } = useAuth();
   const [sentences, setSentences] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState<string>('');
-  const [sentenceLength, setSentenceLength] = useState<number>(12);
-  const [advancedOptions, setAdvancedOptions] = useState<AdvancedNormalizationOptions>({
+  const [sentenceLength, setSentenceLength] = useLocalStorage<number>('sentenceLength', 12);
+  const [advancedOptions, setAdvancedOptions] = useLocalStorage<AdvancedNormalizationOptions>('advancedOptions', {
+    aiProvider: 'gemini',
     geminiModel: 'balanced',
     ignoreDialogues: false,
     preserveQuotes: true,
@@ -43,7 +45,15 @@ export default function Home() {
     try {
       for (const file of files) {
         setLoadingMessage(`Processing ${file.name}...`);
-        const sentences = await processPdf(file);
+        const sentences = await processPdf(file, {
+          sentenceLength: sentenceLength,
+          aiProvider: advancedOptions.aiProvider,
+          geminiModel: advancedOptions.geminiModel,
+          ignoreDialogue: advancedOptions.ignoreDialogues,
+          preserveFormatting: advancedOptions.preserveQuotes,
+          fixHyphenation: advancedOptions.fixHyphenations,
+          minSentenceLength: advancedOptions.minSentenceLength,
+        });
         allProcessedSentences = allProcessedSentences.concat(sentences);
       }
       setSentences(allProcessedSentences);

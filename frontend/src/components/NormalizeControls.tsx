@@ -14,6 +14,7 @@ interface NormalizeControlsProps {
 }
 
 export interface AdvancedNormalizationOptions {
+  aiProvider?: 'gemini' | 'openai';
   ignoreDialogues?: boolean;
   preserveQuotes?: boolean;
   fixHyphenations?: boolean;
@@ -27,11 +28,29 @@ const PRESETS = [
   { label: 'Long', value: 16 },
 ];
 
+const AI_PROVIDERS = [
+  { value: 'gemini', label: 'Google Gemini', description: 'Google\'s AI model' },
+  { value: 'openai', label: 'OpenAI', description: 'OpenAI\'s GPT models' },
+];
+
 const GEMINI_MODELS = [
   { value: 'balanced', label: 'Balanced', description: 'Best balance of speed and quality' },
   { value: 'quality', label: 'Quality', description: 'Highest quality, slower processing' },
   { value: 'speed', label: 'Speed', description: 'Fastest processing, good quality' },
 ];
+
+const MODEL_DESCRIPTIONS = {
+  gemini: {
+    balanced: 'Uses Gemini 2.0 Flash (balanced)',
+    quality: 'Uses Gemini 2.0 Flash (quality mode)',
+    speed: 'Uses Gemini 2.0 Flash (speed mode)',
+  },
+  openai: {
+    balanced: 'Uses GPT-4o-mini (balanced)',
+    quality: 'Uses GPT-4o (highest quality)',
+    speed: 'Uses GPT-3.5-turbo (fastest)',
+  },
+};
 
 export default function NormalizeControls({
   sentenceLength,
@@ -112,30 +131,57 @@ export default function NormalizeControls({
         </Stack>
       </Box>
 
-      {/* Gemini Model Selection */}
+      {/* AI Provider Selection */}
       {onAdvancedOptionsChange && (
-        <Box sx={{ mb: 3 }}>
-          <FormControl fullWidth size="small">
-            <InputLabel id="gemini-model-label">AI Model</InputLabel>
-            <Select
-              labelId="gemini-model-label"
-              value={advancedOptions.geminiModel || 'balanced'}
-              onChange={(e) => handleAdvancedOptionChange('geminiModel', e.target.value)}
-              disabled={disabled}
-              label="AI Model"
-              startAdornment={<Icon icon={Sparkles} fontSize="small" sx={{ mr: 1 }} />}
-            >
-              {GEMINI_MODELS.map((model) => (
-                <MenuItem key={model.value} value={model.value}>
-                  <Box>
-                    <Typography variant="body2" fontWeight={600}>{model.label}</Typography>
-                    <Typography variant="caption" color="text.secondary">{model.description}</Typography>
-                  </Box>
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </Box>
+        <>
+          <Box sx={{ mb: 3 }}>
+            <FormControl fullWidth size="small">
+              <InputLabel id="ai-provider-label">AI Provider</InputLabel>
+              <Select
+                labelId="ai-provider-label"
+                value={advancedOptions.aiProvider || 'gemini'}
+                onChange={(e) => handleAdvancedOptionChange('aiProvider', e.target.value)}
+                disabled={disabled}
+                label="AI Provider"
+                startAdornment={<Icon icon={Sparkles} fontSize="small" sx={{ mr: 1 }} />}
+              >
+                {AI_PROVIDERS.map((provider) => (
+                  <MenuItem key={provider.value} value={provider.value}>
+                    <Box>
+                      <Typography variant="body2" fontWeight={600}>{provider.label}</Typography>
+                      <Typography variant="caption" color="text.secondary">{provider.description}</Typography>
+                    </Box>
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+
+          {/* Model Quality Selection */}
+          <Box sx={{ mb: 3 }}>
+            <FormControl fullWidth size="small">
+              <InputLabel id="model-quality-label">Model Quality</InputLabel>
+              <Select
+                labelId="model-quality-label"
+                value={advancedOptions.geminiModel || 'balanced'}
+                onChange={(e) => handleAdvancedOptionChange('geminiModel', e.target.value)}
+                disabled={disabled}
+                label="Model Quality"
+              >
+                {GEMINI_MODELS.map((model) => (
+                  <MenuItem key={model.value} value={model.value}>
+                    <Box>
+                      <Typography variant="body2" fontWeight={600}>{model.label}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {MODEL_DESCRIPTIONS[advancedOptions.aiProvider || 'gemini'][model.value as 'balanced' | 'quality' | 'speed']}
+                      </Typography>
+                    </Box>
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+        </>
       )}
 
       {/* Advanced Options Toggle */}

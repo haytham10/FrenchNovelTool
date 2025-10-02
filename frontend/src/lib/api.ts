@@ -113,9 +113,44 @@ export async function refreshAccessToken(): Promise<LoginResponse> {
  * PDF Processing APIs
  */
 
-export async function processPdf(file: File): Promise<string[]> {
+export interface ProcessPdfOptions {
+  sentenceLength?: number;
+  aiProvider?: 'gemini' | 'openai';
+  geminiModel?: 'balanced' | 'quality' | 'speed';
+  ignoreDialogue?: boolean;
+  preserveFormatting?: boolean;
+  fixHyphenation?: boolean;
+  minSentenceLength?: number;
+}
+
+export async function processPdf(file: File, options?: ProcessPdfOptions): Promise<string[]> {
   const formData = new FormData();
   formData.append('pdf_file', file);
+  
+  // Add optional parameters to form data
+  if (options) {
+    if (options.sentenceLength !== undefined) {
+      formData.append('sentence_length_limit', options.sentenceLength.toString());
+    }
+    if (options.aiProvider) {
+      formData.append('ai_provider', options.aiProvider);
+    }
+    if (options.geminiModel) {
+      formData.append('gemini_model', options.geminiModel);
+    }
+    if (options.ignoreDialogue !== undefined) {
+      formData.append('ignore_dialogue', options.ignoreDialogue.toString());
+    }
+    if (options.preserveFormatting !== undefined) {
+      formData.append('preserve_formatting', options.preserveFormatting.toString());
+    }
+    if (options.fixHyphenation !== undefined) {
+      formData.append('fix_hyphenation', options.fixHyphenation.toString());
+    }
+    if (options.minSentenceLength !== undefined) {
+      formData.append('min_sentence_length', options.minSentenceLength.toString());
+    }
+  }
   
   const response = await api.post('/process-pdf', formData, {
     headers: {
