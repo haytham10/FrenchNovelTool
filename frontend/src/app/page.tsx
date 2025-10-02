@@ -15,6 +15,8 @@ import Link from 'next/link';
 import { useAuth } from '@/components/AuthContext';
 import GoogleLoginButton from '@/components/GoogleLoginButton';
 import { useProcessingStore } from '@/stores/useProcessingStore';
+import Icon from '@/components/Icon';
+import { Download } from 'lucide-react';
 
 import type { ExportOptions } from '@/components/ExportDialog';
 
@@ -180,29 +182,83 @@ export default function Home() {
           </Box>
         )}
 
-        {/* Loading State */}
+        {/* Loading State with Enhanced Visual Feedback */}
         {loading && (
           <Box className="card-gradient" sx={{ mb: 4 }}>
             <Box className="inner" sx={{ p: { xs: 2, md: 4 } }}>
-              <Box display="flex" flexDirection="column" alignItems="center" py={6}>
-                <CircularProgress size={48} />
-                <Typography variant="h6" color="textSecondary" mt={3}>
+              <Box 
+                display="flex" 
+                flexDirection="column" 
+                alignItems="center" 
+                py={6}
+                sx={{
+                  minHeight: '300px',
+                  justifyContent: 'center',
+                }}
+              >
+                <Box
+                  sx={{
+                    position: 'relative',
+                    display: 'inline-flex',
+                    mb: 3,
+                  }}
+                >
+                  <CircularProgress 
+                    size={56} 
+                    thickness={4}
+                    sx={{
+                      color: 'primary.main',
+                    }}
+                  />
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      bottom: 0,
+                      right: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Typography
+                      variant="caption"
+                      component="div"
+                      color="primary"
+                      fontWeight={600}
+                    >
+                      {uploadProgress > 0 && uploadProgress < 100 ? `${uploadProgress}%` : ''}
+                    </Typography>
+                  </Box>
+                </Box>
+                <Typography 
+                  variant="h6" 
+                  color="textPrimary" 
+                  sx={{ 
+                    fontWeight: 500,
+                    mb: 1,
+                  }}
+                >
                   {loadingMessage}
                 </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Please wait while we process your file...
+                </Typography>
                 {uploadProgress > 0 && uploadProgress < 100 && (
-                  <Box sx={{ width: '100%', maxWidth: 400, mt: 2 }}>
+                  <Box sx={{ width: '100%', maxWidth: 450, mt: 3 }}>
                     <LinearProgress 
                       variant="determinate" 
                       value={uploadProgress}
-                      sx={{ height: 8, borderRadius: 4 }}
+                      sx={{ 
+                        height: 8, 
+                        borderRadius: 4,
+                        bgcolor: 'action.hover',
+                        '& .MuiLinearProgress-bar': {
+                          borderRadius: 4,
+                        },
+                      }}
                     />
-                    <Typography 
-                      variant="body2" 
-                      color="textSecondary" 
-                      sx={{ textAlign: 'center', mt: 1 }}
-                    >
-                      {uploadProgress}% uploaded
-                    </Typography>
                   </Box>
                 )}
               </Box>
@@ -240,18 +296,55 @@ export default function Home() {
         {!loading && user && sentences.length > 0 && (
           <Box className="card-gradient">
             <Box className="inner" sx={{ p: { xs: 2, md: 4 } }}>
-              <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
-                <Typography variant="h2" component="h2" color="textPrimary">
-                  Results
-                </Typography>
+              <Box 
+                sx={{
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center', 
+                  mb: 3,
+                  flexWrap: 'wrap',
+                  gap: 2,
+                }}
+              >
+                <Box>
+                  <Typography 
+                    variant="h2" 
+                    component="h2" 
+                    sx={{ 
+                      fontSize: { xs: '1.75rem', md: '2.125rem' },
+                      fontWeight: 600,
+                      mb: 0.5,
+                    }}
+                  >
+                    Results
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Review and export your processed sentences
+                  </Typography>
+                </Box>
                 <Button 
                   onClick={() => setExportDialogOpen(true)}
                   variant="contained"
                   color="primary"
                   disabled={loading}
                   size="large"
+                  startIcon={<Icon icon={Download} />}
+                  sx={{
+                    minWidth: 200,
+                    fontWeight: 600,
+                    boxShadow: 2,
+                    '&:hover': {
+                      boxShadow: 4,
+                    },
+                    '&:focus-visible': {
+                      outline: '3px solid',
+                      outlineColor: 'primary.dark',
+                      outlineOffset: '2px',
+                    },
+                  }}
+                  aria-label="Export results to Google Sheets"
                 >
-                  Export to Google Sheets
+                  Export to Sheets
                 </Button>
               </Box>
               <ResultsTable sentences={sentences} advancedOptions={advancedOptions} />

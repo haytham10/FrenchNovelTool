@@ -269,7 +269,20 @@ export default function ResultsTable({ sentences, originalSentences = [], onSent
         </Paper>
       )}
 
-      <TableContainer component={Paper} sx={{ maxHeight: 600 }}>
+      <TableContainer 
+        component={Paper} 
+        sx={{ 
+          maxHeight: 600,
+          borderRadius: 2,
+          border: 1,
+          borderColor: 'divider',
+          '& .MuiTableHead-root': {
+            position: 'sticky',
+            top: 0,
+            zIndex: 10,
+          },
+        }}
+      >
         <Table stickyHeader>
           <TableHead>
             <TableRow>
