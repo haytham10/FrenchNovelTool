@@ -5,6 +5,7 @@ from marshmallow import ValidationError
 from app import limiter
 from .services.pdf_service import PDFService
 from .services.gemini_service import GeminiService
+from .services.openai_service import OpenAIService
 from .services.google_sheets_service import GoogleSheetsService
 from .services.history_service import HistoryService
 from .services.user_settings_service import UserSettingsService
@@ -56,7 +57,7 @@ def process_pdf():
         return jsonify({'error': str(e)}), 400
 
     pdf_service = PDFService(file)
-    gemini_service = None
+    ai_service = None
 
     try:
         temp_file_path = pdf_service.save_to_temp()
@@ -67,6 +68,7 @@ def process_pdf():
         # Override with request parameters if provided
         form_data = request.form
         sentence_length_limit = int(form_data.get('sentence_length_limit', settings.get('sentence_length_limit', 8)))
+        ai_provider = form_data.get('ai_provider', settings.get('ai_provider', 'gemini'))
         gemini_model = form_data.get('gemini_model', settings.get('gemini_model', 'balanced'))
         ignore_dialogue = form_data.get('ignore_dialogue', str(settings.get('ignore_dialogue', False))).lower() == 'true'
         preserve_formatting = form_data.get('preserve_formatting', str(settings.get('preserve_formatting', True))).lower() == 'true'
@@ -76,6 +78,7 @@ def process_pdf():
         # Store processing settings for history
         processing_settings = {
             'sentence_length_limit': sentence_length_limit,
+            'ai_provider': ai_provider,
             'gemini_model': gemini_model,
             'ignore_dialogue': ignore_dialogue,
             'preserve_formatting': preserve_formatting,
@@ -83,19 +86,36 @@ def process_pdf():
             'min_sentence_length': min_sentence_length
         }
 
-        gemini_service = GeminiService(
-            sentence_length_limit=sentence_length_limit,
-            model_preference=gemini_model,
-            ignore_dialogue=ignore_dialogue,
-            preserve_formatting=preserve_formatting,
-            fix_hyphenation=fix_hyphenation,
-            min_sentence_length=min_sentence_length
-        )
+        # Select AI service based on provider
+        if ai_provider == 'openai':
+            if not current_app.config.get('OPENAI_API_KEY'):
+                return jsonify({'error': 'OpenAI API key not configured'}), 500
+                
+            ai_service = OpenAIService(
+                sentence_length_limit=sentence_length_limit,
+                model_preference=gemini_model,  # Using same model preference keys
+                ignore_dialogue=ignore_dialogue,
+                preserve_formatting=preserve_formatting,
+                fix_hyphenation=fix_hyphenation,
+                min_sentence_length=min_sentence_length
+            )
+        else:  # Default to Gemini
+            if not current_app.config.get('GEMINI_API_KEY'):
+                return jsonify({'error': 'Gemini API key not configured'}), 500
+                
+            ai_service = GeminiService(
+                sentence_length_limit=sentence_length_limit,
+                model_preference=gemini_model,
+                ignore_dialogue=ignore_dialogue,
+                preserve_formatting=preserve_formatting,
+                fix_hyphenation=fix_hyphenation,
+                min_sentence_length=min_sentence_length
+            )
 
         # Use the built-in prompt builder
-        prompt = gemini_service.build_prompt()
+        prompt = ai_service.build_prompt()
 
-        processed_sentences = gemini_service.generate_content_from_pdf(prompt, temp_file_path)
+        processed_sentences = ai_service.generate_content_from_pdf(prompt, temp_file_path)
 
         # Add user-specific history entry with processing settings
         history_service.add_entry(
@@ -117,8 +137,8 @@ def process_pdf():
         error_code = 'PROCESSING_ERROR'
         failed_step = 'normalize'
         
-        if 'Gemini' in error_message or 'API' in error_message:
-            error_code = 'GEMINI_API_ERROR'
+        if 'Gemini' in error_message or 'OpenAI' in error_message or 'API' in error_message:
+            error_code = 'AI_API_ERROR'
         elif 'PDF' in error_message:
             error_code = 'INVALID_PDF'
             failed_step = 'extract'

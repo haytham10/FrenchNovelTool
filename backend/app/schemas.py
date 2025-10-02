@@ -62,6 +62,11 @@ class UserSettingsSchema(Schema):
         required=True,
         validate=validate.Range(min=3, max=50)
     )
+    # AI provider selection
+    ai_provider = fields.String(
+        validate=validate.OneOf(['gemini', 'openai']),
+        load_default='gemini'
+    )
     # P1 advanced normalization fields
     gemini_model = fields.String(
         validate=validate.OneOf(['balanced', 'quality', 'speed']),
@@ -80,6 +85,10 @@ class ProcessPdfOptionsSchema(Schema):
     """Schema for advanced PDF processing options"""
     sentence_length_limit = fields.Integer(
         validate=validate.Range(min=3, max=50),
+        allow_none=True
+    )
+    ai_provider = fields.String(
+        validate=validate.OneOf(['gemini', 'openai']),
         allow_none=True
     )
     gemini_model = fields.String(

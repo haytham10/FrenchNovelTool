@@ -65,6 +65,11 @@ class Config:
     GEMINI_MAX_RETRIES = int(os.getenv('GEMINI_MAX_RETRIES', '3'))
     GEMINI_RETRY_DELAY = int(os.getenv('GEMINI_RETRY_DELAY', '1'))
     
+    # OpenAI API
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+    OPENAI_MAX_RETRIES = int(os.getenv('OPENAI_MAX_RETRIES', '3'))
+    OPENAI_TIMEOUT = int(os.getenv('OPENAI_TIMEOUT', '60'))
+    
     # Google APIs
     CLIENT_SECRETS_FILE = os.getenv('CLIENT_SECRETS_FILE', os.path.join(basedir, 'client_secret.json'))
     SCOPES = os.getenv(
