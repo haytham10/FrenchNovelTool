@@ -87,8 +87,55 @@ body {
   background: linear-gradient(120deg, rgba(124,156,255,0.35), rgba(6,182,212,0.25));
 }
 
-/* Fancy focus ring */
+/* Enhanced focus-visible styles for accessibility */
+*:focus-visible {
+  outline: 3px solid rgb(var(--ring));
+  outline-offset: 2px;
+  transition: outline-offset 0.2s ease;
+}
+
+/* Remove default outline and use custom focus styles */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 3px solid rgb(var(--ring));
+  outline-offset: 2px;
+}
+
+/* Focus styles for interactive elements */
+[role="button"]:focus-visible,
+[role="link"]:focus-visible,
+[role="tab"]:focus-visible,
+[role="menuitem"]:focus-visible {
+  outline: 3px solid rgb(var(--ring));
+  outline-offset: 2px;
+}
+
+/* Fancy focus ring with custom class */
 .ring-focus:focus-visible {
   outline: none;
   box-shadow: 0 0 0 4px rgba(var(--ring), 0.35);
+}
+
+/* Skip link specific styles */
+.skip-link {
+  position: absolute;
+  top: -100px;
+  left: 0;
+  z-index: 9999;
+  padding: 0.5rem 1rem;
+  background-color: rgb(var(--color-primary));
+  color: white;
+  text-decoration: none;
+  font-weight: 600;
+  border-radius: 0 0 4px 0;
+  transition: top 0.3s ease;
+}
+
+.skip-link:focus {
+  top: 0;
+  outline: 3px solid rgb(var(--ring));
+  outline-offset: 2px;
 }
