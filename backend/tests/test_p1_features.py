@@ -1,4 +1,8 @@
-"""Tests for P1 backend features"""
+"""Tests for P1 backend features
+
+NOTE: These tests are currently disabled as Phase 1 advanced features have been rolled back
+to restore basic functionality. See issue #15 for context.
+"""
 import pytest
 import os
 import sys
@@ -25,6 +29,8 @@ def app_context():
         yield app
 
 
+# DISABLED: Phase 1 features have been rolled back
+@pytest.mark.skip(reason="Phase 1 features rolled back - see issue #15")
 class TestGeminiServiceP1Features:
     """Test advanced normalization features in GeminiService"""
     

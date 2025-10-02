@@ -22,12 +22,7 @@ class UserSettingsService:
             # Create default settings for user
             settings = UserSettings(
                 user_id=user_id,
-                sentence_length_limit=8,
-                gemini_model='balanced',
-                ignore_dialogue=False,
-                preserve_formatting=True,
-                fix_hyphenation=True,
-                min_sentence_length=3
+                sentence_length_limit=8
             )
             db.session.add(settings)
             db.session.commit()
@@ -50,21 +45,11 @@ class UserSettingsService:
         if settings:
             # Update existing settings
             settings.sentence_length_limit = settings_dict.get('sentence_length_limit', settings.sentence_length_limit)
-            settings.gemini_model = settings_dict.get('gemini_model', settings.gemini_model)
-            settings.ignore_dialogue = settings_dict.get('ignore_dialogue', settings.ignore_dialogue)
-            settings.preserve_formatting = settings_dict.get('preserve_formatting', settings.preserve_formatting)
-            settings.fix_hyphenation = settings_dict.get('fix_hyphenation', settings.fix_hyphenation)
-            settings.min_sentence_length = settings_dict.get('min_sentence_length', settings.min_sentence_length)
         else:
             # Create new settings
             settings = UserSettings(
                 user_id=user_id,
-                sentence_length_limit=settings_dict.get('sentence_length_limit', 8),
-                gemini_model=settings_dict.get('gemini_model', 'balanced'),
-                ignore_dialogue=settings_dict.get('ignore_dialogue', False),
-                preserve_formatting=settings_dict.get('preserve_formatting', True),
-                fix_hyphenation=settings_dict.get('fix_hyphenation', True),
-                min_sentence_length=settings_dict.get('min_sentence_length', 3)
+                sentence_length_limit=settings_dict.get('sentence_length_limit', 8)
             )
             db.session.add(settings)
         

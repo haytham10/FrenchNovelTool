@@ -1,6 +1,9 @@
 """
 Test suite for Phase 1 Prompt Improvements
 Tests the improved Gemini prompt for French novel sentence rewriting.
+
+NOTE: These tests are currently disabled as Phase 1 advanced features have been rolled back
+to restore basic functionality. See issue #15 for context.
 """
 import sys
 import os
@@ -24,6 +27,8 @@ def app_context():
         yield app
 
 
+# DISABLED: Phase 1 features have been rolled back
+@pytest.mark.skip(reason="Phase 1 features rolled back - see issue #15")
 class TestPhase1PromptImprovements:
     """Test cases for Phase 1 prompt improvements"""
 
@@ -192,6 +197,8 @@ class TestPhase1PromptImprovements:
                 os.remove(temp_path)
 
 
+# DISABLED: Phase 1 features have been rolled back
+@pytest.mark.skip(reason="Phase 1 features rolled back - see issue #15")
 class TestPromptExamples:
     """Test cases with example French text scenarios"""
 
@@ -238,6 +245,8 @@ class TestPromptExamples:
             "Example sentences should be reasonably short"
 
 
+# DISABLED: Phase 1 features have been rolled back
+@pytest.mark.skip(reason="Phase 1 features rolled back - see issue #15")
 class TestCompleteness:
     """Test cases for ensuring complete document processing"""
 

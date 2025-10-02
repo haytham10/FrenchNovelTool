@@ -62,42 +62,27 @@ def process_pdf():
     try:
         temp_file_path = pdf_service.save_to_temp()
 
-        # Get user-specific settings
+        # Get user-specific settings - only use sentence_length_limit
         settings = user_settings_service.get_user_settings(user_id)
         
         # Override with request parameters if provided
         form_data = request.form
         sentence_length_limit = int(form_data.get('sentence_length_limit', settings.get('sentence_length_limit', 8)))
-        gemini_model = form_data.get('gemini_model', settings.get('gemini_model', 'balanced'))
-        ignore_dialogue = form_data.get('ignore_dialogue', str(settings.get('ignore_dialogue', False))).lower() == 'true'
-        preserve_formatting = form_data.get('preserve_formatting', str(settings.get('preserve_formatting', True))).lower() == 'true'
-        fix_hyphenation = form_data.get('fix_hyphenation', str(settings.get('fix_hyphenation', True))).lower() == 'true'
-        min_sentence_length = int(form_data.get('min_sentence_length', settings.get('min_sentence_length', 3)))
 
         # Store processing settings for history
         processing_settings = {
-            'sentence_length_limit': sentence_length_limit,
-            'gemini_model': gemini_model,
-            'ignore_dialogue': ignore_dialogue,
-            'preserve_formatting': preserve_formatting,
-            'fix_hyphenation': fix_hyphenation,
-            'min_sentence_length': min_sentence_length
+            'sentence_length_limit': sentence_length_limit
         }
 
         gemini_service = GeminiService(
-            sentence_length_limit=sentence_length_limit,
-            model_preference=gemini_model,
-            ignore_dialogue=ignore_dialogue,
-            preserve_formatting=preserve_formatting,
-            fix_hyphenation=fix_hyphenation,
-            min_sentence_length=min_sentence_length
+            sentence_length_limit=sentence_length_limit
         )
 
         # Use the built-in prompt builder
         prompt = gemini_service.build_prompt()
 
         # Log the processing attempt
-        current_app.logger.info(f'User {user.email} attempting to process PDF: {original_filename} with model {gemini_model}')
+        current_app.logger.info(f'User {user.email} attempting to process PDF: {original_filename}')
         
         # Process the PDF and get sentences
         processed_sentences = gemini_service.generate_content_from_pdf(prompt, temp_file_path)
