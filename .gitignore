@@ -1,0 +1,169 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Flask
+instance/
+.webassets-cache
+*.db
+*.sqlite
+*.sqlite3
+app.db
+
+# Database & Migrations
+migrations/versions/*.pyc
+*.db-journal
+*.backup
+*.backup.*
+app.db.backup*
+
+# Testing
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+.env.test
+
+# Google Credentials
+client_secret.json
+token.json
+credentials.json
+*_secret.json
+
+# Settings (deprecated - now in DB)
+user_settings.json
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Node
+node_modules/
+npm-debug.log*
+jspm_packages/
+package-lock.json.bak
+
+# Next.js
+.next/
+out/
+next-env.d.ts
+.vercel
+.turbo
+
+# Storybook
+storybook-static/
+
+# Misc
+*.pem
+*.key
+*.cert
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Typescript
+*.tsbuildinfo
+next-env.d.ts.bak
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+*.bak
+*.swp
+.cleanup_archive/
+*_ARCHIVE/
+CLEANUP_*.md
+
+# Coverage
+coverage/
+*.lcov
+.nyc_output/
+
+# Production builds
+build/
+dist/
+
+# Deployment
+.serverless/
+.aws-sam/
+
+# Redis
+dump.rdb
+
+# Docker
+.dockerignore.bak
+
+# Pre-commit
+.pre-commit-config.yaml.bak
+
+

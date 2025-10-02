@@ -1,0 +1,51 @@
+# Backend-specific gitignore
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+env/
+venv/
+.venv/
+ENV/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+app.db
+*.db-journal
+
+# Flask
+instance/
+.webassets-cache
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Environment
+.env
+.env.local
+
+# Google credentials
+client_secret.json
+token.json
+credentials.json
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+*.tmp
+temp/
+
+# Deprecated
+user_settings.json
+
