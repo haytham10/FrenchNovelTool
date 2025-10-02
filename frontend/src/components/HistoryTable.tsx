@@ -7,6 +7,10 @@ import { useSnackbar } from 'notistack';
 import Link from 'next/link';
 import { fetchHistory, getApiErrorMessage } from '@/lib/api';
 import type { HistoryEntry } from '@/lib/types';
+import { getHistoryStatus } from '@/lib/types';
+import { useDebounce } from '@/lib/hooks';
+import Icon from './Icon';
+import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
 
 type Order = 'asc' | 'desc';
 
@@ -38,6 +42,7 @@ export default function HistoryTable() {
   const [order, setOrder] = useState<Order>('desc');
   const [orderBy, setOrderBy] = useState<keyof HistoryEntry>('timestamp');
   const [filter, setFilter] = useState<string>('');
+  const debouncedFilter = useDebounce(filter, 300);
   const { enqueueSnackbar } = useSnackbar();
 
   useEffect(() => {
@@ -90,13 +95,13 @@ export default function HistoryTable() {
   }, [history, order, orderBy]);
 
   const filteredHistory = useMemo(() => {
-    if (!filter) return sortedHistory;
+    if (!debouncedFilter) return sortedHistory;
     return sortedHistory.filter(entry =>
-      entry.original_filename.toLowerCase().includes(filter.toLowerCase()) ||
-      (entry.spreadsheet_url && entry.spreadsheet_url.toLowerCase().includes(filter.toLowerCase())) ||
-      (entry.error_message && entry.error_message.toLowerCase().includes(filter.toLowerCase()))
+      entry.original_filename.toLowerCase().includes(debouncedFilter.toLowerCase()) ||
+      (entry.spreadsheet_url && entry.spreadsheet_url.toLowerCase().includes(debouncedFilter.toLowerCase())) ||
+      (entry.error_message && entry.error_message.toLowerCase().includes(debouncedFilter.toLowerCase()))
     );
-  }, [sortedHistory, filter]);
+  }, [sortedHistory, debouncedFilter]);
 
   if (loading) {
     return (
@@ -129,6 +134,7 @@ export default function HistoryTable() {
         <Table>
           <TableHead>
             <TableRow>
+              <StyledTableCell>Status</StyledTableCell>
               <StyledTableCell>
                 <TableSortLabel
                   active={orderBy === 'timestamp'}
@@ -177,25 +183,42 @@ export default function HistoryTable() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {filteredHistory.map((entry) => (
-              <StyledTableRow key={entry.id}>
-                <StyledTableCell>{new Date(entry.timestamp).toLocaleString()}</StyledTableCell>
-                <StyledTableCell>{entry.original_filename}</StyledTableCell>
-                <StyledTableCell>{entry.processed_sentences_count}</StyledTableCell>
-                <StyledTableCell>
-                  {entry.spreadsheet_url ? (
-                    <Link href={entry.spreadsheet_url} target="_blank" rel="noopener noreferrer">
-                      View Sheet
-                    </Link>
-                  ) : (
-                    'N/A'
-                  )}
-                </StyledTableCell>
-                <StyledTableCell sx={{ color: 'error.main' }}>
-                  {entry.error_message || 'N/A'}
-                </StyledTableCell>
-              </StyledTableRow>
-            ))}
+            {filteredHistory.map((entry) => {
+              const status = getHistoryStatus(entry);
+              return (
+                <StyledTableRow key={entry.id}>
+                  <StyledTableCell>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      {status === 'success' && <Icon icon={CheckCircle} color="success" fontSize="small" />}
+                      {status === 'failed' && <Icon icon={XCircle} color="error" fontSize="small" />}
+                      {status === 'processing' && <Icon icon={Loader2} color="primary" fontSize="small" />}
+                      <Typography variant="body2" sx={{ 
+                        color: status === 'success' ? 'success.main' : status === 'failed' ? 'error.main' : 'primary.main',
+                        fontWeight: 500,
+                        textTransform: 'capitalize'
+                      }}>
+                        {status}
+                      </Typography>
+                    </Box>
+                  </StyledTableCell>
+                  <StyledTableCell>{new Date(entry.timestamp).toLocaleString()}</StyledTableCell>
+                  <StyledTableCell>{entry.original_filename}</StyledTableCell>
+                  <StyledTableCell>{entry.processed_sentences_count}</StyledTableCell>
+                  <StyledTableCell>
+                    {entry.spreadsheet_url ? (
+                      <Link href={entry.spreadsheet_url} target="_blank" rel="noopener noreferrer">
+                        View Sheet
+                      </Link>
+                    ) : (
+                      'N/A'
+                    )}
+                  </StyledTableCell>
+                  <StyledTableCell sx={{ color: 'error.main' }}>
+                    {entry.error_message || 'N/A'}
+                  </StyledTableCell>
+                </StyledTableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </TableContainer>

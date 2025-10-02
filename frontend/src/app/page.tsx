@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import FileUpload from '@/components/FileUpload';
 import ResultsTable from '@/components/ResultsTable';
 import DriveFolderPicker from '@/components/DriveFolderPicker';
+import NormalizeControls from '@/components/NormalizeControls';
 import { processPdf, exportToSheet, getApiErrorMessage } from '@/lib/api';
 import { CircularProgress, Button, Typography, Box, TextField, Container } from '@mui/material';
 import { useSnackbar } from 'notistack';
@@ -18,6 +19,7 @@ export default function Home() {
   const [sheetName, setSheetName] = useState<string>('French Novel Sentences');
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [selectedFolderName, setSelectedFolderName] = useState<string | null>(null);
+  const [sentenceLength, setSentenceLength] = useState<number>(12);
   const { enqueueSnackbar } = useSnackbar();
 
   const handleFileUpload = async (files: File[]) => {
@@ -108,6 +110,23 @@ export default function Home() {
               </Typography>
             </Box>
           )}
+          </Box>
+        </Box>
+        
+        {/* Normalize Controls Section */}
+        <Box className="card-gradient" sx={{ mb: 4 }}>
+          <Box className="inner" sx={{ p: { xs: 2, md: 4 } }}>
+            <NormalizeControls
+              sentenceLength={sentenceLength}
+              onSentenceLengthChange={setSentenceLength}
+              disabled={loading}
+            />
+            <Box sx={{ mt: 3 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                <strong>Note:</strong> The sentence length setting will be applied during the next PDF processing.
+                Current results use the length set during upload.
+              </Typography>
+            </Box>
           </Box>
         </Box>
         {loading && (

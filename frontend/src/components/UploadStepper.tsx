@@ -8,10 +8,16 @@ const steps = ['Upload', 'Analyze', 'Normalize', 'Done'];
 export default function UploadStepper({ activeStep }: { activeStep: number }) {
   return (
     <Box sx={{ width: '100%', my: 2 }}>
-      <Stepper activeStep={activeStep} alternativeLabel>
-        {steps.map((label) => (
+      <Stepper 
+        activeStep={activeStep} 
+        alternativeLabel
+        aria-label="Processing steps"
+      >
+        {steps.map((label, index) => (
           <Step key={label}>
-            <StepLabel>{label}</StepLabel>
+            <StepLabel aria-label={`Step ${index + 1}: ${label}${index === activeStep ? ' (current)' : ''}`}>
+              {label}
+            </StepLabel>
           </Step>
         ))}
       </Stepper>

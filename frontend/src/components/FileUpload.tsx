@@ -20,8 +20,11 @@ export default function FileUpload({ onFileUpload }: FileUploadProps) {
       className={`ring-focus rounded-xl p-10 text-center cursor-pointer transition-all duration-300 ${
         isDragActive ? 'bg-blue-50 border-2 border-dashed border-blue-400 scale-[1.01]' : 'bg-gray-50 border border-dashed border-gray-300 hover:shadow-md'
       }`}
+      role="button"
+      aria-label="Upload PDF files"
+      tabIndex={0}
     >
-      <input {...getInputProps()} />
+      <input {...getInputProps()} aria-label="PDF file input" />
       <div className="flex flex-col items-center gap-2">
         <div className="inline-flex p-3 rounded-full bg-white shadow-sm">
           <Icon icon={UploadCloud} color="primary" />
