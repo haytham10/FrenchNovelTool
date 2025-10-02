@@ -63,51 +63,47 @@ def process_pdf():
 
         # Get user-specific settings
         settings = user_settings_service.get_user_settings(user_id)
-        sentence_length_limit = settings.get('sentence_length_limit', 8)
+        
+        # Override with request parameters if provided
+        form_data = request.form
+        sentence_length_limit = int(form_data.get('sentence_length_limit', settings.get('sentence_length_limit', 8)))
+        gemini_model = form_data.get('gemini_model', settings.get('gemini_model', 'balanced'))
+        ignore_dialogue = form_data.get('ignore_dialogue', str(settings.get('ignore_dialogue', False))).lower() == 'true'
+        preserve_formatting = form_data.get('preserve_formatting', str(settings.get('preserve_formatting', True))).lower() == 'true'
+        fix_hyphenation = form_data.get('fix_hyphenation', str(settings.get('fix_hyphenation', True))).lower() == 'true'
+        min_sentence_length = int(form_data.get('min_sentence_length', settings.get('min_sentence_length', 3)))
 
-        gemini_service = GeminiService(sentence_length_limit=sentence_length_limit)
+        # Store processing settings for history
+        processing_settings = {
+            'sentence_length_limit': sentence_length_limit,
+            'gemini_model': gemini_model,
+            'ignore_dialogue': ignore_dialogue,
+            'preserve_formatting': preserve_formatting,
+            'fix_hyphenation': fix_hyphenation,
+            'min_sentence_length': min_sentence_length
+        }
 
-        prompt = (
-            "You are a literary assistant specialized in processing French novels. "
-            "Your task is to list the sentences from the provided text consecutively. "
-            f"If a sentence is {sentence_length_limit} words long or less, add it to the list as is. "
-            f"If a sentence is longer than {sentence_length_limit} words, you must rewrite it into "
-            f"shorter sentences, each with {sentence_length_limit} words or fewer. "
-            "\n\n"
-            "**Rewriting Rules:**\n"
-            "- Split long sentences at natural grammatical breaks, such as conjunctions "
-            "(e.g., 'et', 'mais', 'donc', 'car', 'or'), subordinate clauses, "
-            "or where a logical shift in thought occurs.\n"
-            "- Do not break meaning; each new sentence must stand alone grammatically and semantically.\n"
-            "\n"
-            "**Context-Awareness:**\n"
-            "- Ensure the rewritten sentences maintain the logical flow and connection to the preceding text. "
-            "The output must read as a continuous, coherent narrative.\n"
-            "\n"
-            "**Dialogue Handling:**\n"
-            "- If a sentence is enclosed in quotation marks (« », \" \", or ' '), treat it as dialogue. "
-            "Do not split it unless absolutely necessary. "
-            "If a split is unavoidable, do so in a way that maintains the natural cadence of speech.\n"
-            "\n"
-            "**Style and Tone Preservation:**\n"
-            "- Maintain the literary tone and style of the original text. "
-            "Avoid using overly simplistic language or modern idioms that would feel out of place.\n"
-            "- Preserve the exact original meaning and use as many of the original French words as possible.\n"
-            "\n"
-            "**Output Format:**\n"
-            "Present the final output as a JSON object with a single key 'sentences' "
-            "which is an array of strings. "
-            f"For example: {{\"sentences\": [\"Voici la première phrase.\", \"Et voici la deuxième.\"]}}"
+        gemini_service = GeminiService(
+            sentence_length_limit=sentence_length_limit,
+            model_preference=gemini_model,
+            ignore_dialogue=ignore_dialogue,
+            preserve_formatting=preserve_formatting,
+            fix_hyphenation=fix_hyphenation,
+            min_sentence_length=min_sentence_length
         )
+
+        # Use the built-in prompt builder
+        prompt = gemini_service.build_prompt()
 
         processed_sentences = gemini_service.generate_content_from_pdf(prompt, temp_file_path)
 
-        # Add user-specific history entry
+        # Add user-specific history entry with processing settings
         history_service.add_entry(
             user_id=user_id,
             original_filename=original_filename,
             processed_sentences_count=len(processed_sentences),
-            error_message=None
+            error_message=None,
+            processing_settings=processing_settings
         )
 
         current_app.logger.info(f'User {user.email} processed PDF: {original_filename}')
@@ -117,12 +113,24 @@ def process_pdf():
         error_message = str(e)
         current_app.logger.exception(f'User {user.email} failed to process PDF {original_filename}')
         
+        # Determine error code and failed step
+        error_code = 'PROCESSING_ERROR'
+        failed_step = 'normalize'
+        
+        if 'Gemini' in error_message or 'API' in error_message:
+            error_code = 'GEMINI_API_ERROR'
+        elif 'PDF' in error_message:
+            error_code = 'INVALID_PDF'
+            failed_step = 'extract'
+        
         # Add error to user's history
         history_service.add_entry(
             user_id=user_id,
             original_filename=original_filename,
             processed_sentences_count=0,
-            error_message=error_message
+            error_message=error_message,
+            failed_step=failed_step,
+            error_code=error_code
         )
         return jsonify({'error': error_message}), 500
     finally:
@@ -150,6 +158,16 @@ def export_to_sheet():
         sheet_name = data['sheetName']  # camelCase from frontend
         folder_id = data.get('folderId')  # camelCase from frontend
         
+        # P1 new parameters
+        mode = data.get('mode', 'new')
+        existing_sheet_id = data.get('existingSheetId')
+        tab_name = data.get('tabName')
+        create_new_tab = data.get('createNewTab', False)
+        headers = data.get('headers')
+        column_order = data.get('columnOrder')
+        sharing = data.get('sharing')
+        sentence_indices = data.get('sentenceIndices')
+        
         # Check if user has authorized Google Sheets access
         if not user.google_access_token:
             return jsonify({
@@ -173,7 +191,15 @@ def export_to_sheet():
             creds=creds,
             sentences=sentences,
             sheet_name=sheet_name,
-            folder_id=folder_id
+            folder_id=folder_id,
+            mode=mode,
+            existing_sheet_id=existing_sheet_id,
+            tab_name=tab_name,
+            create_new_tab=create_new_tab,
+            headers=headers,
+            column_order=column_order,
+            sharing=sharing,
+            sentence_indices=sentence_indices
         )
         
         # Update history with spreadsheet URL
@@ -283,3 +309,71 @@ def user_settings():
         except Exception as e:
             current_app.logger.exception(f'User {user.email} failed to save settings')
             return jsonify({'error': str(e)}), 500
+
+
+@main_bp.route('/history/<int:entry_id>/retry', methods=['POST'])
+@jwt_required()
+@limiter.limit("5 per hour")
+def retry_history_entry(entry_id):
+    """Retry processing from failed step (requires authentication)"""
+    user_id = int(get_jwt_identity())
+    user = User.query.get(user_id)
+    
+    if not user or not user.is_active:
+        return jsonify({'error': 'User not found or inactive'}), 401
+    
+    try:
+        from app.models import History
+        entry = History.query.filter_by(id=entry_id, user_id=user_id).first()
+        
+        if not entry:
+            return jsonify({'error': 'History entry not found'}), 404
+        
+        if not entry.failed_step:
+            return jsonify({'error': 'Entry did not fail - nothing to retry'}), 400
+        
+        # For now, return a message that this feature requires the original file
+        # In a full implementation, you would store the file or allow re-upload
+        return jsonify({
+            'message': 'Retry functionality requires re-uploading the PDF file',
+            'entry_id': entry_id,
+            'settings': entry.processing_settings
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.exception(f'User {user.email} failed to retry entry {entry_id}')
+        return jsonify({'error': str(e)}), 500
+
+
+@main_bp.route('/history/<int:entry_id>/duplicate', methods=['POST'])
+@jwt_required()
+@limiter.limit("5 per hour")
+def duplicate_history_entry(entry_id):
+    """Duplicate a processing run with same settings (requires authentication)"""
+    user_id = int(get_jwt_identity())
+    user = User.query.get(user_id)
+    
+    if not user or not user.is_active:
+        return jsonify({'error': 'User not found or inactive'}), 401
+    
+    try:
+        from app.models import History
+        entry = History.query.filter_by(id=entry_id, user_id=user_id).first()
+        
+        if not entry:
+            return jsonify({'error': 'History entry not found'}), 404
+        
+        if not entry.processing_settings:
+            return jsonify({'error': 'No settings found for this entry'}), 400
+        
+        # Return the settings so the frontend can use them
+        # In a full implementation with file storage, we would automatically reprocess
+        return jsonify({
+            'message': 'Use these settings to process a new PDF',
+            'settings': entry.processing_settings,
+            'original_filename': entry.original_filename
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.exception(f'User {user.email} failed to duplicate entry {entry_id}')
+        return jsonify({'error': str(e)}), 500

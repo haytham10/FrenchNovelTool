@@ -47,6 +47,11 @@ class History(db.Model):
     processed_sentences_count = db.Column(db.Integer)
     spreadsheet_url = db.Column(db.String(256))
     error_message = db.Column(db.String(512))
+    # P1 feature fields
+    failed_step = db.Column(db.String(50))  # 'upload', 'extract', 'analyze', 'normalize', 'export'
+    error_code = db.Column(db.String(50))   # 'QUOTA_EXCEEDED', 'INVALID_PDF', etc.
+    error_details = db.Column(db.JSON)      # Additional error context
+    processing_settings = db.Column(db.JSON)  # Store all settings for duplicate/retry
 
     def __repr__(self):
         return f'<History {self.original_filename} - {self.timestamp}>'
@@ -58,7 +63,11 @@ class History(db.Model):
             'original_filename': self.original_filename,
             'processed_sentences_count': self.processed_sentences_count,
             'spreadsheet_url': self.spreadsheet_url,
-            'error_message': self.error_message
+            'error_message': self.error_message,
+            'failed_step': self.failed_step,
+            'error_code': self.error_code,
+            'error_details': self.error_details,
+            'settings': self.processing_settings
         }
 
 
@@ -70,11 +79,22 @@ class UserSettings(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, unique=True, index=True)
     sentence_length_limit = db.Column(db.Integer, nullable=False, default=8)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    # P1 advanced normalization fields
+    gemini_model = db.Column(db.String(50), default='balanced')
+    ignore_dialogue = db.Column(db.Boolean, default=False)
+    preserve_formatting = db.Column(db.Boolean, default=True)
+    fix_hyphenation = db.Column(db.Boolean, default=True)
+    min_sentence_length = db.Column(db.Integer, default=3)
     
     def __repr__(self):
         return f'<UserSettings user_id={self.user_id} sentence_length_limit={self.sentence_length_limit}>'
     
     def to_dict(self):
         return {
-            'sentence_length_limit': self.sentence_length_limit
+            'sentence_length_limit': self.sentence_length_limit,
+            'gemini_model': self.gemini_model,
+            'ignore_dialogue': self.ignore_dialogue,
+            'preserve_formatting': self.preserve_formatting,
+            'fix_hyphenation': self.fix_hyphenation,
+            'min_sentence_length': self.min_sentence_length
         }
