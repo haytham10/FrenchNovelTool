@@ -2,34 +2,69 @@
 @tailwind components;
 @tailwind utilities;
 
+/**
+ * Global Styles with Design Tokens
+ * Uses CSS variables for theming support
+ */
+
+/* Apply theme to body with smooth transitions */
 body {
-  background-color: #f4f4f9;
-  color: #333;
+  background-color: rgb(var(--bg-default));
+  color: rgb(var(--text-primary));
+  transition: background-color 300ms cubic-bezier(0.4, 0, 0.2, 1), 
+              color 300ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* Light theme tokens (default) */
 :root {
+  /* Colors */
   --color-primary: 59 130 246; /* #3b82f6 */
   --color-secondary: 6 182 212; /* #06b6d4 */
+  --color-success: 34 197 94; /* #22c55e */
+  --color-warning: 245 158 11; /* #f59e0b */
+  --color-error: 239 68 68; /* #ef4444 */
+  
+  /* Backgrounds */
   --bg-default: 247 248 251; /* #f7f8fb */
   --bg-paper: 255 255 255; /* #ffffff */
+  
+  /* Text */
+  --text-primary: 17 24 39; /* #111827 */
+  --text-secondary: 107 114 128; /* #6b7280 */
+  
+  /* Focus ring */
   --ring: 99 102 241; /* indigo-500 */
 }
 
+/* Dark theme tokens */
 [data-theme="dark"] {
+  /* Colors */
   --color-primary: 124 156 255; /* #7c9cff */
   --color-secondary: 125 211 252; /* #7dd3fc */
+  --color-success: 34 197 94; /* #22c55e */
+  --color-warning: 251 191 36; /* #fbbf24 */
+  --color-error: 248 113 113; /* #f87171 */
+  
+  /* Backgrounds */
   --bg-default: 11 18 32; /* #0b1220 */
   --bg-paper: 15 23 42; /* #0f172a */
+  
+  /* Text */
+  --text-primary: 248 250 252; /* #f8fafc */
+  --text-secondary: 148 163 184; /* #94a3b8 */
+  
+  /* Focus ring */
   --ring: 165 180 252; /* indigo-300 */
 }
 
+/* Utility classes using tokens */
 .tw-bg-default { background-color: rgb(var(--bg-default)); }
 .tw-bg-paper { background-color: rgb(var(--bg-paper)); }
-
-.tw-text-primary { color: rgb(var(--color-primary)); }
+.tw-text-primary { color: rgb(var(--text-primary)); }
+.tw-text-secondary { color: rgb(var(--text-secondary)); }
 .tw-bg-primary { background-color: rgb(var(--color-primary)); }
 
-/* Wow factor: gradient text and animated hero auras */
+/* Gradient text for hero/branding */
 .gradient-text {
   background: linear-gradient(92deg, #7c9cff 0%, #06b6d4 45%, #22c55e 100%);
   -webkit-background-clip: text;
@@ -37,6 +72,7 @@ body {
   color: transparent;
 }
 
+/* Hero aura effect */
 .hero-aura {
   position: relative;
 }
@@ -78,6 +114,7 @@ body {
   padding: 1px;
   border-radius: 16px;
   background: linear-gradient(120deg, rgba(124,156,255,0.45), rgba(6,182,212,0.35));
+  transition: background 300ms ease;
 }
 .card-gradient .inner {
   border-radius: 16px;
@@ -87,14 +124,19 @@ body {
   background: linear-gradient(120deg, rgba(124,156,255,0.35), rgba(6,182,212,0.25));
 }
 
-/* Enhanced focus-visible styles for accessibility */
+/**
+ * Enhanced Accessibility - Focus Visible Styles
+ * Using design tokens for consistent focus rings
+ */
+
+/* Global focus-visible style */
 *:focus-visible {
   outline: 3px solid rgb(var(--ring));
   outline-offset: 2px;
   transition: outline-offset 0.2s ease;
 }
 
-/* Remove default outline and use custom focus styles */
+/* Focus styles for form elements */
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,
@@ -104,7 +146,7 @@ select:focus-visible {
   outline-offset: 2px;
 }
 
-/* Focus styles for interactive elements */
+/* Focus styles for interactive ARIA roles */
 [role="button"]:focus-visible,
 [role="link"]:focus-visible,
 [role="tab"]:focus-visible,
@@ -113,13 +155,16 @@ select:focus-visible {
   outline-offset: 2px;
 }
 
-/* Fancy focus ring with custom class */
+/* Alternative focus ring with custom class */
 .ring-focus:focus-visible {
   outline: none;
   box-shadow: 0 0 0 4px rgba(var(--ring), 0.35);
 }
 
-/* Skip link specific styles */
+/**
+ * Skip Link for Keyboard Navigation
+ * Accessible navigation bypass for screen readers
+ */
 .skip-link {
   position: absolute;
   top: -100px;
@@ -138,4 +183,25 @@ select:focus-visible {
   top: 0;
   outline: 3px solid rgb(var(--ring));
   outline-offset: 2px;
+}
+
+/**
+ * Smooth Scrolling
+ */
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
