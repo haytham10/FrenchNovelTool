@@ -1,0 +1,44 @@
+# Dependencies
+node_modules
+
+# Testing
+coverage
+.nyc_output
+
+# Development
+.next
+.cache
+
+# Environment
+.env.local
+.env.development
+.env.test
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Git
+.git
+.gitignore
+
+# Logs
+*.log
+npm-debug.log*
+
+# Documentation
+README.md
+docs
+
+# Tests
+__tests__
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+
+# Storybook
+.storybook
+storybook-static

@@ -14,7 +14,8 @@ services:
       - SECRET_KEY=dev-secret-key
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
-      - DATABASE_URL=sqlite:///app.db
+      # Use DATABASE_URL from .env if connecting to Supabase, otherwise default to SQLite
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///app.db}
       - REDIS_URL=redis://redis:6379/0
       - CORS_ORIGINS=http://localhost:3000
       - LOG_LEVEL=DEBUG

@@ -50,8 +50,11 @@ class Config:
     TOKEN_FILE = os.getenv('TOKEN_FILE', os.path.join(basedir, 'token.json'))
     
     # Database
-    SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL') or \
-                              'sqlite:///' + os.path.join(basedir, 'app.db')
+    # Handle both postgres:// and postgresql:// URLs (Heroku/Supabase compatibility)
+    database_url = os.getenv('DATABASE_URL') or 'sqlite:///' + os.path.join(basedir, 'app.db')
+    if database_url.startswith('postgres://'):
+        database_url = database_url.replace('postgres://', 'postgresql://', 1)
+    SQLALCHEMY_DATABASE_URI = database_url
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
     # Logging
