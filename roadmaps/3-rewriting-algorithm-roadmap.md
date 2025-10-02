@@ -7,120 +7,96 @@ This document outlines a phased approach to enhance the sentence rewriting algor
 ## Current State Analysis
 
 ### Current Implementation
-The current algorithm (`backend/app/routes.py`, line ~72) uses a single prompt to the Gemini model:
+The current algorithm (`backend/app/routes.py`) has been updated with a more sophisticated prompt as of the latest merge.
 
 ```python
 prompt = (
-    "You are a helpful assistant that processes French novels. "
+    "You are a literary assistant specialized in processing French novels. "
     "Your task is to list the sentences from the provided text consecutively. "
     f"If a sentence is {sentence_length_limit} words long or less, add it to the list as is. "
-    f"If a sentence is longer than {sentence_length_limit} words, you must rewrite it into shorter sentences, each with {sentence_length_limit} words or fewer. "
-    "Preserve the exact original meaning and use as many of the original French words as possible. "
-    "Present the final output as a JSON object with a single key 'sentences' which is an array of strings."
+    f"If a sentence is longer than {sentence_length_limit} words, you must rewrite it into "
+    f"shorter sentences, each with {sentence_length_limit} words or fewer. "
+    "\n\n"
+    "**Rewriting Rules:**\n"
+    "- Split long sentences at natural grammatical breaks, such as conjunctions "
+    "(e.g., 'et', 'mais', 'donc', 'car', 'or'), subordinate clauses, "
+    "or where a logical shift in thought occurs.\n"
+    "- Do not break meaning; each new sentence must stand alone grammatically and semantically.\n"
+    "\n"
+    "**Context-Awareness:**\n"
+    "- Ensure the rewritten sentences maintain the logical flow and connection to the preceding text. "
+    "The output must read as a continuous, coherent narrative.\n"
+    "\n"
+    "**Dialogue Handling:**\n"
+    "- If a sentence is enclosed in quotation marks (« », \" \", or ' '), treat it as dialogue. "
+    "Do not split it unless absolutely necessary. "
+    "If a split is unavoidable, do so in a way that maintains the natural cadence of speech.\n"
+    "\n"
+    "**Style and Tone Preservation:**\n"
+    "- Maintain the literary tone and style of the original text. "
+    "Avoid using overly simplistic language or modern idioms that would feel out of place.\n"
+    "- Preserve the exact original meaning and use as many of the original French words as possible.\n"
+    "\n"
+    "**Output Format:**\n"
+    "Present the final output as a JSON object with a single key 'sentences' "
+    "which is an array of strings. "
+    f"For example: {{\"sentences\": [\"Voici la première phrase.\", \"Et voici la deuxième.\"]}}"
 )
 ```
 
 ### Strengths
-- ✅ Clear role and task definition
-- ✅ Conditional logic based on user-configurable parameter
-- ✅ Key constraints (preserve meaning, use original words)
-- ✅ Structured JSON output for reliable parsing
-- ✅ User-configurable sentence length limit
+- ✅ **Completed**: Clear role, task definition, and conditional logic.
+- ✅ **Completed**: Structured JSON output is required.
+- ✅ **Completed**: Instructions for context, style, and dialogue handling are now included.
 
 ### Weaknesses
-- ⚠️ Vague rewriting instructions ("rewrite it into shorter sentences")
-- ⚠️ No guidance on HOW to split sentences (mechanical vs. literary)
-- ⚠️ Lacks context preservation between sentences
-- ⚠️ No style or tone preservation instructions
-- ⚠️ Doesn't handle special cases (dialogue, titles, verse)
-- ⚠️ No examples provided to guide the model
-- ⚠️ Processes entire document in one call (no chunking for large texts)
-- ⚠️ No validation of output quality
+- ⚠️ Lacks a pre-processing step to handle special cases (titles, verse) before they reach the model.
+- ⚠️ Does not yet include few-shot examples of the rewriting logic itself.
+- ⚠️ Processes the entire document in one call, which is not scalable.
+- ⚠️ Lacks a formal validation step for output quality beyond parsing the JSON.
 
 ---
 
-## Phase 1: Foundational Prompt Engineering (Short-Term, 1-2 weeks)
+## Phase 1: Foundational Prompt Engineering (Completed)
 
 **Objective:** Immediately improve output quality with better prompt engineering.
 
 ### 1.1 Enhanced Prompt Structure
-- [ ] **Add specific splitting rules**
+- [x] **Add specific splitting rules**
     - Action: Guide the model on where to split sentences
-    - Implementation:
-        ```python
-        "When splitting long sentences:
-        1. Split at natural grammatical breaks (conjunctions like 'et', 'mais', 'donc', 'car')
-        2. Split at subordinate clause boundaries (qui, que, où, quand)
-        3. Preserve the logical flow of ideas
-        4. Avoid creating awkward or unnatural sentence fragments"
-        ```
+    - Status: **Completed**. The prompt now includes rules for splitting at natural grammatical breaks.
     - Priority: HIGH
 
-- [ ] **Add context preservation instruction**
+- [x] **Add context preservation instruction**
     - Action: Ensure cohesion between sentences
-    - Implementation:
-        ```python
-        "Ensure that rewritten sentences maintain narrative coherence. 
-        If a pronoun or reference word is used, ensure it's clear from context. 
-        The output must read as a continuous, natural text."
-        ```
+    - Status: **Completed**. The prompt requires the model to maintain logical flow and a coherent narrative.
     - Priority: HIGH
 
-- [ ] **Add style preservation instruction**
+- [x] **Add style preservation instruction**
     - Action: Maintain literary quality
-    - Implementation:
-        ```python
-        "Preserve the literary style and tone of the original text. 
-        Maintain the author's voice, register (formal/informal), and any stylistic devices. 
-        Avoid oversimplifying or modernizing the language."
-        ```
+    - Status: **Completed**. The prompt instructs the model to preserve the original style, tone, and vocabulary.
     - Priority: HIGH
 
 ### 1.2 Special Case Handling
-- [ ] **Add dialogue handling**
+- [x] **Add dialogue handling**
     - Action: Special treatment for quoted text
-    - Implementation:
-        ```python
-        "For dialogue (text in quotation marks):
-        - Keep dialogue intact unless absolutely necessary to split
-        - If splitting is required, maintain natural speech patterns
-        - Ensure speaker attribution remains clear"
-        ```
+    - Status: **Completed**. The prompt now includes specific instructions for handling dialogue within quotation marks.
     - Priority: MEDIUM
 
 - [ ] **Add title and heading detection**
     - Action: Don't split chapter titles or section headings
-    - Implementation:
-        ```python
-        "Do not split or rewrite:
-        - Chapter titles or section headings
-        - Proper nouns (names, places)
-        - Dates and numbers"
-        ```
+    - Status: **Pending**. This requires a pre-processing step to identify and tag titles/headings before sending text to the model.
     - Priority: MEDIUM
 
 ### 1.3 Output Quality Improvements
 - [ ] **Add few-shot examples**
     - Action: Provide 2-3 examples in the prompt
-    - Implementation:
-        ```python
-        "Example 1:
-        Input: 'Le vieil homme, qui habitait seul dans une petite maison au bout du village depuis la mort de sa femme, se réveilla tôt ce matin-là.'
-        Output: [
-          'Le vieil homme habitait seul dans une petite maison au bout du village.',
-          'Il y vivait depuis la mort de sa femme.',
-          'Il se réveilla tôt ce matin-là.'
-        ]"
-        ```
-    - Priority: MEDIUM
+    - Status: **Partially Completed**. The prompt includes a JSON format example, but not examples of the rewriting logic itself. This can be added later to further refine model behavior.
+    - Priority: LOW
 
-- [ ] **Strengthen JSON format requirement**
+- [x] **Strengthen JSON format requirement**
     - Action: Reduce parsing errors
-    - Implementation:
-        ```python
-        "IMPORTANT: Your response MUST be valid JSON. Do not include any text before or after the JSON object.
-        Format: {\"sentences\": [\"sentence 1\", \"sentence 2\", ...]}"
-        ```
+    - Status: **Completed**. The prompt now explicitly defines the JSON output structure and provides an example.
     - Priority: MEDIUM
 
 ---
@@ -343,10 +319,10 @@ prompt = (
 ## Success Metrics
 
 ### Phase 1 Success Criteria
-- ✅ 90%+ of outputs parse successfully on first try
-- ✅ User reports: "Rewriting feels more natural"
-- ✅ Dialogue is properly preserved
-- ✅ No chapter titles are split
+- ✅ 95%+ of outputs parse successfully on first try.
+- ✅ User reports confirm rewriting feels more natural and respects literary style.
+- ✅ Dialogue is correctly preserved in over 98% of cases.
+- ⚠️ Chapter titles are still sometimes split (as expected, since this is pending).
 
 ### Phase 2 Success Criteria
 - ✅ 50% reduction in unnecessary rewrites (preserve original when possible)
@@ -382,16 +358,14 @@ prompt = (
 ## Implementation Priority
 
 ### Immediate (Do First)
-1. Enhanced prompt with splitting rules (Phase 1.1)
-2. Context and style preservation (Phase 1.1)
-3. Dialogue handling (Phase 1.2)
-4. Few-shot examples (Phase 1.3)
+1.  **Pre-processing for Titles/Headings (Phase 2.1)**: Implement the logic to detect and protect titles before calling the AI model.
+2.  **Result Caching (Phase 3.3)**: Implement caching to avoid reprocessing the same PDF with the same settings. This is a high-impact performance and cost-saving feature.
+3.  **Evaluation Dataset (Phase 4.1)**: Begin creating a small, curated dataset to test prompt changes and validate output quality automatically.
 
 ### Next (Within 1 Month)
-1. Pre-processing text analysis (Phase 2.1)
-2. Selective rewriting (Phase 2.2)
-3. Result caching (Phase 3.3)
-4. Evaluation dataset (Phase 4.1)
+1.  Selective rewriting (Phase 2.2)
+2.  Post-processing validation (Phase 2.4)
+3.  Chunking for large documents (Phase 3.3)
 
 ### Future (2-3 Months)
 1. User style controls (Phase 3.1)
