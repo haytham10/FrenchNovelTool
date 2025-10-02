@@ -39,7 +39,8 @@ class GeminiService:
         prompt_parts = []
         prompt_parts.append(
             "You are a literary assistant specialized in processing French novels. "
-            "Your task is to list the sentences from the provided text consecutively. "
+            "Your task is to extract and process EVERY SINGLE SENTENCE from the entire document. "
+            "You must process the complete text from beginning to end without skipping any content. "
         )
         
         # Basic sentence length rules
