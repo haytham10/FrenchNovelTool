@@ -6,11 +6,13 @@ Process French novel PDFs, normalize sentence length with Google Gemini AI, and 
 
 ### Core Functionality
 - 📄 **PDF Processing**: Upload French novel PDFs and extract text
-- 🤖 **AI-Powered Normalization**: Uses Google Gemini to split long sentences while preserving meaning
+- 🤖 **Dual AI Provider Support**: Choose between Google Gemini or OpenAI for sentence normalization
+  - **Gemini**: All modes use gemini-2.0-flash-exp
+  - **OpenAI**: Balanced (gpt-4o-mini), Quality (gpt-4o), Speed (gpt-3.5-turbo)
 - 📊 **Google Sheets Export**: Export processed sentences with formatted headers
 - 📁 **Drive Integration**: Organize exports in specific Google Drive folders
 - 📜 **History Tracking**: Keep track of all processed documents with status indicators
-- ⚙️ **Configurable Settings**: Adjust sentence length limits with intuitive slider and presets
+- ⚙️ **Configurable Settings**: Adjust sentence length limits, AI provider, and model quality with persistent preferences
 
 ### UX/UI Features (P0 Roadmap Implemented)
 - 🎨 **Modern UI**: Material-UI v7 with light/dark theme support
@@ -151,6 +153,9 @@ Key variables in `backend/.env`:
 GEMINI_API_KEY=your-gemini-api-key
 SECRET_KEY=your-secret-key
 
+# Optional - OpenAI Integration
+OPENAI_API_KEY=your-openai-api-key  # For OpenAI provider option
+
 # Optional (with defaults)
 GEMINI_MODEL=gemini-2.5-flash
 MAX_FILE_SIZE=52428800  # 50MB
@@ -223,6 +228,7 @@ See [API Documentation](backend/API_DOCUMENTATION.md) for detailed information.
 - Flask-Migrate for database migrations
 - Flask-Limiter for rate limiting
 - Marshmallow for validation
+- Google Gemini API & OpenAI API for AI processing
 - Google Gemini AI
 - Google Sheets & Drive APIs
 - SQLAlchemy ORM
@@ -243,7 +249,9 @@ See [API Documentation](backend/API_DOCUMENTATION.md) for detailed information.
 - Pre-commit hooks (Black, Flake8, ESLint, Bandit)
 - pytest for testing
 
-## 🛠️ Google Configuration
+## 🛠️ Google & AI Configuration
+
+### Google Cloud Setup
 
 1. Create a Google Cloud project (or reuse an existing one).
 2. Enable the **Gemini API**, **Google Sheets API**, and **Google Drive API** for the project.
@@ -257,6 +265,20 @@ See [API Documentation](backend/API_DOCUMENTATION.md) for detailed information.
    - Authorized redirect URIs: add `http://localhost:3000` (and production equivalents). The frontend uses the Google Identity Services popup with the `postmessage` flow.
    - Copy the generated **Client ID** and **Client Secret**.
 5. Update environment files:
+
+### OpenAI Setup (Optional)
+
+If you want to use OpenAI as an alternative AI provider:
+
+1. Create an account at [OpenAI Platform](https://platform.openai.com/)
+2. Generate an API key from the [API keys page](https://platform.openai.com/api-keys)
+3. Add the key to `backend/.env`:
+   ```bash
+   OPENAI_API_KEY=sk-...your-key-here...
+   ```
+4. Users can now select between Gemini and OpenAI in the UI
+
+**Note**: Both API keys are optional - you only need the one for the provider you want to use. If both are configured, users can switch between them.
    - `backend/.env`: set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` to the values obtained above.
    - `frontend/.env.local`: set `NEXT_PUBLIC_GOOGLE_CLIENT_ID` to the same Client ID.
 6. Restart the backend and frontend. The first login will prompt each user to grant Sheets/Drive access; tokens are stored per user in the database for subsequent requests.
