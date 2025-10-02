@@ -26,11 +26,15 @@ export default function Header() {
             </Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <MIconButton color="inherit" onClick={() => setSearchOpen(true)} aria-label="Search">
-              <Icon icon={Search} fontSize="small" />
-            </MIconButton>
-            <Button component={Link} href="/history" color="inherit">History</Button>
-            <Button component={Link} href="/settings" color="inherit">Settings</Button>
+            {user && (
+              <>
+                <MIconButton color="inherit" onClick={() => setSearchOpen(true)} aria-label="Search">
+                  <Icon icon={Search} fontSize="small" />
+                </MIconButton>
+                <Button component={Link} href="/history" color="inherit">History</Button>
+                <Button component={Link} href="/settings" color="inherit">Settings</Button>
+              </>
+            )}
             {user ? <UserMenu /> : <GoogleLoginButton />}
             <ThemeToggle />
           </Box>

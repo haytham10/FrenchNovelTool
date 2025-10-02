@@ -1,16 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TableSortLabel, TextField, Box, IconButton, Tooltip } from '@mui/material';
+import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TableSortLabel, TextField, Box, IconButton, Tooltip, Checkbox, Button, Stack, Chip, ToggleButtonGroup, ToggleButton, LinearProgress, Typography } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import Icon from './Icon';
-import { Edit2, Check, X } from 'lucide-react';
+import { Edit2, Check, X, CheckSquare, AlertCircle } from 'lucide-react';
 import { useDebounce } from '@/lib/hooks';
 
 interface ResultsTableProps {
   sentences: string[];
+  originalSentences?: string[];
   onSentencesChange?: (sentences: string[]) => void;
+  onExportSelected?: (selectedIndices: number[]) => void;
 }
 
 type Order = 'asc' | 'desc';
+type ViewMode = 'normalized' | 'original' | 'both';
 
 const StyledTableCell = styled(TableCell)(({ theme }) => ({
   [`&.MuiTableCell-head`]: {
@@ -33,7 +36,9 @@ const StyledTableRow = styled(TableRow)(({ theme }) => ({
   },
 }));
 
-export default function ResultsTable({ sentences, onSentencesChange }: ResultsTableProps) {
+const LONG_SENTENCE_THRESHOLD = 15; // words
+
+export default function ResultsTable({ sentences, originalSentences = [], onSentencesChange, onExportSelected }: ResultsTableProps) {
   const [order, setOrder] = useState<Order>('asc');
   const [orderBy, setOrderBy] = useState<keyof { index: number; sentence: string }>('index');
   const [filter, setFilter] = useState<string>('');
@@ -41,6 +46,9 @@ export default function ResultsTable({ sentences, onSentencesChange }: ResultsTa
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editValue, setEditValue] = useState<string>('');
   const editInputRef = useRef<HTMLInputElement>(null);
+  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
+  const [viewMode, setViewMode] = useState<ViewMode>('normalized');
+  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
 
   const handleRequestSort = (
     event: React.MouseEvent<unknown>,
@@ -105,24 +113,142 @@ export default function ResultsTable({ sentences, onSentencesChange }: ResultsTa
     }
   };
 
+  const handleSelectAll = () => {
+    if (selectedRows.size === filteredSentences.length) {
+      setSelectedRows(new Set());
+    } else {
+      setSelectedRows(new Set(filteredSentences.map(s => s.index)));
+    }
+  };
+
+  const handleRowSelect = (index: number, event: React.ChangeEvent<HTMLInputElement>) => {
+    const newSelected = new Set(selectedRows);
+    const nativeEvent = event.nativeEvent as MouseEvent;
+    
+    // Handle shift-click for range selection
+    if (nativeEvent.shiftKey && lastSelectedIndex !== null) {
+      const start = Math.min(lastSelectedIndex, index);
+      const end = Math.max(lastSelectedIndex, index);
+      for (let i = start; i <= end; i++) {
+        if (filteredSentences.find(s => s.index === i)) {
+          newSelected.add(i);
+        }
+      }
+    } else {
+      if (newSelected.has(index)) {
+        newSelected.delete(index);
+      } else {
+        newSelected.add(index);
+      }
+    }
+    
+    setSelectedRows(newSelected);
+    setLastSelectedIndex(index);
+  };
+
+  const handleApproveAll = () => {
+    // Simply clear all selections, assuming all are approved
+    setSelectedRows(new Set());
+  };
+
+  const handleExportSelectedClick = () => {
+    if (onExportSelected) {
+      onExportSelected(Array.from(selectedRows));
+    }
+  };
+
+  const getWordCount = (text: string) => {
+    return text.trim().split(/\s+/).length;
+  };
+
+  const isLongSentence = (text: string) => {
+    return getWordCount(text) > LONG_SENTENCE_THRESHOLD;
+  };
+
+  const getSentenceToDisplay = (row: { index: number; sentence: string }) => {
+    if (viewMode === 'original' && originalSentences.length > 0) {
+      return originalSentences[row.index - 1] || row.sentence;
+    }
+    return row.sentence;
+  };
+
   // Note: For optimal performance with >5k items, consider implementing
   // pagination or a virtualization library like @tanstack/react-virtual
 
   return (
     <Box>
-      <TextField
-        label="Filter sentences"
-        variant="outlined"
-        fullWidth
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
-        sx={{ mb: 2 }}
-        aria-label="Filter sentences by text"
-      />
+      {/* Toolbar */}
+      <Box sx={{ mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+        <TextField
+          label="Filter sentences"
+          variant="outlined"
+          size="small"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          sx={{ flex: '1 1 300px' }}
+          aria-label="Filter sentences by text"
+        />
+        
+        {originalSentences.length > 0 && (
+          <ToggleButtonGroup
+            value={viewMode}
+            exclusive
+            onChange={(_, newMode) => newMode && setViewMode(newMode)}
+            size="small"
+            aria-label="View mode"
+          >
+            <ToggleButton value="normalized" aria-label="View normalized">
+              Normalized
+            </ToggleButton>
+            <ToggleButton value="original" aria-label="View original">
+              Original
+            </ToggleButton>
+          </ToggleButtonGroup>
+        )}
+      </Box>
+
+      {/* Bulk Actions */}
+      {selectedRows.size > 0 && (
+        <Paper sx={{ p: 2, mb: 2, bgcolor: 'primary.50', border: 1, borderColor: 'primary.main' }}>
+          <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
+            <Chip 
+              label={`${selectedRows.size} selected`} 
+              color="primary"
+              onDelete={() => setSelectedRows(new Set())}
+            />
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={handleApproveAll}
+              startIcon={<Icon icon={CheckSquare} fontSize="small" />}
+            >
+              Approve All
+            </Button>
+            {onExportSelected && (
+              <Button
+                size="small"
+                variant="contained"
+                onClick={handleExportSelectedClick}
+              >
+                Export Selected
+              </Button>
+            )}
+          </Stack>
+        </Paper>
+      )}
+
       <TableContainer component={Paper} sx={{ maxHeight: 600 }}>
         <Table stickyHeader>
           <TableHead>
             <TableRow>
+              <StyledTableCell padding="checkbox" sx={{ width: '60px' }}>
+                <Checkbox
+                  checked={selectedRows.size === filteredSentences.length && filteredSentences.length > 0}
+                  indeterminate={selectedRows.size > 0 && selectedRows.size < filteredSentences.length}
+                  onChange={handleSelectAll}
+                  aria-label="Select all sentences"
+                />
+              </StyledTableCell>
               <StyledTableCell sx={{ width: '80px' }}>
                 <TableSortLabel
                   active={orderBy === 'index'}
@@ -133,7 +259,7 @@ export default function ResultsTable({ sentences, onSentencesChange }: ResultsTa
                   Index
                 </TableSortLabel>
               </StyledTableCell>
-              <StyledTableCell sx={{ width: 'calc(100% - 160px)' }}>
+              <StyledTableCell sx={{ width: 'calc(100% - 240px)' }}>
                 <TableSortLabel
                   active={orderBy === 'sentence'}
                   direction={orderBy === 'sentence' ? order : 'asc'}
@@ -143,33 +269,80 @@ export default function ResultsTable({ sentences, onSentencesChange }: ResultsTa
                   Sentence
                 </TableSortLabel>
               </StyledTableCell>
-              <StyledTableCell sx={{ width: '80px' }}>Actions</StyledTableCell>
+              <StyledTableCell sx={{ width: '100px' }}>Actions</StyledTableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {filteredSentences.map((row) => {
               const isEditing = editingIndex === row.index;
+              const isSelected = selectedRows.has(row.index);
+              const displaySentence = getSentenceToDisplay(row);
+              const isLong = isLongSentence(displaySentence);
+              const wordCount = getWordCount(displaySentence);
+              
               return (
-                <StyledTableRow key={row.index}>
-                  <StyledTableCell sx={{ width: '80px' }}>{row.index}</StyledTableCell>
-                  <StyledTableCell sx={{ width: 'calc(100% - 160px)' }}>
-                    {isEditing ? (
-                      <TextField
-                        inputRef={editInputRef}
-                        value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        fullWidth
-                        multiline
-                        size="small"
-                        autoFocus
-                        aria-label="Edit sentence"
-                      />
-                    ) : (
-                      row.sentence
-                    )}
+                <StyledTableRow 
+                  key={row.index}
+                  selected={isSelected}
+                  sx={{
+                    cursor: 'pointer',
+                    '&.Mui-selected': {
+                      bgcolor: 'primary.50',
+                    },
+                  }}
+                >
+                  <StyledTableCell padding="checkbox">
+                    <Checkbox
+                      checked={isSelected}
+                      onChange={(e) => handleRowSelect(row.index, e)}
+                      aria-label={`Select sentence ${row.index}`}
+                    />
                   </StyledTableCell>
-                  <StyledTableCell sx={{ width: '80px' }}>
+                  <StyledTableCell sx={{ width: '80px' }}>{row.index}</StyledTableCell>
+                  <StyledTableCell sx={{ width: 'calc(100% - 240px)' }}>
+                    <Box>
+                      {isEditing ? (
+                        <TextField
+                          inputRef={editInputRef}
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          onKeyDown={handleKeyDown}
+                          fullWidth
+                          multiline
+                          size="small"
+                          autoFocus
+                          aria-label="Edit sentence"
+                        />
+                      ) : (
+                        <>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                            {displaySentence}
+                            {isLong && (
+                              <Tooltip title={`Long sentence: ${wordCount} words`}>
+                                <Box component="span">
+                                  <Icon icon={AlertCircle} fontSize="small" color="warning" />
+                                </Box>
+                              </Tooltip>
+                            )}
+                          </Box>
+                          {isLong && (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                              <LinearProgress 
+                                variant="determinate" 
+                                value={Math.min((wordCount / 20) * 100, 100)} 
+                                sx={{ flex: 1, height: 4, borderRadius: 2 }}
+                                color={wordCount > 18 ? 'error' : 'warning'}
+                              />
+                              <Typography variant="caption" color="text.secondary">
+                                {wordCount}w
+                              </Typography>
+                            </Box>
+                          )}
+                        </>
+                      )}
+                    </Box>
+                  </StyledTableCell>
+                  <StyledTableCell sx={{ width: '100px' }}>
                     {isEditing ? (
                       <Box sx={{ display: 'flex', gap: 0.5 }}>
                         <Tooltip title="Save (Enter)">
@@ -200,6 +373,7 @@ export default function ResultsTable({ sentences, onSentencesChange }: ResultsTa
       <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Box sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>
           Showing {filteredSentences.length} of {sentences.length} sentences
+          {selectedRows.size > 0 && ` (${selectedRows.size} selected)`}
         </Box>
       </Box>
     </Box>
