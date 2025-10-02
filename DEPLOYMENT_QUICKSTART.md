@@ -159,12 +159,10 @@ curl https://api.frenchnoveltool.com/api/v1/health
 
 ## Need More Details?
 
-See the comprehensive [DEPLOYMENT.md](DEPLOYMENT.md) guide for:
-- Detailed troubleshooting
-- Local development with Supabase
-- Monitoring and maintenance
-- Database backups
-- Performance optimization
+See additional documentation:
+- 📘 [DEPLOYMENT.md](DEPLOYMENT.md) - Full deployment guide with troubleshooting
+- 📋 [DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md) - Complete task checklist
+- 🏗️ [DEPLOYMENT_ARCHITECTURE.md](DEPLOYMENT_ARCHITECTURE.md) - System architecture and diagrams
 
 ---
 

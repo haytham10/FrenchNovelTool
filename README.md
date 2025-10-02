@@ -187,6 +187,7 @@ Ready to deploy to production? We provide comprehensive deployment guides:
 - 📘 **[Full Deployment Guide](DEPLOYMENT.md)** - Complete step-by-step deployment instructions with Vercel & Supabase
 - ⚡ **[Quick Start Guide](DEPLOYMENT_QUICKSTART.md)** - Deploy in 30 minutes
 - 📋 **[Deployment Checklist](DEPLOYMENT_CHECKLIST.md)** - Organized checklist for all deployment tasks
+- 🏗️ **[Deployment Architecture](DEPLOYMENT_ARCHITECTURE.md)** - Architecture diagrams and system overview
 
 The application is optimized for deployment on:
 - **Frontend**: Vercel (serverless Next.js)

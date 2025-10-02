@@ -191,6 +191,7 @@ Focus on these critical tasks first:
 
 - 📘 [Full Deployment Guide](DEPLOYMENT.md) - Complete step-by-step instructions with troubleshooting
 - ⚡ [Quick Start Guide](DEPLOYMENT_QUICKSTART.md) - 30-minute condensed deployment
+- 🏗️ [Deployment Architecture](DEPLOYMENT_ARCHITECTURE.md) - Architecture diagrams and system overview
 - 🔧 [Configuration Guide](README.md#-configuration) - Environment variables reference
 - 🤝 [Contributing Guide](CONTRIBUTING.md) - Development setup
 - 📖 [API Documentation](backend/API_DOCUMENTATION.md) - Complete API reference
