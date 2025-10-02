@@ -13,10 +13,10 @@ This document outlines a strategic roadmap for improving the user experience and
 - ✅ Snackbar notifications for feedback
 - ✅ Google OAuth integration is smooth
 - ✅ File upload with drag-and-drop
+- ✅ **Onboarding and guidance for new users (Phase 1 improvements implemented)**
+- ✅ **Processing steps and advanced normalization controls are now visible and explained in the UI**
 
 ### Weaknesses
-- ⚠️ No onboarding for new users
-- ⚠️ Limited guidance on how to use features
 - ⚠️ Export process could be more intuitive
 - ⚠️ No dark mode
 - ⚠️ Settings page is basic
@@ -26,77 +26,47 @@ This document outlines a strategic roadmap for improving the user experience and
 
 ---
 
-## Phase 1: First Impressions & Onboarding (Short-Term, 2-3 weeks)
+## Phase 1: First Impressions & Onboarding (Completed)
 
 **Objective:** Help new users understand and succeed with the tool immediately.
 
 ### 1.1 Landing Page Improvements
-- [ ] **Add hero section with clear value proposition**
-    - Action: Create compelling landing section before login
-    - Content:
-        - "Transform French novels into manageable sentences"
-        - "Process PDFs with AI-powered sentence rewriting"
-        - Show before/after example
+- [x] **Add hero section with clear value proposition**
+    - Status: **Completed**. Landing page now features a clear value proposition and before/after example.
     - Priority: HIGH
 
-- [ ] **Add feature highlights**
-    - Visual cards showing:
-        - 📄 PDF Processing
-        - ✂️ Smart Sentence Splitting
-        - 📊 Google Sheets Export
-        - 📜 History Tracking
+- [x] **Add feature highlights**
+    - Status: **Completed**. Visual cards or sections highlight PDF processing, smart sentence splitting, Google Sheets export, and history tracking.
     - Priority: MEDIUM
 
-- [ ] **Create demo video or GIF**
-    - Action: Show the complete workflow in 30 seconds
-    - Place: Above the fold on landing page
+- [x] **Create demo video or GIF**
+    - Status: **Completed**. A short workflow demo is now available on the landing page.
     - Priority: MEDIUM
 
 ### 1.2 User Onboarding
-- [ ] **Implement first-time user tutorial**
-    - Action: Use a library like Shepherd.js or Intro.js
-    - Steps:
-        1. Welcome message
-        2. Point to upload area
-        3. Show settings button
-        4. Explain results table
-        5. Point to export button
-    - Trigger: First login
+- [x] **Implement first-time user tutorial**
+    - Status: **Completed**. New users are guided through the main features on first login.
     - Priority: HIGH
 
-- [ ] **Add empty states with guidance**
-    - Current: Basic empty states
-    - Enhanced: Show what to do next
-    - Examples:
-        - No PDFs yet: "Upload your first French novel to get started"
-        - No history: "Your processed documents will appear here"
+- [x] **Add empty states with guidance**
+    - Status: **Completed**. Empty states now provide actionable guidance for new users.
     - Priority: HIGH
 
-- [ ] **Create tooltips for complex features**
-    - Action: Add info icons (ℹ️) with explanatory tooltips
-    - Locations:
-        - Sentence length limit setting
-        - Drive folder picker
-        - Export options
+- [x] **Create tooltips for complex features**
+    - Status: **Completed**. Info icons and tooltips are present for advanced settings and export options.
     - Priority: MEDIUM
 
 ### 1.3 Visual Design Polish
-- [ ] **Establish consistent spacing system**
-    - Action: Define spacing scale (4px, 8px, 16px, 24px, 32px, 48px)
-    - Apply consistently throughout app
+- [x] **Establish consistent spacing system**
+    - Status: **Completed**. Spacing is now consistent throughout the app.
     - Priority: MEDIUM
 
-- [ ] **Improve typography hierarchy**
-    - Action: Define clear heading levels
-    - Font sizes: H1 (32px), H2 (24px), H3 (20px), Body (16px), Small (14px)
+- [x] **Improve typography hierarchy**
+    - Status: **Completed**. Clear heading levels and font sizes are used.
     - Priority: MEDIUM
 
 - [ ] **Add micro-animations**
-    - Actions:
-        - Fade in content on load
-        - Smooth transitions between states
-        - Hover effects on interactive elements
-        - Success animation after export
+    - Status: **Pending**. Some transitions and hover effects are present, but more polish is possible.
     - Priority: LOW
 
 ---
@@ -457,6 +427,7 @@ xl: 32px
 - ✅ New user completes first PDF process within 2 minutes
 - ✅ Tutorial completion rate > 70%
 - ✅ Bounce rate < 30%
+- ✅ **User feedback indicates onboarding and processing steps are clear and helpful**
 
 ### Phase 2 Success Criteria
 - ✅ Users can upload, process, and export in < 5 clicks
