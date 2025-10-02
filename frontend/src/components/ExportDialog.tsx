@@ -213,8 +213,8 @@ export default function ExportDialog({
           fullWidth
           variant="text"
           onClick={() => setShowAdvanced(!showAdvanced)}
-          endIcon={showAdvanced ? <ChevronDown /> : <ChevronDown />}
-          sx={{ mb: 2, transform: showAdvanced ? 'none' : 'rotate(-90deg)' }}
+          endIcon={<Icon icon={ChevronDown} sx={{ transform: showAdvanced ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />}
+          sx={{ mb: 2 }}
         >
           Advanced Options
         </Button>

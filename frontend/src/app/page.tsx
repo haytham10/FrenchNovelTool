@@ -10,10 +10,10 @@ import { CircularProgress, Button, Typography, Box, Container } from '@mui/mater
 import { useSnackbar } from 'notistack';
 import UploadStepper from '@/components/UploadStepper';
 import ResultsSkeleton from '@/components/ResultsSkeleton';
-import EmptyState from '@/components/EmptyState';
 
 import type { AdvancedNormalizationOptions } from '@/components/NormalizeControls';
 import type { ExportOptions } from '@/components/ExportDialog';
+import RouteGuard from '@/components/RouteGuard';
 
 export default function Home() {
   const [sentences, setSentences] = useState<string[]>([]);
@@ -86,9 +86,10 @@ export default function Home() {
   };
 
   return (
-    <Box sx={{ minHeight: 'calc(100vh - 64px)', py: { xs: 4, md: 8 } }} className="hero-aura">
-      <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 1 }}>
-        {/* Hero Section */}
+    <RouteGuard>
+      <Box sx={{ minHeight: 'calc(100vh - 64px)', py: { xs: 4, md: 8 } }} className="hero-aura">
+        <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 1 }}>
+          {/* Hero Section */}
         <Box sx={{ textAlign: 'center', mb: 6 }}>
           <Typography variant="h1" sx={{ mb: 2 }} className="gradient-text">
             Process French Novels with AI
@@ -111,11 +112,11 @@ export default function Home() {
           <UploadStepper activeStep={loading ? 1 : sentences.length ? 3 : 0} />
         </Box>
 
-        {/* Empty State */}
+        {/* Empty State with Drag-and-Drop */}
         {!loading && sentences.length === 0 && (
           <Box className="card-gradient" sx={{ mb: 4 }}>
             <Box className="inner" sx={{ p: { xs: 2, md: 4 } }}>
-              <EmptyState />
+              <FileUpload onFileUpload={handleFileUpload} disabled={loading} variant="dropzone" />
             </Box>
           </Box>
         )}
@@ -135,8 +136,8 @@ export default function Home() {
         )}
         
         
-        {/* Normalize Controls Section */}
-        {!loading && sentences.length === 0 && (
+        {/* Normalize Controls Section - Always visible when not loading */}
+        {!loading && (
           <Box className="card-gradient" sx={{ mb: 4 }}>
             <Box className="inner" sx={{ p: { xs: 2, md: 4 } }}>
               <NormalizeControls
@@ -148,7 +149,7 @@ export default function Home() {
               />
               <Box sx={{ mt: 3 }}>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  <strong>Note:</strong> These settings will be applied during PDF processing.
+                  <strong>Note:</strong> These settings will be applied during the next PDF processing.
                 </Typography>
               </Box>
             </Box>
@@ -191,7 +192,8 @@ export default function Home() {
           loading={loading}
           defaultSheetName="French Novel Sentences"
         />
-      </Container>
-    </Box>
+        </Container>
+      </Box>
+    </RouteGuard>
   );
 }
