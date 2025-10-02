@@ -81,6 +81,13 @@ export interface ProcessingHistory {
   processed_sentences_count: number;
   spreadsheet_url?: string;
   error_message?: string;
+  error_code?: string;
+  failed_step?: 'upload' | 'extract' | 'analyze' | 'normalize' | 'export';
+  settings?: {
+    sentence_length?: number;
+    gemini_model?: string;
+    advanced_options?: Record<string, unknown>;
+  };
 }
 
 export interface UserSettings {

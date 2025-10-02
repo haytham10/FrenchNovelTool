@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TableSortLabel, TextField, Box, CircularProgress, Typography, Tooltip } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { useSnackbar } from 'notistack';
 import Link from 'next/link';
-import { fetchHistory, getApiErrorMessage } from '@/lib/api';
+import { useHistory } from '@/lib/queries';
 import type { HistoryEntry } from '@/lib/types';
 import { getHistoryStatus } from '@/lib/types';
 import { useDebounce } from '@/lib/hooks';
@@ -37,30 +37,14 @@ const StyledTableRow = styled(TableRow)(({ theme }) => ({
 }));
 
 export default function HistoryTable() {
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [order, setOrder] = useState<Order>('desc');
   const [orderBy, setOrderBy] = useState<keyof HistoryEntry>('timestamp');
   const [filter, setFilter] = useState<string>('');
   const debouncedFilter = useDebounce(filter, 300);
   const { enqueueSnackbar } = useSnackbar();
-
-  useEffect(() => {
-    const loadHistory = async () => {
-      try {
-        const data = await fetchHistory();
-        setHistory(data);
-      } catch (error) {
-        const errorMessage = getApiErrorMessage(error, 'Failed to fetch history.');
-        enqueueSnackbar(errorMessage, { variant: 'error' });
-        setError(errorMessage);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadHistory();
-  }, [enqueueSnackbar]);
+  
+  // Use React Query for data fetching
+  const { data: history = [], isLoading: loading, error, refetch } = useHistory();
 
   const handleRequestSort = (
     _event: React.MouseEvent<unknown>,
@@ -115,8 +99,11 @@ export default function HistoryTable() {
 
   if (error) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
-        <Typography variant="body1" color="error">Error: {error}</Typography>
+      <Box display="flex" flexDirection="column" justifyContent="center" alignItems="center" minHeight="200px" gap={2}>
+        <Typography variant="body1" color="error">Failed to load history</Typography>
+        <IconButton onClick={() => refetch()} title="Retry">
+          <Icon icon={RefreshCw} />
+        </IconButton>
       </Box>
     );
   }
