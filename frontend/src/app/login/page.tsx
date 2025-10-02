@@ -2,6 +2,7 @@
 
 import React, { useEffect } from 'react';
 import { Box, Container, Typography, Paper } from '@mui/material';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/components/AuthContext';
 import GoogleLoginButton from '@/components/GoogleLoginButton';
@@ -76,7 +77,9 @@ export default function LoginPage() {
 
         <Box sx={{ textAlign: 'center' }}>
           <Typography variant="body2" color="text.secondary">
-            By signing in, you agree to our Terms of Service and Privacy Policy
+            By signing in, you agree to our{' '}
+            <Link href="/terms" style={{ textDecoration: 'underline' }}>Terms of Service</Link>{' '}and{' '}
+            <Link href="/policy" style={{ textDecoration: 'underline' }}>Privacy Policy</Link>.
           </Typography>
         </Box>
       </Container>

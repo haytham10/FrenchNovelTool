@@ -5,7 +5,11 @@
 import axios, { AxiosError } from 'axios';
 import { getAccessToken, getRefreshToken, setTokens, clearTokens } from './auth';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api/v1';
+// Support both variable names to match existing env files and Vercel config
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  process.env.NEXT_PUBLIC_API_BASE_URL ||
+  'http://localhost:5000/api/v1';
 
 // Create axios instance with default config
 const api = axios.create({

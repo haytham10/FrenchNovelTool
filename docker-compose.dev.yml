@@ -41,7 +41,7 @@ services:
       - "6006:6006"  # Storybook
     environment:
       - NODE_ENV=development
-      - NEXT_PUBLIC_API_BASE_URL=http://localhost:5000/api/v1
+      - NEXT_PUBLIC_API_BASE_URL=https://api.frenchnoveltool.com/api/v1
     volumes:
       - ./frontend:/app
       - /app/node_modules

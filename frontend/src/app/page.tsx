@@ -10,6 +10,7 @@ import { CircularProgress, Button, Typography, Box, Container } from '@mui/mater
 import { useSnackbar } from 'notistack';
 import UploadStepper from '@/components/UploadStepper';
 import ResultsSkeleton from '@/components/ResultsSkeleton';
+import Link from 'next/link';
 
 import type { AdvancedNormalizationOptions } from '@/components/NormalizeControls';
 import type { ExportOptions } from '@/components/ExportDialog';
@@ -192,6 +193,17 @@ export default function Home() {
           loading={loading}
           defaultSheetName="French Novel Sentences"
         />
+
+        {/* Footer links for policy/compliance */}
+        <Box sx={{ mt: 6, textAlign: 'center' }}>
+          <Typography variant="body2" color="text.secondary">
+            Read our{' '}
+            <Link href="/policy" style={{ textDecoration: 'underline' }}>
+              Privacy Policy
+            </Link>
+            .
+          </Typography>
+        </Box>
         </Container>
       </Box>
     </RouteGuard>
