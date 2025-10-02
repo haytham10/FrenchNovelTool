@@ -107,14 +107,30 @@ Upload and process a PDF file to extract and normalize French sentences.
   - `fix_hyphenation`: Rejoin hyphenated words split across lines (optional, boolean, defaults to user settings)
   - `min_sentence_length`: Minimum sentence length in words (optional, 1-50, defaults to user settings)
 
-**Example:**
+**Example with Gemini:**
 ```bash
 curl -X POST \
   http://localhost:5000/api/v1/process-pdf \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -F "pdf_file=@document.pdf" \
   -F "sentence_length_limit=12" \
+  -F "ai_provider=gemini" \
   -F "gemini_model=quality" \
+  -F "ignore_dialogue=false" \
+  -F "preserve_formatting=true" \
+  -F "fix_hyphenation=true" \
+  -F "min_sentence_length=3"
+```
+
+**Example with OpenAI:**
+```bash
+curl -X POST \
+  http://localhost:5000/api/v1/process-pdf \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -F "pdf_file=@document.pdf" \
+  -F "sentence_length_limit=12" \
+  -F "ai_provider=openai" \
+  -F "gemini_model=balanced" \
   -F "ignore_dialogue=false" \
   -F "preserve_formatting=true" \
   -F "fix_hyphenation=true" \
