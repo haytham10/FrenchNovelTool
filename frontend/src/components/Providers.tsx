@@ -6,7 +6,7 @@ import { ThemeProvider } from '@mui/material/styles';
 import { SnackbarProvider } from 'notistack';
 import { createContext, useEffect, useMemo, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { getTheme, type PaletteMode } from '../theme';
+import { getTheme, getSystemThemePreference, type PaletteMode } from '../theme';
 import AuthProvider from './AuthContext';
 
 // Create a client
@@ -24,10 +24,26 @@ export const ColorModeContext = createContext<{ mode: PaletteMode; toggle: () =>
 
 export default function Providers({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<PaletteMode>('light');
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
+    // Auto-detect system preference on first load
     const stored = typeof window !== 'undefined' ? (localStorage.getItem('theme-mode') as PaletteMode | null) : null;
-    if (stored) setMode(stored);
+    
+    if (stored) {
+      setMode(stored);
+      if (typeof document !== 'undefined') {
+        document.documentElement.setAttribute('data-theme', stored);
+      }
+    } else {
+      // Use system preference if no stored preference
+      const systemPreference = getSystemThemePreference();
+      setMode(systemPreference);
+      if (typeof document !== 'undefined') {
+        document.documentElement.setAttribute('data-theme', systemPreference);
+      }
+    }
   }, []);
 
   const toggle = () => {
@@ -42,6 +58,11 @@ export default function Providers({ children }: { children: ReactNode }) {
   };
 
   const theme = useMemo(() => getTheme(mode), [mode]);
+
+  // Prevent flash of unstyled content
+  if (!mounted) {
+    return null;
+  }
 
   return (
     <AppRouterCacheProvider>

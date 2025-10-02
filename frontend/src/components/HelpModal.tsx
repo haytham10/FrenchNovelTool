@@ -142,7 +142,7 @@ export default function HelpModal({ open, onClose }: HelpModalProps) {
             <Icon icon={FileText} fontSize="small" />
             <strong>Processing Steps</strong>
           </Typography>
-          <Box component="li" sx={{ mt: 1, listStyle: 'none' }}>
+          <Box component="a" sx={{ mt: 1, listStyle: 'none' }}>
             <li><Chip label="1" size="small" sx={{ mr: 1 }} /> Upload: PDF is uploaded and validated</li>
             <li><Chip label="2" size="small" sx={{ mr: 1 }} /> Extract: Text is extracted from PDF</li>
             <li><Chip label="3" size="small" sx={{ mr: 1 }} /> Analyze: Gemini analyzes sentence structure</li>
