@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background-color: #f4f4f9;
+  color: #333;
+}
+
+:root {
+  --color-primary: 59 130 246; /* #3b82f6 */
+  --color-secondary: 6 182 212; /* #06b6d4 */
+  --bg-default: 247 248 251; /* #f7f8fb */
+  --bg-paper: 255 255 255; /* #ffffff */
+  --ring: 99 102 241; /* indigo-500 */
+}
+
+[data-theme="dark"] {
+  --color-primary: 124 156 255; /* #7c9cff */
+  --color-secondary: 125 211 252; /* #7dd3fc */
+  --bg-default: 11 18 32; /* #0b1220 */
+  --bg-paper: 15 23 42; /* #0f172a */
+  --ring: 165 180 252; /* indigo-300 */
+}
+
+.tw-bg-default { background-color: rgb(var(--bg-default)); }
+.tw-bg-paper { background-color: rgb(var(--bg-paper)); }
+
+.tw-text-primary { color: rgb(var(--color-primary)); }
+.tw-bg-primary { background-color: rgb(var(--color-primary)); }
+
+/* Wow factor: gradient text and animated hero auras */
+.gradient-text {
+  background: linear-gradient(92deg, #7c9cff 0%, #06b6d4 45%, #22c55e 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.hero-aura {
+  position: relative;
+}
+.hero-aura::before,
+.hero-aura::after {
+  content: "";
+  position: absolute;
+  inset: auto;
+  filter: blur(60px);
+  opacity: 0.6;
+  pointer-events: none;
+  z-index: 0;
+}
+.hero-aura::before {
+  top: -80px;
+  left: 10%;
+  width: 260px;
+  height: 260px;
+  background: radial-gradient(closest-side, rgba(124,156,255,0.55), rgba(124,156,255,0) 70%);
+  animation: float 9s ease-in-out infinite;
+}
+.hero-aura::after {
+  top: -40px;
+  right: 15%;
+  width: 320px;
+  height: 320px;
+  background: radial-gradient(closest-side, rgba(6,182,212,0.45), rgba(6,182,212,0) 70%);
+  animation: float 11s ease-in-out infinite reverse;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px) translateX(0px) scale(1); }
+  50% { transform: translateY(12px) translateX(6px) scale(1.03); }
+}
+
+/* Card with subtle gradient border */
+.card-gradient {
+  position: relative;
+  padding: 1px;
+  border-radius: 16px;
+  background: linear-gradient(120deg, rgba(124,156,255,0.45), rgba(6,182,212,0.35));
+}
+.card-gradient .inner {
+  border-radius: 16px;
+  background: rgb(var(--bg-paper));
+}
+[data-theme="dark"] .card-gradient {
+  background: linear-gradient(120deg, rgba(124,156,255,0.35), rgba(6,182,212,0.25));
+}
+
+/* Fancy focus ring */
+.ring-focus:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(var(--ring), 0.35);
+}

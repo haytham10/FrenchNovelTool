@@ -1,0 +1,63 @@
+# Frontend-specific gitignore
+
+# Dependencies
+node_modules/
+/.pnp
+.pnp.js
+package-lock.json.bak
+pnpm-lock.yaml
+yarn.lock
+
+# Testing
+/coverage
+/coverage.xml
+.nyc_output/
+
+# Next.js
+.next/
+/next/cache
+/out/
+next-env.d.ts
+
+# Production
+/build
+/dist
+/public/build
+
+# Environment
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*.local
+.envrc
+.python-version
+.npmrc
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.eslintcache
+.stylelintcache
+.turbo
+
+# TypeScript
+*.tsbuildinfo
+
+# Storybook
+storybook-static/
+
+# Temporary
+*.tmp
+.DS_Store
+.cache/
+*.log
+.idea/
+.vscode/
+.history/
+
+# Deployment
+.vercel
+.vercel/cache

@@ -1,0 +1,23 @@
+# Development Dockerfile for Next.js frontend
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install dependencies
+RUN apk add --no-cache libc6-compat curl
+
+# Copy package files
+COPY package.json package-lock.json* ./
+
+# Install all dependencies (including dev)
+RUN npm ci && npm cache clean --force
+
+# Copy source code
+COPY . .
+
+# Expose ports
+EXPOSE 3000 6006
+
+# Run development server
+CMD ["npm", "run", "dev"]
+
