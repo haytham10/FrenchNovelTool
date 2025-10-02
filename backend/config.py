@@ -54,6 +54,13 @@ class Config:
     database_url = os.getenv('DATABASE_URL') or 'sqlite:///' + os.path.join(basedir, 'app.db')
     if database_url.startswith('postgres://'):
         database_url = database_url.replace('postgres://', 'postgresql://', 1)
+
+    # Ensure SSL for Supabase connections if not explicitly provided
+    # Supabase requires SSL; add "sslmode=require" when missing.
+    if database_url.startswith('postgresql://') and 'supabase' in database_url and 'sslmode=' not in database_url:
+        sep = '&' if '?' in database_url else '?'
+        database_url = f"{database_url}{sep}sslmode=require"
+
     SQLALCHEMY_DATABASE_URI = database_url
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     

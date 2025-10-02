@@ -1,8 +1,13 @@
+
+
 #!/bin/bash
 # Deployment Configuration Validator
 # This script validates that all necessary files and configurations are in place for deployment
 
 set -e
+
+# Always start from project root
+cd ../
 
 echo "🔍 Validating Deployment Configuration..."
 echo ""
