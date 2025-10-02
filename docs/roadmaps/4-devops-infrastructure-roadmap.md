@@ -1,503 +1,470 @@
-# DevOps & Infrastructure Improvement Roadmap
+# DevOps & Infrastructure Roadmap
 
-This document outlines a strategic roadmap for improving the DevOps practices and infrastructure of the French Novel Tool. The goal is to automate processes, improve reliability, and create a scalable and secure production environment.
+**Last Updated:** October 2, 2025
 
----
-
-## Current State Analysis
-
-### Strengths
-- ✅ Docker containerization (frontend + backend)
-- ✅ Docker Compose setup for local development
-- ✅ Separate dev and prod Dockerfiles
-- ✅ Health checks configured
-- ✅ Redis for rate limiting
-- ✅ Environment variable configuration
-- ✅ Volume mounts for persistence
-
-### Weaknesses
-- ⚠️ No CI/CD pipeline
-- ⚠️ No automated testing in pipeline
-- ⚠️ Secrets in environment files (not secure for production)
-- ⚠️ No centralized logging
-- ⚠️ No monitoring or alerting
-- ⚠️ Single-instance deployment (no scaling)
-- ⚠️ No infrastructure as code
-- ⚠️ No staging environment
-- ⚠️ Manual deployment process
+Focus: CI/CD automation, monitoring, deployment, and reliability.
 
 ---
 
-## Phase 1: CI/CD & Automation (Short-Term, 2-3 weeks)
+## 📊 Current State
 
-**Objective:** Automate build, test, and deployment processes.
+### ✅ Implemented
+- Docker containers (frontend + backend)
+- docker-compose for local development
+- Environment variable configuration
+- Redis for rate limiting
+- Health checks in containers
+- Separate dev/prod Dockerfiles
 
-### 1.1 Continuous Integration
-- [ ] **Set up GitHub Actions workflows**
-    - Action: Create `.github/workflows/` directory
-    - Priority: HIGH
-
-- [ ] **Create backend CI workflow**
-    - File: `.github/workflows/backend-ci.yml`
-    - Steps:
-        1. Checkout code
-        2. Set up Python 3.10
-        3. Install dependencies
-        4. Run linters (flake8, black --check)
-        5. Run type checking (mypy)
-        6. Run pytest with coverage
-        7. Upload coverage to Codecov
-    - Trigger: On push to `main`, `develop`, and PRs
-    - Priority: HIGH
-
-- [ ] **Create frontend CI workflow**
-    - File: `.github/workflows/frontend-ci.yml`
-    - Steps:
-        1. Checkout code
-        2. Set up Node.js 20
-        3. Install dependencies (`npm ci`)
-        4. Run linter (`npm run lint`)
-        5. Run type checking (`tsc --noEmit`)
-        6. Run tests (`npm test`)
-        7. Build (`npm run build`)
-    - Trigger: On push to `main`, `develop`, and PRs
-    - Priority: HIGH
-
-- [ ] **Add code quality checks**
-    - Action: Integrate SonarCloud or CodeClimate
-    - Checks: Code smells, duplication, complexity
-    - Priority: MEDIUM
-
-- [ ] **Add security scanning**
-    - Backend: `pip-audit` for Python dependencies
-    - Frontend: `npm audit` for Node dependencies
-    - Docker: Trivy or Snyk for container scanning
-    - Priority: HIGH
-
-### 1.2 Continuous Deployment
-- [ ] **Create Docker build and push workflow**
-    - File: `.github/workflows/docker-build.yml`
-    - Steps:
-        1. Build Docker images (backend + frontend)
-        2. Tag with commit SHA and `latest`
-        3. Push to container registry (Docker Hub or GHCR)
-    - Trigger: On push to `main` after CI passes
-    - Priority: HIGH
-
-- [ ] **Set up container registry**
-    - Options:
-        - GitHub Container Registry (ghcr.io) - Free for public repos
-        - Docker Hub - Familiar, widely supported
-        - AWS ECR / GCP Container Registry - If using cloud
-    - Priority: HIGH
-
-- [ ] **Create deployment workflow**
-    - File: `.github/workflows/deploy.yml`
-    - Steps:
-        1. SSH into production server
-        2. Pull latest images
-        3. Run database migrations
-        4. Restart containers with zero-downtime
-    - Trigger: Manual approval or automatic after tests pass
-    - Priority: HIGH
-
-- [ ] **Implement blue-green deployment**
-    - Action: Run two environments, switch traffic after validation
-    - Benefit: Zero-downtime deployments
-    - Priority: MEDIUM
-
-### 1.3 Secret Management
-- [ ] **Use GitHub Secrets for CI/CD**
-    - Action: Store all secrets in GitHub repository secrets
-    - Secrets needed:
-        - `DOCKER_USERNAME`, `DOCKER_PASSWORD`
-        - `SSH_PRIVATE_KEY` for deployment
-        - `PRODUCTION_HOST`
-    - Priority: HIGH
-
-- [ ] **Implement production secret management**
-    - Options:
-        - Docker Swarm secrets
-        - HashiCorp Vault
-        - AWS Secrets Manager / GCP Secret Manager
-    - Action: Remove `.env` files from production, use secrets injection
-    - Priority: HIGH
+### ⚠️ Missing
+- No CI/CD pipeline (manual deployment)
+- No automated testing in pipeline
+- No monitoring or alerting
+- No centralized logging
+- No staging environment
+- Secrets in .env files (not secure)
+- No infrastructure as code
+- No rollback capability
 
 ---
 
-## Phase 2: Monitoring & Observability (Mid-Term, 1 month)
+## 🔴 P0 - Critical (Weeks 1-4)
 
-**Objective:** Gain visibility into application health and performance.
+### Week 1-2: GitHub Actions CI Pipeline
+**Automate testing and validation**
 
-### 2.1 Logging Infrastructure
-- [ ] **Centralize logs**
-    - Action: Aggregate logs from all containers
-    - Solution Options:
-        - **ELK Stack** (Elasticsearch, Logstash, Kibana)
-        - **Loki + Grafana** (lighter alternative)
-        - **Cloud solution** (AWS CloudWatch, GCP Cloud Logging)
-    - Priority: HIGH
+#### Backend CI Workflow
+`.github/workflows/backend-ci.yml`:
+```yaml
+name: Backend CI
 
-- [ ] **Configure structured logging**
-    - Backend: Already outputs JSON logs (from roadmap)
-    - Frontend: Send browser errors to logging service
-    - Priority: MEDIUM
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
 
-- [ ] **Set up log retention policy**
-    - Action: Keep logs for 30-90 days
-    - Compress or archive older logs
-    - Priority: MEDIUM
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+      
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+      
+      - name: Run linters
+        run: |
+          cd backend
+          flake8 app tests
+          black --check app tests
+      
+      - name: Security scan
+        run: |
+          cd backend
+          bandit -r app/
+          safety check
+      
+      - name: Run tests
+        run: |
+          cd backend
+          pytest --cov=app --cov-report=xml --cov-report=term
+        env:
+          DATABASE_URL: postgresql://postgres:test@localhost:5432/test_db
+          REDIS_URL: redis://localhost:6379
+      
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./backend/coverage.xml
+```
 
-### 2.2 Metrics & Monitoring
-- [ ] **Deploy Prometheus + Grafana**
-    - Action: Add to `docker-compose.yml`
-    - Prometheus: Scrape metrics from backend
-    - Grafana: Visualize metrics with dashboards
-    - Priority: HIGH
+#### Frontend CI Workflow
+`.github/workflows/frontend-ci.yml`:
+```yaml
+name: Frontend CI
 
-- [ ] **Configure application metrics**
-    - Backend: Expose `/metrics` endpoint (use `prometheus-flask-exporter`)
-    - Metrics:
-        - Request count, duration, errors
-        - Gemini API call duration
-        - Database query duration
-        - Queue depth (if Celery is added)
-    - Priority: HIGH
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
 
-- [ ] **Set up infrastructure metrics**
-    - Action: Use Prometheus Node Exporter
-    - Metrics: CPU, memory, disk, network
-    - Priority: MEDIUM
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: Install dependencies
+        run: |
+          cd frontend
+          npm ci
+      
+      - name: Run linter
+        run: |
+          cd frontend
+          npm run lint
+      
+      - name: Type check
+        run: |
+          cd frontend
+          npx tsc --noEmit
+      
+      - name: Run tests
+        run: |
+          cd frontend
+          npm test -- --coverage
+      
+      - name: Build
+        run: |
+          cd frontend
+          npm run build
+```
+
+### Week 3: Docker Registry & CD Pipeline
+**Automate deployment**
+
+#### Build and Push Containers
+`.github/workflows/docker-build.yml`:
+```yaml
+name: Build Docker Images
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Build and push backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/backend:latest
+            ghcr.io/${{ github.repository }}/backend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      
+      - name: Build and push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/frontend:latest
+            ghcr.io/${{ github.repository }}/frontend:${{ github.sha }}
+```
+
+### Week 4: Secret Management
+**Secure configuration**
+
+- [ ] **Use GitHub Secrets**
+  - Store all sensitive values in GitHub repository secrets
+  - Never commit secrets to code
+  - Rotate secrets regularly
+
+- [ ] **Environment-specific secrets**
+  ```
+  # Development
+  DEV_DATABASE_URL
+  DEV_REDIS_URL
+  
+  # Staging
+  STAGING_DATABASE_URL
+  STAGING_REDIS_URL
+  
+  # Production
+  PROD_DATABASE_URL
+  PROD_REDIS_URL
+  PROD_SENTRY_DSN
+  ```
+
+- [ ] **Runtime secret injection**
+  ```yaml
+  # docker-compose.prod.yml
+  backend:
+    image: ghcr.io/user/backend:latest
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+    secrets:
+      - gemini_api_key
+  
+  secrets:
+    gemini_api_key:
+      external: true
+  ```
+
+---
+
+## 🟠 P1 - High Priority (Weeks 5-8)
+
+### Week 5: Error Tracking (Sentry)
+**Monitor production errors**
+
+- [ ] **Set up Sentry project**
+  ```bash
+  # Backend
+  pip install sentry-sdk[flask]
+  
+  # Frontend
+  npm install @sentry/nextjs
+  ```
+
+- [ ] **Configure Sentry**
+  ```python
+  # backend/app/__init__.py
+  import sentry_sdk
+  from sentry_sdk.integrations.flask import FlaskIntegration
+  
+  sentry_sdk.init(
+      dsn=os.getenv('SENTRY_DSN'),
+      integrations=[FlaskIntegration()],
+      environment=os.getenv('FLASK_ENV'),
+      traces_sample_rate=0.1,
+      profiles_sample_rate=0.1,
+  )
+  ```
+
+- [ ] **Set up alerts**
+  - Email on new errors
+  - Slack notifications for critical issues
+  - Daily error digest
+
+### Week 6: Logging Infrastructure
+**Centralize logs**
+
+- [ ] **Structured JSON logging**
+  ```python
+  import structlog
+  
+  structlog.configure(
+      processors=[
+          structlog.processors.TimeStamper(fmt=\"iso\"),
+          structlog.processors.StackInfoRenderer(),
+          structlog.processors.format_exc_info,
+          structlog.processors.JSONRenderer()
+      ]
+  )
+  
+  logger = structlog.get_logger()
+  logger.info(\"pdf_processed\", 
+      user_id=user.id,
+      filename=filename,
+      duration_ms=duration,
+      sentences_count=len(sentences)
+  )
+  ```
+
+- [ ] **Log aggregation**
+  - Use Loki + Grafana (self-hosted)
+  - Or CloudWatch Logs (AWS)
+  - Or Datadog/New Relic (SaaS)
+
+- [ ] **Log retention policy**
+  - Keep 30 days online
+  - Archive 90 days to S3
+  - Delete after 1 year
+
+### Week 7-8: Monitoring & Metrics
+**Application observability**
+
+- [ ] **Add Prometheus metrics**
+  ```python
+  from prometheus_flask_exporter import PrometheusMetrics
+  
+  metrics = PrometheusMetrics(app)
+  
+  # Custom metrics
+  pdf_processing_duration = metrics.histogram(
+      'pdf_processing_duration_seconds',
+      'Time spent processing PDF'
+  )
+  
+  @pdf_processing_duration.time()
+  def process_pdf():
+      ...
+  ```
 
 - [ ] **Create Grafana dashboards**
-    - Dashboards:
-        - Application overview (requests, errors, latency)
-        - Infrastructure health (CPU, memory, disk)
-        - Business metrics (PDFs processed, users, exports)
-    - Priority: MEDIUM
+  - Request rate and latency
+  - Error rates by endpoint
+  - Database connection pool usage
+  - Celery queue length
+  - API quota usage (Gemini)
 
-### 2.3 Alerting
-- [ ] **Configure alert rules**
-    - Action: Use Grafana Alerting or Prometheus Alertmanager
-    - Alerts:
-        - Error rate > 5% for 5 minutes
-        - Response time > 5s (p95) for 5 minutes
-        - Disk usage > 85%
-        - Service down (health check failed)
-        - High memory usage (> 90%)
-    - Priority: HIGH
-
-- [ ] **Set up notification channels**
-    - Options: Email, Slack, PagerDuty, Discord
-    - Priority: HIGH
-
-- [ ] **Create on-call rotation**
-    - Action: Define who responds to alerts
-    - Tool: PagerDuty or Opsgenie
-    - Priority: LOW (for team size)
-
-### 2.4 Error Tracking
-- [ ] **Integrate Sentry**
-    - Action: Add Sentry SDK to backend and frontend
-    - Benefits:
-        - Automatic error reporting
-        - Stack traces with context
-        - User impact tracking
-        - Release tracking
-    - Priority: HIGH
-
-- [ ] **Configure error notifications**
-    - Action: Alert on new or frequent errors
-    - Priority: MEDIUM
+- [ ] **Set up alerts**
+  ```yaml
+  # alerts.yml
+  - alert: HighErrorRate
+    expr: rate(http_requests_total{status=~\"5..\"}[5m]) > 0.05
+    for: 5m
+    annotations:
+      summary: \"High error rate detected\"
+  
+  - alert: SlowProcessing
+    expr: histogram_quantile(0.95, pdf_processing_duration_seconds) > 60
+    for: 10m
+    annotations:
+      summary: \"PDF processing is slow\"
+  ```
 
 ---
 
-## Phase 3: Scalability & High Availability (Mid-Term, 1-2 months)
+## 🟡 P2 - Medium Priority (Weeks 9-12)
 
-**Objective:** Support growth and ensure reliability.
+### Week 9: Staging Environment
+**Test before production**
 
-### 3.1 Load Balancing
-- [ ] **Deploy reverse proxy / load balancer**
-    - Options:
-        - **Nginx** (simple, efficient)
-        - **Traefik** (Docker-native, auto-discovery)
-        - **Cloud load balancer** (AWS ALB, GCP LB)
-    - Features:
-        - SSL termination
-        - Rate limiting
-        - Request routing
-        - Static file serving (frontend assets)
-    - Priority: HIGH
+- [ ] **Create staging stack**
+  ```yaml
+  # docker-compose.staging.yml
+  version: '3.8'
+  
+  services:
+    backend-staging:
+      image: ghcr.io/user/backend:develop
+      environment:
+        FLASK_ENV: staging
+        DATABASE_URL: ${STAGING_DB_URL}
+    
+    frontend-staging:
+      image: ghcr.io/user/frontend:develop
+      environment:
+        NEXT_PUBLIC_API_BASE_URL: https://api-staging.example.com
+  ```
 
-- [ ] **Configure SSL/TLS certificates**
-    - Action: Use Let's Encrypt (free, auto-renewal)
-    - Tool: Certbot or Traefik ACME
-    - Priority: HIGH
+- [ ] **Staging deployment pipeline**
+  - Auto-deploy on merge to `develop`
+  - Run integration tests
+  - Notify team in Slack
 
-- [ ] **Implement HTTPS redirect**
-    - Action: Redirect all HTTP to HTTPS
-    - Priority: HIGH
+### Week 10: Infrastructure as Code
+**Reproducible infrastructure**
 
-### 3.2 Container Orchestration
-- [ ] **Evaluate orchestration needs**
-    - Options:
-        - **Docker Swarm** (simple, built into Docker)
-        - **Kubernetes** (powerful, complex, overkill for small scale)
-        - **Nomad** (middle ground)
-    - Recommendation: Start with Docker Swarm
-    - Priority: MEDIUM
+- [ ] **Terraform for cloud resources**
+  ```hcl
+  # main.tf
+  resource \"aws_db_instance\" \"postgres\" {
+    identifier = \"frenchnovel-db\"
+    engine     = \"postgres\"
+    instance_class = \"db.t3.micro\"
+    allocated_storage = 20
+  }
+  
+  resource \"aws_elasticache_cluster\" \"redis\" {
+    cluster_id = \"frenchnovel-redis\"
+    engine     = \"redis\"
+    node_type  = \"cache.t3.micro\"
+  }
+  ```
 
-- [ ] **Set up Docker Swarm cluster** (if chosen)
-    - Action: Initialize swarm, add worker nodes
-    - Benefits:
-        - Service replication
-        - Auto-restart failed containers
-        - Rolling updates
-        - Load balancing
-    - Priority: MEDIUM
+- [ ] **Version control infrastructure**
+  - Commit Terraform configs to repo
+  - Use Terraform Cloud or AWS CloudFormation
+  - Review changes before apply
 
-- [ ] **Create Docker Stack file**
-    - File: `docker-stack.yml` (similar to docker-compose but for Swarm)
-    - Define:
-        - Service replicas (e.g., 3x backend instances)
-        - Update strategy (rolling)
-        - Resource limits
-    - Priority: MEDIUM
+### Week 11-12: Deployment Automation
+**Zero-downtime deployments**
 
-### 3.3 Database Scaling
-- [ ] **Set up PostgreSQL replication**
-    - Action: Configure primary-replica setup
-    - Benefit: Read queries can use replicas
-    - Priority: LOW (depends on load)
+- [ ] **Blue-green deployment**
+  - Run two environments (blue/green)
+  - Deploy to inactive environment
+  - Run smoke tests
+  - Switch traffic if tests pass
+  - Keep old version for rollback
 
-- [ ] **Implement connection pooling**
-    - Action: Use PgBouncer
-    - Benefit: Reduce database connection overhead
-    - Priority: MEDIUM
-
-- [ ] **Set up automated backups**
-    - Action: Daily backups to cloud storage (S3, GCS)
-    - Retention: 30 days
-    - Test restore process
-    - Priority: HIGH
-
-### 3.4 Caching & CDN
-- [ ] **Deploy Redis Cluster** (if high scale)
-    - Action: For caching and rate limiting at scale
-    - Current: Single Redis instance
-    - Priority: LOW
-
-- [ ] **Set up CDN for frontend assets**
-    - Action: Use Cloudflare or AWS CloudFront
-    - Benefit: Faster load times globally
-    - Priority: LOW
-
----
-
-## Phase 4: Infrastructure as Code (Long-Term, 2 months)
-
-**Objective:** Make infrastructure reproducible and version-controlled.
-
-### 4.1 Terraform / Pulumi
-- [ ] **Choose IaC tool**
-    - Options:
-        - **Terraform** (widely used, declarative)
-        - **Pulumi** (code-based, flexible)
-        - **Ansible** (configuration management)
-    - Recommendation: Terraform
-    - Priority: MEDIUM
-
-- [ ] **Define infrastructure as code**
-    - Resources to define:
-        - Compute instances (VMs or cloud servers)
-        - Networking (VPC, security groups)
-        - Load balancers
-        - Databases (managed PostgreSQL)
-        - Storage (S3 buckets for backups)
-        - DNS records
-    - Priority: MEDIUM
-
-- [ ] **Set up Terraform state management**
-    - Action: Store state in cloud backend (S3 + DynamoDB)
-    - Benefit: Team collaboration, state locking
-    - Priority: MEDIUM
-
-### 4.2 Configuration Management
-- [ ] **Use Ansible for server configuration**
-    - Action: Define playbooks for server setup
-    - Tasks:
-        - Install Docker
-        - Configure firewall
-        - Set up log rotation
-        - Install monitoring agents
-    - Priority: LOW
+- [ ] **Database migration automation**
+  ```yaml
+  deploy:
+    steps:
+      - name: Run migrations
+        run: |
+          docker run backend flask db upgrade
+      
+      - name: Deploy new version
+        run: |
+          docker-compose up -d --no-deps backend
+      
+      - name: Wait for health check
+        run: |
+          ./scripts/wait-for-health.sh
+      
+      - name: Switch traffic
+        run: |
+          ./scripts/switch-traffic.sh
+  ```
 
 ---
 
-## Phase 5: Advanced Topics (Future, 3+ months)
+## 📊 Success Metrics
 
-**Objective:** Prepare for enterprise scale and sophisticated operations.
+### Automation
+- ✅ 100% of deploys via CI/CD
+- ✅ Zero manual deployments
+- ✅ < 5 min from push to deploy
 
-### 5.1 Multi-Environment Setup
-- [ ] **Create staging environment**
-    - Action: Mirror production setup
-    - Purpose: Test deployments before production
-    - Priority: HIGH
-
-- [ ] **Implement environment parity**
-    - Action: Use same Docker images for dev, staging, prod
-    - Only config differs
-    - Priority: MEDIUM
-
-- [ ] **Set up preview environments**
-    - Action: Create temporary environment for each PR
-    - Tool: Heroku Review Apps, Vercel, or custom
-    - Priority: LOW
-
-### 5.2 Disaster Recovery
-- [ ] **Create disaster recovery plan**
-    - Document:
-        - RTO (Recovery Time Objective): 1 hour
-        - RPO (Recovery Point Objective): 1 hour
-        - Backup restore procedures
-        - Failover steps
-    - Priority: MEDIUM
-
-- [ ] **Implement automated failover**
-    - Action: If primary fails, automatically switch to backup
-    - Requires: Multi-region setup
-    - Priority: LOW
-
-- [ ] **Test disaster recovery**
-    - Action: Regular DR drills (quarterly)
-    - Priority: MEDIUM
-
-### 5.3 Cost Optimization
-- [ ] **Set up cost monitoring**
-    - Action: Track cloud costs by service
-    - Tool: Cloud provider dashboards
-    - Priority: MEDIUM
-
-- [ ] **Implement auto-scaling**
-    - Action: Scale containers based on load
-    - Metrics: CPU, memory, request queue depth
-    - Priority: LOW
-
-- [ ] **Use spot/preemptible instances**
-    - Action: For non-critical workloads
-    - Benefit: 60-80% cost savings
-    - Priority: LOW
-
-### 5.4 Compliance & Security
-- [ ] **Implement audit logging**
-    - Action: Log all admin actions
-    - Priority: MEDIUM
-
-- [ ] **Set up vulnerability scanning**
-    - Action: Regular scans of infrastructure
-    - Tool: AWS Inspector, Nessus
-    - Priority: MEDIUM
-
-- [ ] **Achieve compliance certifications** (if needed)
-    - Examples: SOC 2, GDPR, HIPAA
-    - Priority: LOW (depends on customer requirements)
-
----
-
-## Recommended Production Architecture
-
-### Small Scale (0-1000 users)
-```
-[Cloudflare CDN]
-       ↓
-[Nginx Load Balancer + SSL]
-       ↓
-[Docker Swarm - 2 nodes]
-   - 2x Frontend containers
-   - 3x Backend containers
-   - 1x Redis
-   - Managed PostgreSQL
-       ↓
-[Centralized Logging] [Monitoring]
-```
-
-### Medium Scale (1000-10000 users)
-```
-[Cloudflare CDN]
-       ↓
-[Cloud Load Balancer]
-       ↓
-[Kubernetes Cluster - 3-5 nodes]
-   - Auto-scaled Frontend
-   - Auto-scaled Backend
-   - Celery workers
-   - Redis Cluster
-   - Managed PostgreSQL (replicated)
-       ↓
-[ELK Stack] [Prometheus/Grafana] [Sentry]
-```
-
----
-
-## Success Metrics
-
-### Phase 1 Success Criteria
-- ✅ All commits trigger automated CI checks
-- ✅ Deployments are automated with single command/click
-- ✅ Secrets not stored in code or plain text files
-- ✅ Docker images built and published automatically
-
-### Phase 2 Success Criteria
-- ✅ Centralized logging with search capability
-- ✅ Real-time monitoring dashboards
-- ✅ Alerts configured and tested
-- ✅ Mean time to detect (MTTD) issues < 5 minutes
-
-### Phase 3 Success Criteria
-- ✅ System handles 100+ concurrent users without degradation
-- ✅ Zero-downtime deployments
+### Reliability
 - ✅ 99.9% uptime
-- ✅ Automated database backups with tested restore
+- ✅ < 5 min mean time to detection (MTTD)
+- ✅ < 30 min mean time to recovery (MTTR)
 
-### Phase 4 Success Criteria
-- ✅ Infrastructure reproducible via code
-- ✅ New environment can be provisioned in < 30 minutes
-- ✅ Infrastructure changes are version-controlled and reviewed
-
----
-
-## Estimated Timeline
-
-- **Phase 1**: 2-3 weeks (immediate automation)
-- **Phase 2**: 1 month (parallel with Phase 1)
-- **Phase 3**: 1-2 months (scaling preparation)
-- **Phase 4**: 2 months (IaC implementation)
-- **Phase 5**: Ongoing (as needed)
-
-**Total to production-ready**: ~3-4 months
-
----
-
-## Estimated Costs (Monthly)
-
-### Minimal Production Setup
-- Compute: $20-50 (2x small VMs or 1 cloud instance)
-- Database: $15-30 (managed PostgreSQL basic tier)
-- Monitoring: $0 (self-hosted) or $20 (Datadog/New Relic starter)
-- CDN: $0-10 (Cloudflare free tier often sufficient)
-- **Total: $35-110/month**
-
-### Medium Scale Setup
-- Compute: $100-300 (auto-scaled instances)
-- Database: $50-150 (production-grade managed PostgreSQL)
-- Monitoring: $50-100 (SaaS monitoring)
-- CDN: $20-50
-- Load Balancer: $15-30
-- **Total: $235-630/month**
-
----
-
-## Priority Legend
-- **HIGH**: Critical for production deployment
-- **MEDIUM**: Important for reliability and scale
-- **LOW**: Nice-to-have or future optimization
+### Observability
+- ✅ All errors tracked in Sentry
+- ✅ All logs centralized
+- ✅ Key metrics dashboards available
+- ✅ Alerts configured for critical issues

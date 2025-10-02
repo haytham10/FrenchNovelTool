@@ -1,179 +1,355 @@
-# Frontend Improvement Roadmap
+# Frontend Improvement Roadmap# Frontend Improvement Roadmap
 
-This document provides a strategic roadmap for enhancing the frontend of the French Novel Tool. The focus is on improving user experience, performance, code quality, and maintainability.
 
----
 
-## Current State Analysis
+**Last Updated:** October 2, 2025This document provides a strategic roadmap for enhancing the frontend of the French Novel Tool. The focus is on improving user experience, performance, code quality, and maintainability.
 
-### Strengths
+
+
+Focus: State management, performance, user experience, and production readiness.---
+
+
+
+---## Current State Analysis
+
+
+
+## 📊 Current State### Strengths
+
 - ✅ Modern Next.js 15 with React 19
-- ✅ TypeScript for type safety
-- ✅ Material-UI (MUI) component library
-- ✅ Proper authentication context
-- ✅ Clean separation of concerns (components, lib, app)
-- ✅ Snackbar notifications (notistack)
-- ✅ Google OAuth integration
 
-### Weaknesses
+### ✅ Working Well- ✅ TypeScript for type safety
+
+- Next.js 15 + React 19 + TypeScript- ✅ Material-UI (MUI) component library
+
+- Material-UI v7 components- ✅ Proper authentication context
+
+- Google OAuth authentication- ✅ Clean separation of concerns (components, lib, app)
+
+- File upload with drag-and-drop- ✅ Snackbar notifications (notistack)
+
+- Responsive design- ✅ Google OAuth integration
+
+- Error boundaries
+
+- Snackbar notifications### Weaknesses
+
 - ⚠️ No centralized state management beyond Context API
-- ⚠️ Limited error boundary implementation
-- ⚠️ No automated testing
-- ⚠️ Performance issues with large result sets
-- ⚠️ Synchronous processing UX (loading states block UI)
-- ⚠️ No offline support or PWA features
-- ⚠️ Accessibility could be improved
-- ⚠️ No code splitting for heavy components
 
----
+### ⚠️ Needs Improvement- ⚠️ Limited error boundary implementation
 
-## Phase 1: User Experience & Code Quality (Short-Term, 2-4 weeks)
+- No centralized state management- ⚠️ No automated testing
 
-**Objective:** Improve immediate user experience and establish code quality foundations.
+- No API data caching- ⚠️ Performance issues with large result sets
 
-### 1.1 Enhanced User Feedback
-- [ ] **Improve loading states**
+- Synchronous processing UX (blocks UI)- ⚠️ Synchronous processing UX (loading states block UI)
+
+- Generic loading states- ⚠️ No offline support or PWA features
+
+- No automated tests- ⚠️ Accessibility could be improved
+
+- Large bundle size- ⚠️ No code splitting for heavy components
+
+- Poor error messages
+
+- Missing accessibility features---
+
+
+
+---## Phase 1: User Experience & Code Quality (Short-Term, 2-4 weeks)
+
+
+
+## 🔴 P0 - Critical (Weeks 1-4)**Objective:** Improve immediate user experience and establish code quality foundations.
+
+
+
+### Week 1: State Management### 1.1 Enhanced User Feedback
+
+**Install Zustand for scalable state**- [ ] **Improve loading states**
+
     - Action: Replace generic spinners with skeleton screens
-    - Current: `CircularProgress` for everything
-    - Improved: `ResultsSkeleton` for results, specific loaders for each action
-    - Files: All page components
+
+```bash    - Current: `CircularProgress` for everything
+
+npm install zustand    - Improved: `ResultsSkeleton` for results, specific loaders for each action
+
+```    - Files: All page components
+
     - Priority: HIGH
 
-- [ ] **Better error messages**
-    - Action: Parse backend error responses and show actionable messages
-    - Implementation:
+Create stores:
+
+- `useProcessingStore` - PDF processing state- [ ] **Better error messages**
+
+- `useHistoryStore` - Processing history cache    - Action: Parse backend error responses and show actionable messages
+
+- `useSettingsStore` - User settings (with localStorage persistence)    - Implementation:
+
         ```tsx
-        // Instead of: "Request failed"
-        // Show: "Your session expired. Please log in again."
+
+### Week 1-2: Data Fetching with React Query        // Instead of: "Request failed"
+
+**Install TanStack Query for proper data management**        // Show: "Your session expired. Please log in again."
+
         ```
-    - Priority: HIGH
 
-- [ ] **Add progress indicators for file upload**
+```bash    - Priority: HIGH
+
+npm install @tanstack/react-query @tanstack/react-query-devtools
+
+```- [ ] **Add progress indicators for file upload**
+
     - Action: Show upload progress percentage
-    - Use: XMLHttpRequest progress events
-    - Priority: MEDIUM
 
-- [ ] **Implement optimistic UI updates**
-    - Action: Update UI immediately, rollback on error
+Benefits:    - Use: XMLHttpRequest progress events
+
+- Automatic caching    - Priority: MEDIUM
+
+- Background refetching
+
+- Optimistic updates- [ ] **Implement optimistic UI updates**
+
+- Better loading/error states    - Action: Update UI immediately, rollback on error
+
     - Use cases: Delete history entry, update settings
-    - Priority: MEDIUM
 
-### 1.2 Accessibility (a11y)
-- [ ] **Keyboard navigation audit**
-    - Action: Ensure all interactive elements are keyboard accessible
+Create hooks:    - Priority: MEDIUM
+
+- `useHistory()` - Fetch history with caching
+
+- `useSettings()` - Fetch/update settings### 1.2 Accessibility (a11y)
+
+- `useProcessPdf()` - Process with progress tracking- [ ] **Keyboard navigation audit**
+
+- `useExportToSheet()` - Export with optimistic updates    - Action: Ensure all interactive elements are keyboard accessible
+
     - Test: Navigate entire app with Tab/Shift+Tab
-    - Priority: HIGH
+
+### Week 2-3: Async Processing UI    - Priority: HIGH
+
+**Support backend async jobs**
 
 - [ ] **Add ARIA labels and roles**
-    - Action: Add descriptive labels to all icon buttons and interactive elements
-    - Tool: eslint-plugin-jsx-a11y
-    - Priority: HIGH
+
+- Implement job polling (check status every 2s)    - Action: Add descriptive labels to all icon buttons and interactive elements
+
+- Show progress indicators    - Tool: eslint-plugin-jsx-a11y
+
+- Allow navigation during processing    - Priority: HIGH
+
+- Notify when complete
 
 - [ ] **Improve focus management**
-    - Action: Visible focus indicators on all interactive elements
-    - CSS: Ensure `:focus-visible` styles are clear
-    - Priority: MEDIUM
 
-- [ ] **Add screen reader support**
-    - Action: Test with NVDA/JAWS
+```typescript    - Action: Visible focus indicators on all interactive elements
+
+const { data: job } = useJobStatus(jobId, {    - CSS: Ensure `:focus-visible` styles are clear
+
+  refetchInterval: (data) =>     - Priority: MEDIUM
+
+    data?.status === 'processing' ? 2000 : false
+
+});- [ ] **Add screen reader support**
+
+```    - Action: Test with NVDA/JAWS
+
     - Add `role`, `aria-label`, `aria-describedby` where needed
-    - Priority: MEDIUM
+
+### Week 3: Error Handling    - Priority: MEDIUM
+
+**Better user feedback**
 
 - [ ] **Implement skip links**
-    - Action: Add "Skip to main content" link
-    - Priority: LOW
 
-### 1.3 Component Refactoring
-- [ ] **Create reusable UI component library**
+- Parse backend error responses    - Action: Add "Skip to main content" link
+
+- Show actionable error messages    - Priority: LOW
+
+- Add retry buttons for retryable errors
+
+- Implement error boundaries### 1.3 Component Refactoring
+
+- Log errors to Sentry- [ ] **Create reusable UI component library**
+
     - Action: Extract common patterns into `components/ui/`
-    - Components to create:
-        - `Button` (with variants: primary, secondary, danger)
+
+### Week 4: Loading States    - Components to create:
+
+**Replace spinners with skeletons**        - `Button` (with variants: primary, secondary, danger)
+
         - `Input` (with error states, helper text)
-        - `Card` (container component)
-        - `Badge` (for status indicators)
-        - `Table` (with sorting, pagination)
-    - Priority: MEDIUM
 
-- [ ] **Break down large components**
+- Create skeleton components for tables/cards        - `Card` (container component)
+
+- Use suspense boundaries        - `Badge` (for status indicators)
+
+- Show progress percentages        - `Table` (with sorting, pagination)
+
+- Add "estimated time remaining"    - Priority: MEDIUM
+
+
+
+---- [ ] **Break down large components**
+
     - Files to refactor:
-        - `app/page.tsx` (main page is 174 lines)
+
+## 🟠 P1 - High Priority (Weeks 5-8)        - `app/page.tsx` (main page is 174 lines)
+
         - `app/history/page.tsx`
-        - `components/HistoryTable.tsx`
-    - Extract smaller sub-components
+
+### Week 5-6: Performance        - `components/HistoryTable.tsx`
+
+**Optimize for large datasets**    - Extract smaller sub-components
+
     - Priority: MEDIUM
 
-- [ ] **Implement compound components pattern**
-    - Action: For complex components like tables
-    - Example:
-        ```tsx
+- Virtualize tables (react-virtual) for 1000+ sentences
+
+- Code split heavy components (dynamic imports)- [ ] **Implement compound components pattern**
+
+- Analyze and reduce bundle size    - Action: For complex components like tables
+
+- Implement pagination for history    - Example:
+
+- Optimize images and assets        ```tsx
+
         <Table>
-          <Table.Header>...</Table.Header>
-          <Table.Body>...</Table.Body>
+
+### Week 7: Testing          <Table.Header>...</Table.Header>
+
+**Add automated tests**          <Table.Body>...</Table.Body>
+
         </Table>
-        ```
-    - Priority: LOW
+
+```bash        ```
+
+npm install -D @testing-library/react jest    - Priority: LOW
+
+```
 
 ### 1.4 State Management
-- [ ] **Implement global state management**
-    - Action: Install and configure Zustand or Jotai
-    - Reason: Context API is sufficient for auth, but app state needs better solution
-    - Stores to create:
-        - `useProcessingStore` (sentences, loading states)
+
+- Unit tests for components- [ ] **Implement global state management**
+
+- Integration tests for user flows      - Action: Install and configure Zustand or Jotai
+
+- Mock API responses    - Reason: Context API is sufficient for auth, but app state needs better solution
+
+- Test error scenarios    - Stores to create:
+
+- Target: 70% coverage        - `useProcessingStore` (sentences, loading states)
+
         - `useHistoryStore` (cache history data)
-        - `useSettingsStore` (user settings)
-    - Priority: HIGH
 
-- [ ] **Implement data fetching library**
-    - Action: Use TanStack Query (React Query)
-    - Benefits:
-        - Automatic caching
-        - Background refetching
-        - Optimistic updates
+### Week 8: Accessibility        - `useSettingsStore` (user settings)
+
+**WCAG 2.1 AA compliance**    - Priority: HIGH
+
+
+
+- Add ARIA labels to all interactive elements- [ ] **Implement data fetching library**
+
+- Implement keyboard navigation    - Action: Use TanStack Query (React Query)
+
+- Test with screen readers    - Benefits:
+
+- Add focus indicators        - Automatic caching
+
+- Use semantic HTML        - Background refetching
+
+- Install eslint-plugin-jsx-a11y        - Optimistic updates
+
         - Proper loading/error states
-    - Priority: HIGH
 
----
+---    - Priority: HIGH
 
-## Phase 2: Performance & Responsiveness (Mid-Term, 1-2 months)
 
-**Objective:** Make the application fast, responsive, and handle large datasets efficiently.
 
-### 2.1 Async Processing UX
-- [ ] **Implement polling for PDF processing**
+## 🟡 P2 - Medium Priority (Weeks 9-12)---
+
+
+
+### Advanced Features## Phase 2: Performance & Responsiveness (Mid-Term, 1-2 months)
+
+- Inline editing for sentences (double-click to edit)
+
+- Search and filter results (debounced)**Objective:** Make the application fast, responsive, and handle large datasets efficiently.
+
+- Batch operations (select multiple, delete/export)
+
+- Sentence statistics dashboard### 2.1 Async Processing UX
+
+- Export to multiple formats (CSV, DOCX)- [ ] **Implement polling for PDF processing**
+
     - Action: Support async job pattern from backend
-    - Flow:
-        1. Upload PDF → receive job_id
-        2. Show processing animation
-        3. Poll `/jobs/<job_id>` every 2 seconds
-        4. Display results when complete
-    - Priority: HIGH
 
-- [ ] **Add cancellable operations**
-    - Action: Allow users to cancel long-running jobs
-    - Implementation: Abort controller for fetch requests
-    - Priority: MEDIUM
+### PWA Support    - Flow:
 
-### 2.2 Performance Optimization
+- Add service worker for offline support        1. Upload PDF → receive job_id
+
+- Create app manifest        2. Show processing animation
+
+- Cache app shell        3. Poll `/jobs/<job_id>` every 2 seconds
+
+- Show offline indicator        4. Display results when complete
+
+- Queue failed requests for retry    - Priority: HIGH
+
+
+
+### Design Polish- [ ] **Add cancellable operations**
+
+- Add micro-animations (hover, transitions)    - Action: Allow users to cancel long-running jobs
+
+- Improve empty states    - Implementation: Abort controller for fetch requests
+
+- Add dark mode toggle    - Priority: MEDIUM
+
+- Better mobile experience
+
+- Loading state variations### 2.2 Performance Optimization
+
 - [ ] **Virtualize large lists**
-    - Action: Use `@tanstack/react-virtual` for ResultsTable
+
+---    - Action: Use `@tanstack/react-virtual` for ResultsTable
+
     - Benefit: Render only visible rows (handle 10k+ sentences)
-    - Files: `ResultsTable.tsx`, `HistoryTable.tsx`
+
+## 📊 Success Metrics    - Files: `ResultsTable.tsx`, `HistoryTable.tsx`
+
     - Priority: HIGH
 
-- [ ] **Implement code splitting**
-    - Action: Lazy load heavy components
-    - Components to lazy load:
+### Performance
+
+- Lighthouse score > 90- [ ] **Implement code splitting**
+
+- First Contentful Paint < 1.5s    - Action: Lazy load heavy components
+
+- Bundle size < 200KB (gzipped)    - Components to lazy load:
+
         - `DriveFolderPicker` (only needed for export)
-        - `CommandPalette` (only needed when invoked)
-        - Settings page
-        - History page
-    - Use: `next/dynamic`
+
+### Quality        - `CommandPalette` (only needed when invoked)
+
+- 70%+ test coverage        - Settings page
+
+- Zero a11y violations        - History page
+
+- All ESLint rules passing    - Use: `next/dynamic`
+
     - Priority: MEDIUM
 
-- [ ] **Optimize bundle size**
-    - Action: Analyze bundle with `@next/bundle-analyzer`
-    - Steps:
-        1. Find large dependencies
+### UX
+
+- Clear error messages- [ ] **Optimize bundle size**
+
+- Loading feedback for all operations    - Action: Analyze bundle with `@next/bundle-analyzer`
+
+- Keyboard navigation works    - Steps:
+
+- Mobile responsive        1. Find large dependencies
+
         2. Replace or tree-shake where possible
         3. Use lighter alternatives
     - Priority: MEDIUM
