@@ -81,6 +81,13 @@ export interface ProcessingHistory {
   processed_sentences_count: number;
   spreadsheet_url?: string;
   error_message?: string;
+  error_code?: string;
+  failed_step?: 'upload' | 'extract' | 'analyze' | 'normalize' | 'export';
+  settings?: {
+    sentence_length?: number;
+    gemini_model?: string;
+    advanced_options?: Record<string, unknown>;
+  };
 }
 
 export interface UserSettings {
@@ -113,13 +120,23 @@ export async function refreshAccessToken(): Promise<LoginResponse> {
  * PDF Processing APIs
  */
 
-export async function processPdf(file: File): Promise<string[]> {
+export interface ProcessPdfOptions {
+  onUploadProgress?: (progress: number) => void;
+}
+
+export async function processPdf(file: File, options?: ProcessPdfOptions): Promise<string[]> {
   const formData = new FormData();
   formData.append('pdf_file', file);
   
   const response = await api.post('/process-pdf', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
+    },
+    onUploadProgress: (progressEvent) => {
+      if (options?.onUploadProgress && progressEvent.total) {
+        const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+        options.onUploadProgress(progress);
+      }
     },
   });
   
@@ -172,20 +189,59 @@ export const fetchSettings = getUserSettings;
 export const saveSettings = updateUserSettings;
 
 /**
- * Error handling utility
+ * Error handling utility with user-friendly messages
  */
 
 export function getApiErrorMessage(error: unknown, defaultMessage = 'An unexpected error occurred'): string {
   if (axios.isAxiosError(error)) {
-    const axiosError = error as AxiosError<{ msg?: string; message?: string; error?: string }>;
+    const axiosError = error as AxiosError<{ msg?: string; message?: string; error?: string; detail?: string }>;
     
-    // Extract error message from response
-    if (axiosError.response?.data) {
+    // Handle specific HTTP status codes with user-friendly messages
+    if (axiosError.response) {
+      const status = axiosError.response.status;
       const data = axiosError.response.data;
-      return data.msg || data.message || data.error || defaultMessage;
+      
+      // Extract error message from response
+      const serverMessage = data?.msg || data?.message || data?.error || data?.detail;
+      
+      switch (status) {
+        case 400:
+          return serverMessage || 'Invalid request. Please check your input and try again.';
+        case 401:
+          return 'Your session has expired. Please log in again.';
+        case 403:
+          return 'You do not have permission to perform this action.';
+        case 404:
+          return 'The requested resource was not found.';
+        case 413:
+          return 'The file is too large. Please upload a smaller file.';
+        case 422:
+          return serverMessage || 'The data provided is invalid. Please check and try again.';
+        case 429:
+          return 'Too many requests. Please wait a moment and try again.';
+        case 500:
+          return 'A server error occurred. Please try again later.';
+        case 502:
+        case 503:
+          return 'The service is temporarily unavailable. Please try again in a few moments.';
+        case 504:
+          return 'The request took too long to complete. Please try again.';
+        default:
+          return serverMessage || defaultMessage;
+      }
     }
     
-    // Network error
+    // Network error (no response from server)
+    if (axiosError.code === 'ERR_NETWORK' || axiosError.message.includes('Network Error')) {
+      return 'Unable to connect to the server. Please check your internet connection.';
+    }
+    
+    // Timeout error
+    if (axiosError.code === 'ECONNABORTED') {
+      return 'The request timed out. Please try again.';
+    }
+    
+    // Other axios errors
     if (axiosError.message) {
       return axiosError.message;
     }

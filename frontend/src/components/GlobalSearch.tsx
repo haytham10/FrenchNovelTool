@@ -34,6 +34,7 @@ export default function GlobalSearch({ open, onClose }: { open: boolean; onClose
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
       <DialogContent>
         <TextField
+          // eslint-disable-next-line jsx-a11y/no-autofocus
           autoFocus
           fullWidth
           placeholder="Search pages…"

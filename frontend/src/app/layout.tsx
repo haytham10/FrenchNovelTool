@@ -7,6 +7,7 @@ import ErrorBoundary from '../components/ErrorBoundary';
 import Script from "next/script";
 import Header from '../components/Header';
 import ConnectionStatusBanner from '../components/ConnectionStatusBanner';
+import SkipLink from '../components/SkipLink';
 
 export const metadata: Metadata = {
   title: "French Novel Tool",
@@ -24,6 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
         <ErrorBoundary>
           <Providers>
+            <SkipLink />
             <Header />
             <ConnectionStatusBanner />
             <main id="main-content" role="main">

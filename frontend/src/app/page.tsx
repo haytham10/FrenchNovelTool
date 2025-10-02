@@ -5,45 +5,63 @@ import FileUpload from '@/components/FileUpload';
 import ResultsTable from '@/components/ResultsTable';
 import NormalizeControls from '@/components/NormalizeControls';
 import ExportDialog from '@/components/ExportDialog';
-import { processPdf, exportToSheet, getApiErrorMessage } from '@/lib/api';
-import { CircularProgress, Button, Typography, Box, Container, Paper, Divider, List, ListItem, ListItemText } from '@mui/material';
+import { getApiErrorMessage } from '@/lib/api';
+import { useProcessPdf, useExportToSheet } from '@/lib/queries';
+import { CircularProgress, Button, Typography, Box, Container, Paper, Divider, List, ListItem, ListItemText, LinearProgress } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import UploadStepper from '@/components/UploadStepper';
 import ResultsSkeleton from '@/components/ResultsSkeleton';
 import Link from 'next/link';
 import { useAuth } from '@/components/AuthContext';
 import GoogleLoginButton from '@/components/GoogleLoginButton';
+import { useProcessingStore } from '@/stores/useProcessingStore';
 
-import type { AdvancedNormalizationOptions } from '@/components/NormalizeControls';
 import type { ExportOptions } from '@/components/ExportDialog';
 
 export default function Home() {
   const { user } = useAuth();
-  const [sentences, setSentences] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [loadingMessage, setLoadingMessage] = useState<string>('');
-  const [sentenceLength, setSentenceLength] = useState<number>(12);
-  const [advancedOptions, setAdvancedOptions] = useState<AdvancedNormalizationOptions>({
-    geminiModel: 'balanced',
-    ignoreDialogues: false,
-    preserveQuotes: true,
-    fixHyphenations: true,
-    minSentenceLength: 3,
-  });
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const { enqueueSnackbar } = useSnackbar();
+  
+  // Use Zustand store for processing state
+  const {
+    sentences,
+    setSentences,
+    loading,
+    loadingMessage,
+    setLoading,
+    uploadProgress,
+    setUploadProgress,
+    sentenceLength,
+    setSentenceLength,
+    advancedOptions,
+    setAdvancedOptions,
+  } = useProcessingStore();
+  
+  // Use React Query for API calls
+  const processPdfMutation = useProcessPdf();
+  const exportMutation = useExportToSheet();
 
   const handleFileUpload = async (files: File[]) => {
-    setLoading(true);
-    setLoadingMessage('Uploading and processing PDF(s)...');
+    setLoading(true, 'Uploading and processing PDF(s)...');
     setSentences([]);
 
     let allProcessedSentences: string[] = [];
 
     try {
       for (const file of files) {
-        setLoadingMessage(`Processing ${file.name}...`);
-        const sentences = await processPdf(file);
+        setLoading(true, `Processing ${file.name}...`);
+        setUploadProgress(0);
+        
+        const sentences = await processPdfMutation.mutateAsync({
+          file,
+          options: {
+            onUploadProgress: (progress) => {
+              setUploadProgress(progress);
+            },
+          },
+        });
+        
         allProcessedSentences = allProcessedSentences.concat(sentences);
       }
       setSentences(allProcessedSentences);
@@ -54,8 +72,8 @@ export default function Home() {
         { variant: 'error' }
       );
     } finally {
-      setLoading(false);
-      setLoadingMessage('');
+      setLoading(false, '');
+      setUploadProgress(0);
     }
   };
 
@@ -65,26 +83,23 @@ export default function Home() {
       return;
     }
 
-    setLoading(true);
-    setLoadingMessage('Exporting to Google Sheets...');
+    setLoading(true, 'Exporting to Google Sheets...');
 
     try {
-      const spreadsheetUrl = await exportToSheet({
+      const spreadsheetUrl = await exportMutation.mutateAsync({
         sentences,
         sheetName: options.sheetName,
         folderId: options.folderId,
       });
       setExportDialogOpen(false);
       window.open(spreadsheetUrl, '_blank');
-      enqueueSnackbar('Exported to Google Sheets successfully!', { variant: 'success' });
     } catch (error) {
       enqueueSnackbar(
         getApiErrorMessage(error, 'An unexpected error occurred during the export.'),
         { variant: 'error' }
       );
     } finally {
-      setLoading(false);
-      setLoadingMessage('');
+      setLoading(false, '');
     }
   };
 
@@ -143,6 +158,22 @@ export default function Home() {
                 <Typography variant="h6" color="textSecondary" mt={3}>
                   {loadingMessage}
                 </Typography>
+                {uploadProgress > 0 && uploadProgress < 100 && (
+                  <Box sx={{ width: '100%', maxWidth: 400, mt: 2 }}>
+                    <LinearProgress 
+                      variant="determinate" 
+                      value={uploadProgress}
+                      sx={{ height: 8, borderRadius: 4 }}
+                    />
+                    <Typography 
+                      variant="body2" 
+                      color="textSecondary" 
+                      sx={{ textAlign: 'center', mt: 1 }}
+                    >
+                      {uploadProgress}% uploaded
+                    </Typography>
+                  </Box>
+                )}
               </Box>
             </Box>
           </Box>
