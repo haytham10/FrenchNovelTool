@@ -9,19 +9,18 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 
 
 class OpenAIService:
-    # Model mapping - using current OpenAI models
-    # When gpt-5 series becomes available, update these mappings
+    # Model mapping - GPT-5 series models
     MODEL_MAPPING = {
-        'balanced': 'gpt-4o-mini',      # gpt-5-mini when available
-        'quality': 'gpt-4o',            # gpt-5 when available
-        'speed': 'gpt-3.5-turbo'        # gpt-5-nano when available
+        'balanced': 'gpt-5-mini',
+        'quality': 'gpt-5',
+        'speed': 'gpt-5-nano'
     }
     
     def __init__(self, sentence_length_limit=8, model_preference='balanced', 
                  ignore_dialogue=False, preserve_formatting=True, 
                  fix_hyphenation=True, min_sentence_length=3):
         self.client = OpenAI(api_key=current_app.config['OPENAI_API_KEY'])
-        self.model_name = self.MODEL_MAPPING.get(model_preference, 'gpt-4o-mini')
+        self.model_name = self.MODEL_MAPPING.get(model_preference, 'gpt-5-mini')
         self.sentence_length_limit = sentence_length_limit
         self.max_retries = current_app.config['OPENAI_MAX_RETRIES']
         self.timeout = current_app.config['OPENAI_TIMEOUT']

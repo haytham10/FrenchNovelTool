@@ -8,7 +8,7 @@ Process French novel PDFs, normalize sentence length with Google Gemini AI, and 
 - 📄 **PDF Processing**: Upload French novel PDFs and extract text
 - 🤖 **Dual AI Provider Support**: Choose between Google Gemini or OpenAI for sentence normalization
   - **Gemini**: All modes use gemini-2.0-flash-exp
-  - **OpenAI**: Balanced (gpt-4o-mini), Quality (gpt-4o), Speed (gpt-3.5-turbo)
+  - **OpenAI**: Balanced (gpt-5-mini), Quality (gpt-5), Speed (gpt-5-nano)
 - 📊 **Google Sheets Export**: Export processed sentences with formatted headers
 - 📁 **Drive Integration**: Organize exports in specific Google Drive folders
 - 📜 **History Tracking**: Keep track of all processed documents with status indicators

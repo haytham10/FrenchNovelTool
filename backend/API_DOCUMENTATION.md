@@ -101,7 +101,7 @@ Upload and process a PDF file to extract and normalize French sentences.
   - `ai_provider`: AI provider to use - `gemini` or `openai` (optional, defaults to user settings or `gemini`)
   - `gemini_model`: AI model preference - `balanced`, `quality`, or `speed` (optional, defaults to user settings)
     - For Gemini: uses gemini-2.0-flash-exp for all modes
-    - For OpenAI: `balanced` → gpt-4o-mini, `quality` → gpt-4o, `speed` → gpt-3.5-turbo
+    - For OpenAI: `balanced` → gpt-5-mini, `quality` → gpt-5, `speed` → gpt-5-nano
   - `ignore_dialogue`: Skip normalizing dialogue sections (optional, boolean, defaults to user settings)
   - `preserve_formatting`: Keep original quotes and punctuation (optional, boolean, defaults to user settings)
   - `fix_hyphenation`: Rejoin hyphenated words split across lines (optional, boolean, defaults to user settings)

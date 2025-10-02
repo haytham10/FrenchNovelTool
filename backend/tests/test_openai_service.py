@@ -34,15 +34,15 @@ def test_openai_service_initialization(mock_openai_client, app_context):
     
     # Test balanced mode
     service = OpenAIService(model_preference='balanced')
-    assert service.model_name == 'gpt-4o-mini'
+    assert service.model_name == 'gpt-5-mini'
     
     # Test quality mode
     service = OpenAIService(model_preference='quality')
-    assert service.model_name == 'gpt-4o'
+    assert service.model_name == 'gpt-5'
     
     # Test speed mode
     service = OpenAIService(model_preference='speed')
-    assert service.model_name == 'gpt-3.5-turbo'
+    assert service.model_name == 'gpt-5-nano'
 
 
 @patch('app.services.openai_service.OpenAI')

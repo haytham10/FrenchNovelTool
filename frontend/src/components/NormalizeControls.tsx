@@ -46,9 +46,9 @@ const MODEL_DESCRIPTIONS = {
     speed: 'Uses Gemini 2.0 Flash (speed mode)',
   },
   openai: {
-    balanced: 'Uses GPT-4o-mini (balanced)',
-    quality: 'Uses GPT-4o (highest quality)',
-    speed: 'Uses GPT-3.5-turbo (fastest)',
+    balanced: 'Uses GPT-5-mini (balanced)',
+    quality: 'Uses GPT-5 (highest quality)',
+    speed: 'Uses GPT-5-nano (fastest)',
   },
 };
 

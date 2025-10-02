@@ -46,9 +46,9 @@ The model descriptions change based on the selected AI provider:
 - Speed: "Uses Gemini 2.0 Flash (speed mode)"
 
 **When OpenAI is selected:**
-- Balanced: "Uses GPT-4o-mini (balanced)"
-- Quality: "Uses GPT-4o (highest quality)"
-- Speed: "Uses GPT-3.5-turbo (fastest)"
+- Balanced: "Uses GPT-5-mini (balanced)"
+- Quality: "Uses GPT-5 (highest quality)"
+- Speed: "Uses GPT-5-nano (fastest)"
 
 ```
 When Provider = OpenAI:
@@ -63,7 +63,7 @@ When Provider = OpenAI:
 │  ┌────────────────────────────────┐   │
 │  │ Quality                     ▼  │   │
 │  └────────────────────────────────┘   │
-│  • Uses GPT-4o (highest quality)       │
+│  • Uses GPT-5 (highest quality)       │
 └─────────────────────────────────────────┘
 ```
 

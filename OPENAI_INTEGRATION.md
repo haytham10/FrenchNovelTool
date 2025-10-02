@@ -25,9 +25,9 @@ OPENAI_TIMEOUT = int(os.getenv('OPENAI_TIMEOUT', '60'))
 New service class implementing the same interface as GeminiService:
 
 **Model Mapping:**
-- `balanced` → `gpt-4o-mini` (will be gpt-5-mini when available)
-- `quality` → `gpt-4o` (will be gpt-5 when available)
-- `speed` → `gpt-3.5-turbo` (will be gpt-5-nano when available)
+- `balanced` → `gpt-5-mini`
+- `quality` → `gpt-5`
+- `speed` → `gpt-5-nano`
 
 **Features:**
 - Retry logic with exponential backoff
@@ -88,9 +88,9 @@ Gemini:
   - Speed: Uses Gemini 2.0 Flash (speed mode)
 
 OpenAI:
-  - Balanced: Uses GPT-4o-mini (balanced)
-  - Quality: Uses GPT-4o (highest quality)
-  - Speed: Uses GPT-3.5-turbo (fastest)
+  - Balanced: Uses GPT-5-mini (balanced)
+  - Quality: Uses GPT-5 (highest quality)
+  - Speed: Uses GPT-5-nano (fastest)
 ```
 
 #### 2. API Client Updates (`frontend/src/lib/api.ts`)
@@ -251,9 +251,9 @@ Users should be aware of API costs:
 - No free tier
 - Pay per token
 - Different pricing for different models:
-  - gpt-3.5-turbo: Cheapest
-  - gpt-4o-mini: Moderate
-  - gpt-4o: Most expensive
+  - gpt-5-nano: Fastest and cheapest
+  - gpt-5-mini: Moderate cost and speed
+  - gpt-5: Highest quality and cost
 
 **Recommendation**: Start with Gemini for testing, consider OpenAI for production if quality requirements demand it.
 
