@@ -201,6 +201,7 @@ export default function Home() {
                     position: 'relative',
                     display: 'inline-flex',
                     mb: 3,
+                    animation: 'fadeIn 0.4s ease-out',
                   }}
                 >
                   <CircularProgress 
@@ -238,15 +239,29 @@ export default function Home() {
                   sx={{ 
                     fontWeight: 500,
                     mb: 1,
+                    animation: 'fadeIn 0.5s ease-out',
                   }}
                 >
                   {loadingMessage}
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
+                <Typography 
+                  variant="body2" 
+                  color="text.secondary"
+                  sx={{
+                    animation: 'fadeIn 0.6s ease-out',
+                  }}
+                >
                   Please wait while we process your file...
                 </Typography>
                 {uploadProgress > 0 && uploadProgress < 100 && (
-                  <Box sx={{ width: '100%', maxWidth: 450, mt: 3 }}>
+                  <Box 
+                    sx={{ 
+                      width: '100%', 
+                      maxWidth: 450, 
+                      mt: 3,
+                      animation: 'fadeIn 0.7s ease-out',
+                    }}
+                  >
                     <LinearProgress 
                       variant="determinate" 
                       value={uploadProgress}
@@ -294,7 +309,12 @@ export default function Home() {
           </Box>
         )}
         {!loading && user && sentences.length > 0 && (
-          <Box className="card-gradient">
+          <Box 
+            className="card-gradient"
+            sx={{
+              animation: 'fadeIn 0.6s ease-out',
+            }}
+          >
             <Box className="inner" sx={{ p: { xs: 2, md: 4 } }}>
               <Box 
                 sx={{

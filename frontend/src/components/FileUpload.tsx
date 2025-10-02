@@ -74,6 +74,7 @@ export default function FileUpload({ onFileUpload, disabled = false, variant = '
           gap: 2,
           transition: 'all 0.3s ease',
           transform: isDragActive ? 'translateY(-4px)' : 'translateY(0)',
+          animation: isDragActive ? 'bounce 0.6s ease-in-out infinite' : 'none',
         }}>
           <Box sx={{ 
             display: 'inline-flex', 
@@ -84,6 +85,7 @@ export default function FileUpload({ onFileUpload, disabled = false, variant = '
             borderColor: isDragActive ? 'primary.dark' : 'divider',
             transition: 'all 0.3s ease',
             transform: isDragActive ? 'scale(1.1)' : 'scale(1)',
+            animation: !isDragActive && !disabled ? 'pulse 2s ease-in-out infinite' : 'none',
           }}>
             <Icon 
               icon={Upload} 
