@@ -310,6 +310,7 @@ export default function ResultsTable({ sentences, originalSentences = [], onSent
                           fullWidth
                           multiline
                           size="small"
+                          // eslint-disable-next-line jsx-a11y/no-autofocus
                           autoFocus
                           aria-label="Edit sentence"
                         />

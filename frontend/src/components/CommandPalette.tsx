@@ -44,6 +44,7 @@ export default function CommandPalette() {
     <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="sm">
       <DialogContent>
         <TextField
+          // eslint-disable-next-line jsx-a11y/no-autofocus
           autoFocus
           fullWidth
           placeholder="Type a command or search…"

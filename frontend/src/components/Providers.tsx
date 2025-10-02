@@ -5,8 +5,20 @@ import { AppRouterCacheProvider } from '@mui/material-nextjs/v15-appRouter';
 import { ThemeProvider } from '@mui/material/styles';
 import { SnackbarProvider } from 'notistack';
 import { createContext, useEffect, useMemo, useState } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { getTheme, type PaletteMode } from '../theme';
 import AuthProvider from './AuthContext';
+
+// Create a client
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5, // 5 minutes
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+});
 
 export const ColorModeContext = createContext<{ mode: PaletteMode; toggle: () => void }>({ mode: 'light', toggle: () => {} });
 
@@ -33,15 +45,17 @@ export default function Providers({ children }: { children: ReactNode }) {
 
   return (
     <AppRouterCacheProvider>
-      <ColorModeContext.Provider value={{ mode, toggle }}>
-        <AuthProvider>
-          <ThemeProvider theme={theme}>
-            <SnackbarProvider maxSnack={3}>
-              {children}
-            </SnackbarProvider>
-          </ThemeProvider>
-        </AuthProvider>
-      </ColorModeContext.Provider>
+      <QueryClientProvider client={queryClient}>
+        <ColorModeContext.Provider value={{ mode, toggle }}>
+          <AuthProvider>
+            <ThemeProvider theme={theme}>
+              <SnackbarProvider maxSnack={3}>
+                {children}
+              </SnackbarProvider>
+            </ThemeProvider>
+          </AuthProvider>
+        </ColorModeContext.Provider>
+      </QueryClientProvider>
     </AppRouterCacheProvider>
   );
 }
