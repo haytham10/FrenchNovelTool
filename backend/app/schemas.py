@@ -39,7 +39,7 @@ class ExportToSheetSchema(Schema):
     # P1 new fields
     mode = fields.String(
         validate=validate.OneOf(['new', 'append']),
-        missing='new'
+        load_default='new'
     )
     existingSheetId = fields.String(
         allow_none=True,
@@ -49,7 +49,7 @@ class ExportToSheetSchema(Schema):
         allow_none=True,
         validate=validate.Length(max=255)
     )
-    createNewTab = fields.Boolean(missing=False)
+    createNewTab = fields.Boolean(load_default=False)
     headers = fields.List(fields.Nested(HeaderConfigSchema), allow_none=True)
     columnOrder = fields.List(fields.String(), allow_none=True)
     sharing = fields.Nested(ShareSettingsSchema, allow_none=True)
@@ -65,14 +65,14 @@ class UserSettingsSchema(Schema):
     # P1 advanced normalization fields
     gemini_model = fields.String(
         validate=validate.OneOf(['balanced', 'quality', 'speed']),
-        missing='balanced'
+        load_default='balanced'
     )
-    ignore_dialogue = fields.Boolean(missing=False)
-    preserve_formatting = fields.Boolean(missing=True)
-    fix_hyphenation = fields.Boolean(missing=True)
+    ignore_dialogue = fields.Boolean(load_default=False)
+    preserve_formatting = fields.Boolean(load_default=True)
+    fix_hyphenation = fields.Boolean(load_default=True)
     min_sentence_length = fields.Integer(
         validate=validate.Range(min=1, max=50),
-        missing=3
+        load_default=3
     )
 
 
