@@ -111,9 +111,9 @@ export async function refreshAccessToken(): Promise<LoginResponse> {
 
 export async function processPdf(file: File): Promise<string[]> {
   const formData = new FormData();
-  formData.append('file', file);
+  formData.append('pdf_file', file);
   
-  const response = await api.post('/process', formData, {
+  const response = await api.post('/process-pdf', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
