@@ -13,6 +13,7 @@
     }
   ],
   "env": {
-    "FLASK_ENV": "production"
+    "FLASK_ENV": "production",
+    "CORS_ORIGINS": "https://frenchnoveltool.com,https://www.frenchnoveltool.com"
   }
 }

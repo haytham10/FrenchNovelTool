@@ -6,17 +6,19 @@ import ResultsTable from '@/components/ResultsTable';
 import NormalizeControls from '@/components/NormalizeControls';
 import ExportDialog from '@/components/ExportDialog';
 import { processPdf, exportToSheet, getApiErrorMessage } from '@/lib/api';
-import { CircularProgress, Button, Typography, Box, Container } from '@mui/material';
+import { CircularProgress, Button, Typography, Box, Container, Paper, Divider, List, ListItem, ListItemText } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import UploadStepper from '@/components/UploadStepper';
 import ResultsSkeleton from '@/components/ResultsSkeleton';
 import Link from 'next/link';
+import { useAuth } from '@/components/AuthContext';
+import GoogleLoginButton from '@/components/GoogleLoginButton';
 
 import type { AdvancedNormalizationOptions } from '@/components/NormalizeControls';
 import type { ExportOptions } from '@/components/ExportDialog';
-import RouteGuard from '@/components/RouteGuard';
 
 export default function Home() {
+  const { user } = useAuth();
   const [sentences, setSentences] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState<string>('');
@@ -87,8 +89,7 @@ export default function Home() {
   };
 
   return (
-    <RouteGuard>
-      <Box sx={{ minHeight: 'calc(100vh - 64px)', py: { xs: 4, md: 8 } }} className="hero-aura">
+    <Box sx={{ minHeight: 'calc(100vh - 64px)', py: { xs: 4, md: 8 } }} className="hero-aura">
         <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 1 }}>
           {/* Hero Section */}
         <Box sx={{ textAlign: 'center', mb: 6 }}>
@@ -98,12 +99,23 @@ export default function Home() {
           <Typography variant="h5" color="text.secondary" sx={{ mb: 4, maxWidth: '800px', mx: 'auto' }}>
             Upload PDFs, normalize sentences with Gemini, and export to Google Sheets.
           </Typography>
-          <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap', maxWidth: '500px', mx: 'auto' }}>
-            <Box sx={{ flex: '1 1 auto', minWidth: '200px' }}>
-              <FileUpload onFileUpload={handleFileUpload} disabled={loading} />
-            </Box>
-            <Button variant="outlined" size="large" href="#how-it-works" sx={{ minWidth: '150px' }}>
-              How it works
+          <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap', maxWidth: '640px', mx: 'auto' }}>
+            {user ? (
+              <Box sx={{ flex: '1 1 auto', minWidth: '240px' }}>
+                <FileUpload onFileUpload={handleFileUpload} disabled={loading} />
+              </Box>
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Typography variant="body1" color="text.secondary">
+                  To process PDFs and export to your Google Sheets, please sign in with Google.
+                </Typography>
+                <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                  <GoogleLoginButton />
+                </Box>
+              </Box>
+            )}
+            <Button variant="outlined" size="large" href="#about" sx={{ minWidth: '150px' }}>
+              Learn more
             </Button>
           </Box>
         </Box>
@@ -114,7 +126,7 @@ export default function Home() {
         </Box>
 
         {/* Empty State with Drag-and-Drop */}
-        {!loading && sentences.length === 0 && (
+        {!loading && sentences.length === 0 && user && (
           <Box className="card-gradient" sx={{ mb: 4 }}>
             <Box className="inner" sx={{ p: { xs: 2, md: 4 } }}>
               <FileUpload onFileUpload={handleFileUpload} disabled={loading} variant="dropzone" />
@@ -138,7 +150,7 @@ export default function Home() {
         
         
         {/* Normalize Controls Section - Always visible when not loading */}
-        {!loading && (
+        {!loading && user && (
           <Box className="card-gradient" sx={{ mb: 4 }}>
             <Box className="inner" sx={{ p: { xs: 2, md: 4 } }}>
               <NormalizeControls
@@ -163,7 +175,7 @@ export default function Home() {
             </Box>
           </Box>
         )}
-        {!loading && sentences.length > 0 && (
+        {!loading && user && sentences.length > 0 && (
           <Box className="card-gradient">
             <Box className="inner" sx={{ p: { xs: 2, md: 4 } }}>
               <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
@@ -186,13 +198,70 @@ export default function Home() {
         )}
 
         {/* Export Dialog */}
-        <ExportDialog
-          open={exportDialogOpen}
-          onClose={() => setExportDialogOpen(false)}
-          onExport={handleExport}
-          loading={loading}
-          defaultSheetName="French Novel Sentences"
-        />
+        {user && (
+          <ExportDialog
+            open={exportDialogOpen}
+            onClose={() => setExportDialogOpen(false)}
+            onExport={handleExport}
+            loading={loading}
+            defaultSheetName="French Novel Sentences"
+          />
+        )}
+
+        {/* Public About & Data Usage sections for transparency and verification */}
+        <Box id="about" sx={{ mt: 6 }}>
+          <Paper variant="outlined" sx={{ p: { xs: 2, md: 4 } }}>
+            <Typography variant="h4" gutterBottom>
+              About French Novel Tool
+            </Typography>
+            <Typography variant="body1" color="text.secondary" paragraph>
+              French Novel Tool helps you process French-language PDF novels, intelligently split
+              long sentences using Google Gemini, and export the results to your Google Sheets for
+              study, editing, or sharing.
+            </Typography>
+            <Divider sx={{ my: 2 }} />
+            <Typography variant="h5" gutterBottom>
+              Why we request Google permissions
+            </Typography>
+            <List>
+              <ListItem>
+                <ListItemText
+                  primary="Basic profile (email, name, picture)"
+                  secondary="Used to identify your account and personalize your experience."
+                />
+              </ListItem>
+              <ListItem>
+                <ListItemText
+                  primary="Google Drive/Sheets access"
+                  secondary="Used only when you explicitly export results — to create or update a spreadsheet in your Google Drive."
+                />
+              </ListItem>
+            </List>
+            <Typography variant="h5" gutterBottom>
+              How we handle your data
+            </Typography>
+            <List>
+              <ListItem>
+                <ListItemText
+                  primary="We don’t sell your data"
+                  secondary="Your information is used solely to provide the functionality you request."
+                />
+              </ListItem>
+              <ListItem>
+                <ListItemText
+                  primary="You control access"
+                  secondary="You can revoke Google access at any time from your Google Account settings."
+                />
+              </ListItem>
+            </List>
+            <Typography variant="body2" color="text.secondary">
+              For full details, see our{' '}
+              <Link href="/policy" style={{ textDecoration: 'underline' }}>Privacy Policy</Link>{' '}
+              and{' '}
+              <Link href="/terms" style={{ textDecoration: 'underline' }}>Terms of Service</Link>.
+            </Typography>
+          </Paper>
+        </Box>
 
         {/* Footer links for policy/compliance */}
         <Box sx={{ mt: 6, textAlign: 'center' }}>
@@ -206,6 +275,5 @@ export default function Home() {
         </Box>
         </Container>
       </Box>
-    </RouteGuard>
   );
 }

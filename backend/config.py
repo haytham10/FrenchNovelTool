@@ -1,4 +1,5 @@
 import os
+from urllib.parse import urlparse, urlunparse
 from datetime import timedelta
 from dotenv import load_dotenv
 
@@ -32,7 +33,30 @@ class Config:
     ALLOWED_EXTENSIONS = {'pdf'}
     
     # CORS
-    CORS_ORIGINS = os.getenv('CORS_ORIGINS', 'http://localhost:3000').split(',')
+    _origins = [o.strip() for o in os.getenv('CORS_ORIGINS', 'http://localhost:3000').split(',') if o.strip()]
+
+    # Auto-include www/apex variants of configured origins to avoid CORS mismatches
+    def _with_www_variants(origin: str) -> list[str]:
+        try:
+            p = urlparse(origin)
+            if not p.scheme or not p.netloc:
+                return [origin]
+            host = p.netloc
+            variants = set([origin])
+            if host.startswith('www.'):
+                apex = host[4:]
+                variants.add(urlunparse((p.scheme, apex, p.path, '', '', '')))
+            else:
+                variants.add(urlunparse((p.scheme, 'www.' + host, p.path, '', '', '')))
+            return list(variants)
+        except Exception:
+            return [origin]
+
+    _expanded = []
+    for o in _origins:
+        _expanded.extend(_with_www_variants(o))
+
+    CORS_ORIGINS = list(dict.fromkeys(_expanded))  # dedupe, preserve order
     CORS_SUPPORTS_CREDENTIALS = True
     
     # Gemini API
