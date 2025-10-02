@@ -4,15 +4,30 @@ Process French novel PDFs, normalize sentence length with Google Gemini AI, and 
 
 ## ✨ Features
 
+### Core Functionality
 - 📄 **PDF Processing**: Upload French novel PDFs and extract text
 - 🤖 **AI-Powered Normalization**: Uses Google Gemini to split long sentences while preserving meaning
 - 📊 **Google Sheets Export**: Export processed sentences with formatted headers
 - 📁 **Drive Integration**: Organize exports in specific Google Drive folders
-- 📜 **History Tracking**: Keep track of all processed documents
-- ⚙️ **Configurable Settings**: Adjust sentence length limits
+- 📜 **History Tracking**: Keep track of all processed documents with status indicators
+- ⚙️ **Configurable Settings**: Adjust sentence length limits with intuitive slider and presets
+
+### UX/UI Features (P0 Roadmap Implemented)
+- 🎨 **Modern UI**: Material-UI v7 with light/dark theme support
+- ♿ **Accessible**: WCAG 2.1 AA baseline with semantic landmarks and ARIA labels
+- ✏️ **Inline Editing**: Edit sentences directly in the results table (Enter to save, Esc to cancel)
+- 🔍 **Debounced Search**: Fast, responsive filtering across results and history
+- 📊 **Status Indicators**: Visual feedback for Success/Failed/Processing states
+- 🎚️ **Normalize Controls**: Sentence length slider with quick presets (8, 12, 16 words)
+- 📱 **Responsive Design**: Works seamlessly on desktop and mobile
+- ⌨️ **Keyboard Navigation**: Full keyboard support for core workflows
+- 🔔 **Smart Notifications**: Toast feedback for all user actions
+
+### Technical Features
 - 🔒 **Rate Limiting**: Built-in API rate limiting for security
 - 🐳 **Docker Support**: Easy deployment with Docker and docker-compose
 - 📝 **Comprehensive API**: RESTful API with versioning and validation
+- 🔄 **Auto Token Refresh**: Seamless OAuth token management
 
 ## Project Structure
 

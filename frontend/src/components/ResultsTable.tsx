@@ -3,6 +3,7 @@ import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper
 import { styled } from '@mui/material/styles';
 import Icon from './Icon';
 import { Edit2, Check, X } from 'lucide-react';
+import { useDebounce } from '@/lib/hooks';
 
 interface ResultsTableProps {
   sentences: string[];
@@ -36,6 +37,7 @@ export default function ResultsTable({ sentences, onSentencesChange }: ResultsTa
   const [order, setOrder] = useState<Order>('asc');
   const [orderBy, setOrderBy] = useState<keyof { index: number; sentence: string }>('index');
   const [filter, setFilter] = useState<string>('');
+  const debouncedFilter = useDebounce(filter, 300);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editValue, setEditValue] = useState<string>('');
   const editInputRef = useRef<HTMLInputElement>(null);
@@ -63,11 +65,11 @@ export default function ResultsTable({ sentences, onSentencesChange }: ResultsTa
   }, [sentences, order, orderBy]);
 
   const filteredSentences = React.useMemo(() => {
-    if (!filter) return sortedSentences;
+    if (!debouncedFilter) return sortedSentences;
     return sortedSentences.filter(item =>
-      item.sentence.toLowerCase().includes(filter.toLowerCase())
+      item.sentence.toLowerCase().includes(debouncedFilter.toLowerCase())
     );
-  }, [sortedSentences, filter]);
+  }, [sortedSentences, debouncedFilter]);
 
   const startEdit = (index: number, sentence: string) => {
     setEditingIndex(index);

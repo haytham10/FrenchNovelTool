@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { fetchHistory, getApiErrorMessage } from '@/lib/api';
 import type { HistoryEntry } from '@/lib/types';
 import { getHistoryStatus } from '@/lib/types';
+import { useDebounce } from '@/lib/hooks';
 import Icon from './Icon';
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
 
@@ -41,6 +42,7 @@ export default function HistoryTable() {
   const [order, setOrder] = useState<Order>('desc');
   const [orderBy, setOrderBy] = useState<keyof HistoryEntry>('timestamp');
   const [filter, setFilter] = useState<string>('');
+  const debouncedFilter = useDebounce(filter, 300);
   const { enqueueSnackbar } = useSnackbar();
 
   useEffect(() => {
@@ -93,13 +95,13 @@ export default function HistoryTable() {
   }, [history, order, orderBy]);
 
   const filteredHistory = useMemo(() => {
-    if (!filter) return sortedHistory;
+    if (!debouncedFilter) return sortedHistory;
     return sortedHistory.filter(entry =>
-      entry.original_filename.toLowerCase().includes(filter.toLowerCase()) ||
-      (entry.spreadsheet_url && entry.spreadsheet_url.toLowerCase().includes(filter.toLowerCase())) ||
-      (entry.error_message && entry.error_message.toLowerCase().includes(filter.toLowerCase()))
+      entry.original_filename.toLowerCase().includes(debouncedFilter.toLowerCase()) ||
+      (entry.spreadsheet_url && entry.spreadsheet_url.toLowerCase().includes(debouncedFilter.toLowerCase())) ||
+      (entry.error_message && entry.error_message.toLowerCase().includes(debouncedFilter.toLowerCase()))
     );
-  }, [sortedHistory, filter]);
+  }, [sortedHistory, debouncedFilter]);
 
   if (loading) {
     return (
