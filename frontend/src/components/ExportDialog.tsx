@@ -110,27 +110,46 @@ export default function ExportDialog({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>
+    <Dialog 
+      open={open} 
+      onClose={onClose} 
+      maxWidth="md" 
+      fullWidth
+      aria-labelledby="export-dialog-title"
+      aria-describedby="export-dialog-description"
+    >
+      <DialogTitle id="export-dialog-title">
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Icon icon={Download} color="primary" />
           <Typography variant="h6">Export to Google Sheets</Typography>
         </Box>
+        <Typography 
+          id="export-dialog-description" 
+          variant="body2" 
+          color="text.secondary" 
+          sx={{ mt: 1 }}
+        >
+          Configure your export settings and send your processed sentences to Google Sheets
+        </Typography>
       </DialogTitle>
-      <DialogContent>
+      <DialogContent sx={{ pt: 2 }}>
         {/* Basic Options */}
         <Box sx={{ mb: 3 }}>
           <FormControl component="fieldset" fullWidth>
-            <Typography variant="subtitle2" gutterBottom>
-              Export Mode
+            <Typography variant="subtitle2" gutterBottom fontWeight={600}>
+              Export Destination
             </Typography>
-            <RadioGroup value={mode} onChange={(e) => setMode(e.target.value as 'new' | 'append')}>
+            <RadioGroup 
+              value={mode} 
+              onChange={(e) => setMode(e.target.value as 'new' | 'append')}
+              aria-label="Export destination mode"
+            >
               <FormControlLabel
                 value="new"
                 control={<Radio />}
                 label={
                   <Box>
-                    <Typography variant="body2">Create new spreadsheet</Typography>
+                    <Typography variant="body2" fontWeight={500}>Create new spreadsheet</Typography>
                     <Typography variant="caption" color="text.secondary">
                       Creates a fresh Google Sheets file
                     </Typography>
@@ -142,7 +161,7 @@ export default function ExportDialog({
                 control={<Radio />}
                 label={
                   <Box>
-                    <Typography variant="body2">Append to existing spreadsheet</Typography>
+                    <Typography variant="body2" fontWeight={500}>Append to existing spreadsheet</Typography>
                     <Typography variant="caption" color="text.secondary">
                       Add to an existing sheet or create a new tab
                     </Typography>
@@ -161,10 +180,17 @@ export default function ExportDialog({
           sx={{ mb: 3 }}
           helperText="The name of the Google Sheets file"
           disabled={mode === 'append'}
+          required
+          error={!sheetName.trim() && mode === 'new'}
+          aria-label="Spreadsheet name"
+          inputProps={{
+            'aria-required': mode === 'new',
+            'aria-invalid': !sheetName.trim() && mode === 'new',
+          }}
         />
 
         {mode === 'append' && (
-          <Box sx={{ mb: 3, p: 2, bgcolor: 'action.hover', borderRadius: 2 }}>
+          <Box sx={{ mb: 3, p: 2, bgcolor: 'action.hover', borderRadius: 2, border: 1, borderColor: 'divider' }}>
             <Typography variant="body2" color="text.secondary" gutterBottom>
               <strong>Note:</strong> Appending to existing sheets is coming soon. This feature will allow you to add results to an existing spreadsheet.
             </Typography>
@@ -214,7 +240,17 @@ export default function ExportDialog({
           variant="text"
           onClick={() => setShowAdvanced(!showAdvanced)}
           endIcon={<Icon icon={ChevronDown} sx={{ transform: showAdvanced ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />}
-          sx={{ mb: 2 }}
+          sx={{ 
+            mb: 2,
+            justifyContent: 'space-between',
+            '&:focus-visible': {
+              outline: '2px solid',
+              outlineColor: 'primary.main',
+              outlineOffset: '2px',
+            },
+          }}
+          aria-expanded={showAdvanced}
+          aria-label="Toggle advanced options"
         >
           Advanced Options
         </Button>
@@ -322,25 +358,50 @@ export default function ExportDialog({
         )}
 
         {/* Summary */}
-        <Box sx={{ mt: 3, p: 2, bgcolor: 'primary.50', borderRadius: 2, border: 1, borderColor: 'primary.main' }}>
-          <Typography variant="body2" fontWeight={600} gutterBottom>
-            Export Summary
+        <Box sx={{ mt: 3, p: 2.5, bgcolor: 'primary.50', borderRadius: 2, border: 1, borderColor: 'primary.200' }}>
+          <Typography variant="body2" fontWeight={600} gutterBottom sx={{ color: 'primary.main' }}>
+            📊 Export Summary
           </Typography>
-          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 1.5 }}>
             <Chip label={mode === 'new' ? 'New Sheet' : 'Append'} size="small" color="primary" />
-            {selectedFolderName && <Chip label={selectedFolderName} size="small" variant="outlined" />}
-            {publicLink && <Chip label="Public Link" size="small" variant="outlined" />}
+            <Chip label={sheetName || 'Unnamed'} size="small" color="primary" variant="outlined" />
+            {selectedFolderName && <Chip label={`📁 ${selectedFolderName}`} size="small" variant="outlined" />}
+            {publicLink && <Chip label="🔗 Public Link" size="small" variant="outlined" />}
             {addCollaborators && collaboratorEmails && (
-              <Chip label={`${collaboratorEmails.split(',').length} Collaborators`} size="small" variant="outlined" />
+              <Chip label={`👥 ${collaboratorEmails.split(',').filter(e => e.trim()).length} Collaborators`} size="small" variant="outlined" />
             )}
           </Stack>
         </Box>
       </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} disabled={loading}>
+      <DialogActions sx={{ px: 3, py: 2, gap: 1 }}>
+        <Button 
+          onClick={onClose} 
+          disabled={loading}
+          variant="outlined"
+          sx={{
+            '&:focus-visible': {
+              outline: '2px solid',
+              outlineColor: 'primary.main',
+              outlineOffset: '2px',
+            },
+          }}
+        >
           Cancel
         </Button>
-        <Button onClick={handleExport} variant="contained" disabled={loading || !sheetName.trim()}>
+        <Button 
+          onClick={handleExport} 
+          variant="contained" 
+          disabled={loading || !sheetName.trim()}
+          sx={{
+            minWidth: 120,
+            '&:focus-visible': {
+              outline: '2px solid',
+              outlineColor: 'primary.dark',
+              outlineOffset: '2px',
+            },
+          }}
+          aria-label={loading ? 'Exporting to Google Sheets' : 'Export to Google Sheets'}
+        >
           {loading ? 'Exporting...' : 'Export'}
         </Button>
       </DialogActions>

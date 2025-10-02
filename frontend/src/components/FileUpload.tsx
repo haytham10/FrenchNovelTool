@@ -36,39 +36,89 @@ export default function FileUpload({ onFileUpload, disabled = false, variant = '
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          border: '2px dashed',
+          border: '3px dashed',
           borderColor: isDragActive ? 'primary.main' : 'divider',
-          borderRadius: 2,
-          bgcolor: isDragActive ? 'primary.50' : 'background.paper',
+          borderRadius: 3,
+          bgcolor: isDragActive ? 'rgba(59, 130, 246, 0.08)' : 'background.paper',
           cursor: disabled ? 'not-allowed' : 'pointer',
-          transition: 'all 0.3s ease',
-          '&:hover': {
-            borderColor: 'primary.main',
+          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          transform: isDragActive ? 'scale(1.02)' : 'scale(1)',
+          boxShadow: isDragActive ? '0 8px 24px rgba(59, 130, 246, 0.15)' : 'none',
+          '&:hover:not([disabled])': {
+            borderColor: 'primary.light',
             bgcolor: 'action.hover',
+            transform: 'scale(1.01)',
+          },
+          '&:focus-visible': {
+            outline: '3px solid',
+            outlineColor: 'primary.main',
+            outlineOffset: '2px',
           },
         }}
         role="button"
         aria-label="Upload PDF files by clicking or dragging"
-        tabIndex={0}
+        tabIndex={disabled ? -1 : 0}
+        onKeyDown={(e) => {
+          if (!disabled && (e.key === 'Enter' || e.key === ' ')) {
+            e.preventDefault();
+            const input = e.currentTarget.querySelector('input');
+            input?.click();
+          }
+        }}
       >
         <input {...getInputProps()} aria-label="PDF file input" />
-        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+        <Box sx={{ 
+          display: 'flex', 
+          flexDirection: 'column', 
+          alignItems: 'center', 
+          gap: 2,
+          transition: 'all 0.3s ease',
+          transform: isDragActive ? 'translateY(-4px)' : 'translateY(0)',
+          animation: isDragActive ? 'bounce 0.6s ease-in-out infinite' : 'none',
+        }}>
           <Box sx={{ 
             display: 'inline-flex', 
             p: 3, 
             borderRadius: 4, 
-            bgcolor: 'action.hover',
+            bgcolor: isDragActive ? 'primary.main' : 'action.hover',
             border: 2,
-            borderColor: 'divider',
+            borderColor: isDragActive ? 'primary.dark' : 'divider',
+            transition: 'all 0.3s ease',
+            transform: isDragActive ? 'scale(1.1)' : 'scale(1)',
+            animation: !isDragActive && !disabled ? 'pulse 2s ease-in-out infinite' : 'none',
           }}>
-            <Icon icon={Upload} sx={{ fontSize: 48 }} color="primary" />
+            <Icon 
+              icon={Upload} 
+              sx={{ 
+                fontSize: 48,
+                transition: 'all 0.3s ease',
+              }} 
+              color={isDragActive ? 'inherit' : 'primary'}
+              style={{ color: isDragActive ? '#fff' : undefined }}
+            />
           </Box>
-          <Typography variant="h5" sx={{ fontWeight: 600 }}>
+          <Typography 
+            variant="h5" 
+            sx={{ 
+              fontWeight: 600,
+              color: isDragActive ? 'primary.main' : 'text.primary',
+              transition: 'color 0.3s ease',
+            }}
+          >
             {isDragActive ? 'Drop files here' : 'Get started by uploading a PDF'}
           </Typography>
-          <Typography variant="body1" color="text.secondary">
+          <Typography 
+            variant="body1" 
+            color="text.secondary"
+            sx={{ textAlign: 'center', maxWidth: '400px' }}
+          >
             {isDragActive ? 'Release to upload' : 'Click here or drag and drop your French novel PDF'}
           </Typography>
+          {!isDragActive && (
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+              Supports multiple files • PDF format only
+            </Typography>
+          )}
         </Box>
       </Box>
     );

@@ -15,6 +15,8 @@ import Link from 'next/link';
 import { useAuth } from '@/components/AuthContext';
 import GoogleLoginButton from '@/components/GoogleLoginButton';
 import { useProcessingStore } from '@/stores/useProcessingStore';
+import Icon from '@/components/Icon';
+import { Download } from 'lucide-react';
 
 import type { ExportOptions } from '@/components/ExportDialog';
 
@@ -106,13 +108,32 @@ export default function Home() {
   return (
     <Box sx={{ minHeight: 'calc(100vh - 64px)', py: { xs: 4, md: 8 } }} className="hero-aura">
         <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 1 }}>
-          {/* Hero Section */}
+          {/* Hero Section - Enhanced */}
         <Box sx={{ textAlign: 'center', mb: 6 }}>
-          <Typography variant="h1" sx={{ mb: 2 }} className="gradient-text">
+          <Typography 
+            variant="h1" 
+            sx={{ 
+              mb: 2,
+              fontSize: { xs: '2.5rem', md: '3.5rem' },
+              fontWeight: 700,
+            }} 
+            className="gradient-text"
+          >
             Process French Novels with AI
           </Typography>
-          <Typography variant="h5" color="text.secondary" sx={{ mb: 4, maxWidth: '800px', mx: 'auto' }}>
-            Upload PDFs, normalize sentences with Gemini, and export to Google Sheets.
+          <Typography 
+            variant="h5" 
+            color="text.secondary" 
+            sx={{ 
+              mb: 4, 
+              maxWidth: '800px', 
+              mx: 'auto',
+              fontSize: { xs: '1.1rem', md: '1.3rem' },
+              lineHeight: 1.6,
+            }}
+          >
+            Upload PDFs, normalize sentences with Gemini AI, and export to Google Sheets.
+            Fast, intelligent, and easy to use.
           </Typography>
           <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap', maxWidth: '640px', mx: 'auto' }}>
             {user ? (
@@ -129,16 +150,28 @@ export default function Home() {
                 </Box>
               </Box>
             )}
-            <Button variant="outlined" size="large" href="#about" sx={{ minWidth: '150px' }}>
+            <Button 
+              variant="outlined" 
+              size="large" 
+              href="#about" 
+              sx={{ 
+                minWidth: '150px',
+                '&:focus-visible': {
+                  outline: '3px solid',
+                  outlineColor: 'primary.main',
+                  outlineOffset: '2px',
+                },
+              }}
+            >
               Learn more
             </Button>
           </Box>
         </Box>
 
-        {/* Processing Stepper - Subdued */}
-        <Box sx={{ mb: 4, opacity: 0.8 }}>
+        {/* Processing Stepper - Now sticky and subdued */}
+        {(loading || sentences.length > 0) && (
           <UploadStepper activeStep={loading ? 1 : sentences.length ? 3 : 0} />
-        </Box>
+        )}
 
         {/* Empty State with Drag-and-Drop */}
         {!loading && sentences.length === 0 && user && (
@@ -149,29 +182,98 @@ export default function Home() {
           </Box>
         )}
 
-        {/* Loading State */}
+        {/* Loading State with Enhanced Visual Feedback */}
         {loading && (
           <Box className="card-gradient" sx={{ mb: 4 }}>
             <Box className="inner" sx={{ p: { xs: 2, md: 4 } }}>
-              <Box display="flex" flexDirection="column" alignItems="center" py={6}>
-                <CircularProgress size={48} />
-                <Typography variant="h6" color="textSecondary" mt={3}>
+              <Box 
+                display="flex" 
+                flexDirection="column" 
+                alignItems="center" 
+                py={6}
+                sx={{
+                  minHeight: '300px',
+                  justifyContent: 'center',
+                }}
+              >
+                <Box
+                  sx={{
+                    position: 'relative',
+                    display: 'inline-flex',
+                    mb: 3,
+                    animation: 'fadeIn 0.4s ease-out',
+                  }}
+                >
+                  <CircularProgress 
+                    size={56} 
+                    thickness={4}
+                    sx={{
+                      color: 'primary.main',
+                    }}
+                  />
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      bottom: 0,
+                      right: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Typography
+                      variant="caption"
+                      component="div"
+                      color="primary"
+                      fontWeight={600}
+                    >
+                      {uploadProgress > 0 && uploadProgress < 100 ? `${uploadProgress}%` : ''}
+                    </Typography>
+                  </Box>
+                </Box>
+                <Typography 
+                  variant="h6" 
+                  color="textPrimary" 
+                  sx={{ 
+                    fontWeight: 500,
+                    mb: 1,
+                    animation: 'fadeIn 0.5s ease-out',
+                  }}
+                >
                   {loadingMessage}
                 </Typography>
+                <Typography 
+                  variant="body2" 
+                  color="text.secondary"
+                  sx={{
+                    animation: 'fadeIn 0.6s ease-out',
+                  }}
+                >
+                  Please wait while we process your file...
+                </Typography>
                 {uploadProgress > 0 && uploadProgress < 100 && (
-                  <Box sx={{ width: '100%', maxWidth: 400, mt: 2 }}>
+                  <Box 
+                    sx={{ 
+                      width: '100%', 
+                      maxWidth: 450, 
+                      mt: 3,
+                      animation: 'fadeIn 0.7s ease-out',
+                    }}
+                  >
                     <LinearProgress 
                       variant="determinate" 
                       value={uploadProgress}
-                      sx={{ height: 8, borderRadius: 4 }}
+                      sx={{ 
+                        height: 8, 
+                        borderRadius: 4,
+                        bgcolor: 'action.hover',
+                        '& .MuiLinearProgress-bar': {
+                          borderRadius: 4,
+                        },
+                      }}
                     />
-                    <Typography 
-                      variant="body2" 
-                      color="textSecondary" 
-                      sx={{ textAlign: 'center', mt: 1 }}
-                    >
-                      {uploadProgress}% uploaded
-                    </Typography>
                   </Box>
                 )}
               </Box>
@@ -207,23 +309,65 @@ export default function Home() {
           </Box>
         )}
         {!loading && user && sentences.length > 0 && (
-          <Box className="card-gradient">
+          <Box 
+            className="card-gradient"
+            sx={{
+              animation: 'fadeIn 0.6s ease-out',
+            }}
+          >
             <Box className="inner" sx={{ p: { xs: 2, md: 4 } }}>
-              <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
-                <Typography variant="h2" component="h2" color="textPrimary">
-                  Results
-                </Typography>
+              <Box 
+                sx={{
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center', 
+                  mb: 3,
+                  flexWrap: 'wrap',
+                  gap: 2,
+                }}
+              >
+                <Box>
+                  <Typography 
+                    variant="h2" 
+                    component="h2" 
+                    sx={{ 
+                      fontSize: { xs: '1.75rem', md: '2.125rem' },
+                      fontWeight: 600,
+                      mb: 0.5,
+                    }}
+                  >
+                    Results
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Review and export your processed sentences
+                  </Typography>
+                </Box>
                 <Button 
                   onClick={() => setExportDialogOpen(true)}
                   variant="contained"
                   color="primary"
                   disabled={loading}
                   size="large"
+                  startIcon={<Icon icon={Download} />}
+                  sx={{
+                    minWidth: 200,
+                    fontWeight: 600,
+                    boxShadow: 2,
+                    '&:hover': {
+                      boxShadow: 4,
+                    },
+                    '&:focus-visible': {
+                      outline: '3px solid',
+                      outlineColor: 'primary.dark',
+                      outlineOffset: '2px',
+                    },
+                  }}
+                  aria-label="Export results to Google Sheets"
                 >
-                  Export to Google Sheets
+                  Export to Sheets
                 </Button>
               </Box>
-              <ResultsTable sentences={sentences} />
+              <ResultsTable sentences={sentences} advancedOptions={advancedOptions} />
             </Box>
           </Box>
         )}
