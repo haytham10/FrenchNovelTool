@@ -24,7 +24,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ErrorBoundary>
           <Providers>
             <Header />
-            {children}
+            <main id="main-content" role="main">
+              {children}
+            </main>
           </Providers>
         </ErrorBoundary>
       </body>
