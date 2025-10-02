@@ -18,6 +18,8 @@ ENV/
 *.sqlite3
 app.db
 *.db-journal
+*.sqlite-shm
+*.sqlite-wal
 
 # Flask
 instance/
@@ -28,10 +30,22 @@ instance/
 .coverage
 htmlcov/
 .tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+
+# Type checking / linting caches
+.mypy_cache/
+.ruff_cache/
+.pytype/
 
 # Environment
 .env
 .env.local
+.env.*.local
+.envrc
+.python-version
 
 # Google credentials
 client_secret.json
@@ -45,6 +59,7 @@ logs/
 # Temporary files
 *.tmp
 temp/
+.cache/
 
 # Deprecated
 user_settings.json

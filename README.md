@@ -214,14 +214,21 @@ See [API Documentation](backend/API_DOCUMENTATION.md) for detailed information.
 
 ## 🛠️ Google Configuration
 
-1. Create a Google Cloud project
-2. Enable Gemini API, Google Sheets API, and Google Drive API
-3. Create OAuth 2.0 credentials:
-   - Type: **Desktop application**
-   - Download as `client_secret.json`
-   - Place in `backend/` directory
-4. First run will prompt for authorization
-5. Token is saved to `token.json` for subsequent requests
+1. Create a Google Cloud project (or reuse an existing one).
+2. Enable the **Gemini API**, **Google Sheets API**, and **Google Drive API** for the project.
+3. Configure the OAuth consent screen and add the following scopes:
+   - `https://www.googleapis.com/auth/userinfo.email`
+   - `https://www.googleapis.com/auth/userinfo.profile`
+   - `https://www.googleapis.com/auth/spreadsheets`
+   - `https://www.googleapis.com/auth/drive.file`
+4. Create OAuth 2.0 credentials of type **Web application**:
+   - Authorized JavaScript origins: add `http://localhost:3000` (and your production domain when deploying).
+   - Authorized redirect URIs: add `http://localhost:3000` (and production equivalents). The frontend uses the Google Identity Services popup with the `postmessage` flow.
+   - Copy the generated **Client ID** and **Client Secret**.
+5. Update environment files:
+   - `backend/.env`: set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` to the values obtained above.
+   - `frontend/.env.local`: set `NEXT_PUBLIC_GOOGLE_CLIENT_ID` to the same Client ID.
+6. Restart the backend and frontend. The first login will prompt each user to grant Sheets/Drive access; tokens are stored per user in the database for subsequent requests.
 
 ## 🤝 Contributing
 
@@ -234,7 +241,7 @@ Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for:
 
 ## 📝 License
 
-[Your License Here]
+MIT
 
 ## 🙏 Acknowledgments
 

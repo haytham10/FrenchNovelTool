@@ -38,6 +38,8 @@ app.db
 # Database & Migrations
 migrations/versions/*.pyc
 *.db-journal
+*.sqlite-shm
+*.sqlite-wal
 *.backup
 *.backup.*
 app.db.backup*
@@ -53,6 +55,12 @@ coverage.xml
 *.cover
 .hypothesis/
 
+# Type checking / linting caches
+.mypy_cache/
+.ruff_cache/
+.pytype/
+.venv.bak/
+
 # Environment Variables
 .env
 .env.local
@@ -60,6 +68,8 @@ coverage.xml
 .env.production
 .env.development
 .env.test
+.envrc
+.python-version
 
 # Google Credentials
 client_secret.json
@@ -108,6 +118,9 @@ node_modules/
 npm-debug.log*
 jspm_packages/
 package-lock.json.bak
+.eslintcache
+.stylelintcache
+.bundle
 
 # Next.js
 .next/
@@ -143,6 +156,8 @@ tmp/
 .cleanup_archive/
 *_ARCHIVE/
 CLEANUP_*.md
+.cache/
+.gradle/
 
 # Coverage
 coverage/
