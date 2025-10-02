@@ -64,3 +64,4 @@ temp/
 # Deprecated
 user_settings.json
 
+.vercel
