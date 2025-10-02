@@ -1,12 +1,22 @@
 "use client";
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useAuth } from './AuthContext';
-import { Box, CircularProgress, Paper, Typography } from '@mui/material';
-import GoogleLoginButton from './GoogleLoginButton';
+import { useRouter, usePathname } from 'next/navigation';
+import { Box, CircularProgress } from '@mui/material';
 
 export default function RouteGuard({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+  
+  useEffect(() => {
+    if (!isLoading && !user) {
+      // Redirect to login with current path as redirect parameter
+      const redirectUrl = `/login?redirect=${encodeURIComponent(pathname)}`;
+      router.push(redirectUrl);
+    }
+  }, [user, isLoading, router, pathname]);
   
   if (isLoading) {
     return (
@@ -18,12 +28,10 @@ export default function RouteGuard({ children }: { children: React.ReactNode }) 
   
   if (user) return <>{children}</>;
   
+  // Show loading while redirecting
   return (
     <Box sx={{ display: 'grid', placeItems: 'center', minHeight: '60vh' }}>
-      <Paper sx={{ p: 4, textAlign: 'center' }}>
-        <Typography variant="h6" sx={{ mb: 2 }}>Sign in to continue</Typography>
-        <GoogleLoginButton />
-      </Paper>
+      <CircularProgress />
     </Box>
   );
 }

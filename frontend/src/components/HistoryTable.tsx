@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TableSortLabel, TextField, Box, CircularProgress, Typography } from '@mui/material';
+import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TableSortLabel, TextField, Box, CircularProgress, Typography, Tooltip } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { useSnackbar } from 'notistack';
 import Link from 'next/link';
@@ -10,7 +10,8 @@ import type { HistoryEntry } from '@/lib/types';
 import { getHistoryStatus } from '@/lib/types';
 import { useDebounce } from '@/lib/hooks';
 import Icon from './Icon';
-import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import IconButton from './IconButton';
+import { CheckCircle, XCircle, Loader2, RefreshCw, Copy, Eye } from 'lucide-react';
 
 type Order = 'asc' | 'desc';
 
@@ -180,6 +181,7 @@ export default function HistoryTable() {
                   Error
                 </TableSortLabel>
               </StyledTableCell>
+              <StyledTableCell>Actions</StyledTableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -213,8 +215,62 @@ export default function HistoryTable() {
                       'N/A'
                     )}
                   </StyledTableCell>
-                  <StyledTableCell sx={{ color: 'error.main' }}>
-                    {entry.error_message || 'N/A'}
+                  <StyledTableCell>
+                    {entry.error_message ? (
+                      <Box>
+                        <Typography variant="body2" color="error.main" sx={{ fontWeight: 500 }}>
+                          {entry.error_message}
+                        </Typography>
+                        {entry.error_code && (
+                          <Typography variant="caption" color="text.secondary">
+                            Code: {entry.error_code}
+                          </Typography>
+                        )}
+                        {entry.failed_step && (
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            Failed at: {entry.failed_step}
+                          </Typography>
+                        )}
+                      </Box>
+                    ) : (
+                      'N/A'
+                    )}
+                  </StyledTableCell>
+                  <StyledTableCell>
+                    <Box sx={{ display: 'flex', gap: 0.5 }}>
+                      {status === 'failed' && entry.failed_step && (
+                        <Tooltip title="Retry from failed step">
+                          <IconButton 
+                            size="small" 
+                            color="primary"
+                            onClick={() => enqueueSnackbar('Retry functionality coming soon', { variant: 'info' })}
+                            aria-label="Retry processing"
+                          >
+                            <Icon icon={RefreshCw} fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                      {entry.settings && (
+                        <Tooltip title="Duplicate with same settings">
+                          <IconButton 
+                            size="small"
+                            onClick={() => enqueueSnackbar('Duplicate functionality coming soon', { variant: 'info' })}
+                            aria-label="Duplicate run"
+                          >
+                            <Icon icon={Copy} fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                      <Tooltip title="View details">
+                        <IconButton 
+                          size="small"
+                          onClick={() => enqueueSnackbar(`Details for ${entry.original_filename}`, { variant: 'info' })}
+                          aria-label="View details"
+                        >
+                          <Icon icon={Eye} fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
                   </StyledTableCell>
                 </StyledTableRow>
               );
