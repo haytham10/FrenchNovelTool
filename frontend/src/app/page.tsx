@@ -3,24 +3,22 @@
 import React, { useState } from 'react';
 import FileUpload from '@/components/FileUpload';
 import ResultsTable from '@/components/ResultsTable';
-import DriveFolderPicker from '@/components/DriveFolderPicker';
 import NormalizeControls from '@/components/NormalizeControls';
+import ExportDialog from '@/components/ExportDialog';
 import { processPdf, exportToSheet, getApiErrorMessage } from '@/lib/api';
-import { CircularProgress, Button, Typography, Box, TextField, Container } from '@mui/material';
+import { CircularProgress, Button, Typography, Box, Container } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import UploadStepper from '@/components/UploadStepper';
 import ResultsSkeleton from '@/components/ResultsSkeleton';
 import EmptyState from '@/components/EmptyState';
 
 import type { AdvancedNormalizationOptions } from '@/components/NormalizeControls';
+import type { ExportOptions } from '@/components/ExportDialog';
 
 export default function Home() {
   const [sentences, setSentences] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState<string>('');
-  const [sheetName, setSheetName] = useState<string>('French Novel Sentences');
-  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
-  const [selectedFolderName, setSelectedFolderName] = useState<string | null>(null);
   const [sentenceLength, setSentenceLength] = useState<number>(12);
   const [advancedOptions, setAdvancedOptions] = useState<AdvancedNormalizationOptions>({
     geminiModel: 'balanced',
@@ -29,6 +27,7 @@ export default function Home() {
     fixHyphenations: true,
     minSentenceLength: 3,
   });
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const { enqueueSnackbar } = useSnackbar();
 
   const handleFileUpload = async (files: File[]) => {
@@ -57,13 +56,7 @@ export default function Home() {
     }
   };
 
-  const handleFolderSelect = (folderId: string, folderName: string) => {
-    setSelectedFolderId(folderId);
-    setSelectedFolderName(folderName);
-    enqueueSnackbar(`Selected folder: ${folderName}`, { variant: 'info' });
-  };
-
-  const handleExport = async () => {
+  const handleExport = async (options: ExportOptions) => {
     if (sentences.length === 0) {
       enqueueSnackbar('Please process PDF file(s) first.', { variant: 'warning' });
       return;
@@ -75,9 +68,10 @@ export default function Home() {
     try {
       const spreadsheetUrl = await exportToSheet({
         sentences,
-        sheetName,
-        folderId: selectedFolderId,
+        sheetName: options.sheetName,
+        folderId: options.folderId,
       });
+      setExportDialogOpen(false);
       window.open(spreadsheetUrl, '_blank');
       enqueueSnackbar('Exported to Google Sheets successfully!', { variant: 'success' });
     } catch (error) {
@@ -170,35 +164,33 @@ export default function Home() {
         {!loading && sentences.length > 0 && (
           <Box className="card-gradient">
             <Box className="inner" sx={{ p: { xs: 2, md: 4 } }}>
-            <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
-              <Typography variant="h2" component="h2" color="textPrimary">
-                Results
-              </Typography>
-              <Box>
-                <TextField
-                  label="Spreadsheet Name"
-                  variant="outlined"
-                  value={sheetName}
-                  onChange={(e) => setSheetName(e.target.value)}
-                  fullWidth
-                  sx={{ mb: 2 }}
-                />
-                <DriveFolderPicker onFolderSelect={handleFolderSelect} selectedFolderName={selectedFolderName} />
+              <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
+                <Typography variant="h2" component="h2" color="textPrimary">
+                  Results
+                </Typography>
                 <Button 
-                  onClick={handleExport}
+                  onClick={() => setExportDialogOpen(true)}
                   variant="contained"
                   color="primary"
                   disabled={loading}
-                  sx={{ mt: 2, width: '100%' }}
+                  size="large"
                 >
                   Export to Google Sheets
                 </Button>
               </Box>
-            </Box>
-            <ResultsTable sentences={sentences} />
+              <ResultsTable sentences={sentences} />
             </Box>
           </Box>
         )}
+
+        {/* Export Dialog */}
+        <ExportDialog
+          open={exportDialogOpen}
+          onClose={() => setExportDialogOpen(false)}
+          onExport={handleExport}
+          loading={loading}
+          defaultSheetName="French Novel Sentences"
+        />
       </Container>
     </Box>
   );
