@@ -5,15 +5,17 @@ import { AppBar, Toolbar, Typography, Box, Button, Container, IconButton as MIco
 import Link from 'next/link';
 import ThemeToggle from './ThemeToggle';
 import Icon from './Icon';
-import { BookOpenText, Search } from 'lucide-react';
+import { BookOpenText, Search, HelpCircle } from 'lucide-react';
 import CommandPalette from './CommandPalette';
 import GlobalSearch from './GlobalSearch';
 import UserMenu from './UserMenu';
 import GoogleLoginButton from './GoogleLoginButton';
+import HelpModal from './HelpModal';
 import { useAuth } from './AuthContext';
 
 export default function Header() {
   const [searchOpen, setSearchOpen] = React.useState(false);
+  const [helpOpen, setHelpOpen] = React.useState(false);
   const { user } = useAuth();
   return (
     <AppBar position="sticky" color="transparent" elevation={0} sx={{ backdropFilter: 'blur(8px)' }}>
@@ -26,6 +28,9 @@ export default function Header() {
             </Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <MIconButton color="inherit" onClick={() => setHelpOpen(true)} aria-label="Help">
+              <Icon icon={HelpCircle} fontSize="small" />
+            </MIconButton>
             {user && (
               <>
                 <MIconButton color="inherit" onClick={() => setSearchOpen(true)} aria-label="Search">
@@ -42,6 +47,7 @@ export default function Header() {
       </Container>
       <CommandPalette />
       <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
+      <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
     </AppBar>
   );
 }
