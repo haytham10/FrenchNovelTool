@@ -1,7 +1,6 @@
 import pytest
 import os
 import sys
-import json
 from unittest.mock import MagicMock, patch
 from werkzeug.datastructures import FileStorage
 from io import BytesIO
@@ -38,23 +37,20 @@ def test_pdf_service_save_and_delete_temp_file(mock_pdf_file):
 
 
 @patch('app.services.gemini_service.genai.Client')
-def test_gemini_service_basic_prompt(mock_client, app_context):
-    """Test that GeminiService generates a simple basic prompt"""
+def test_gemini_service_prompt_includes_phase1_sections(mock_client, app_context):
+    """Ensure the Gemini prompt contains the advanced literary guidance."""
     gemini_service = GeminiService(sentence_length_limit=8)
     prompt = gemini_service.build_prompt()
-    
-    # Verify the prompt is simple and minimal
-    assert "Extract all sentences" in prompt
-    assert "8 words" in prompt
-    assert "JSON object" in prompt
+
+    assert "extract and process every single sentence" in prompt.lower()
+    assert f"{gemini_service.sentence_length_limit} words" in prompt
+    assert "**Rewriting Rules:**" in prompt
+    assert "**Context-Awareness:**" in prompt
+    assert "**Dialogue Handling:**" in prompt
+    assert "**Style and Tone Preservation:**" in prompt
+    assert "**Hyphenation & Formatting:**" in prompt
+    assert "merge it with the previous or next sentence" in prompt
     assert '"sentences"' in prompt
-    
-    # Verify advanced features are NOT in the prompt
-    assert "Rewriting Rules" not in prompt
-    assert "Context-Awareness" not in prompt
-    assert "Dialogue Handling" not in prompt
-    assert "Style and Tone Preservation" not in prompt
-    assert "Hyphenation" not in prompt
 
 
 @patch('app.services.gemini_service.genai.Client')
@@ -63,11 +59,11 @@ def test_gemini_service_initialization_basic(mock_client, app_context):
     service = GeminiService(sentence_length_limit=10)
     
     assert service.sentence_length_limit == 10
-    # Verify advanced attributes don't exist
-    assert not hasattr(service, 'ignore_dialogue')
-    assert not hasattr(service, 'preserve_formatting')
-    assert not hasattr(service, 'fix_hyphenation')
-    assert not hasattr(service, 'min_sentence_length')
+    assert service.model_name == GeminiService.MODEL_PREFERENCE_MAP['balanced']
+    assert service.ignore_dialogue is False
+    assert service.preserve_formatting is True
+    assert service.fix_hyphenation is True
+    assert service.min_sentence_length == 2
 
 
 # NOTE: This test is disabled as it uses the old API that was replaced
@@ -101,24 +97,38 @@ def _disabled_test_gemini_service_upload_delete_and_generate_content(mock_genera
     gemini_service.delete_file(uploaded_file.name)
     mock_delete_file.assert_called_once_with(uploaded_file.name)
 
-@pytest.fixture
-def mock_settings_file(tmp_path):
-    settings_path = tmp_path / "user_settings.json"
-    with open(settings_path, 'w') as f:
-        json.dump({'sentence_length_limit': 10}, f)
-    return settings_path
+@patch('app.services.user_settings_service.UserSettings')
+@patch('app.services.user_settings_service.db')
+def test_user_settings_service(mock_db, mock_user_settings, app_context):
+    defaults = {
+        'sentence_length_limit': 8,
+        'gemini_model': 'balanced',
+        'ignore_dialogue': False,
+        'preserve_formatting': True,
+        'fix_hyphenation': True,
+        'min_sentence_length': 2,
+    }
 
-def test_user_settings_service(app_context, mock_settings_file):
-    # Create the service and override its settings_file path
-    settings_service = UserSettingsService()
-    settings_service.settings_file = str(mock_settings_file)
+    existing_settings = MagicMock()
+    existing_settings.to_dict.return_value = defaults.copy()
+    existing_settings.sentence_length_limit = defaults['sentence_length_limit']
+    existing_settings.gemini_model = defaults['gemini_model']
+    existing_settings.ignore_dialogue = defaults['ignore_dialogue']
+    existing_settings.preserve_formatting = defaults['preserve_formatting']
+    existing_settings.fix_hyphenation = defaults['fix_hyphenation']
+    existing_settings.min_sentence_length = defaults['min_sentence_length']
 
-    # Test get_settings
-    settings = settings_service.get_settings()
-    assert settings == {'sentence_length_limit': 10}
+    mock_query = MagicMock()
+    mock_query.filter_by.return_value.first.return_value = existing_settings
+    mock_user_settings.query = mock_query
 
-    # Test save_settings
-    new_settings = {'sentence_length_limit': 15}
-    settings_service.save_settings(new_settings)
-    updated_settings = settings_service.get_settings()
-    assert updated_settings == {'sentence_length_limit': 15}
+    service = UserSettingsService()
+
+    settings = service.get_user_settings(user_id=1)
+    assert settings == defaults
+
+    service.save_user_settings(1, {'sentence_length_limit': 12, 'ignore_dialogue': True})
+
+    assert existing_settings.sentence_length_limit == 12
+    assert existing_settings.ignore_dialogue is True
+    mock_db.session.commit.assert_called()

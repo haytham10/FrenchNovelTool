@@ -84,12 +84,17 @@ class UserSettings(db.Model):
     ignore_dialogue = db.Column(db.Boolean, default=False)
     preserve_formatting = db.Column(db.Boolean, default=True)
     fix_hyphenation = db.Column(db.Boolean, default=True)
-    min_sentence_length = db.Column(db.Integer, default=3)
+    min_sentence_length = db.Column(db.Integer, default=2)
     
     def __repr__(self):
         return f'<UserSettings user_id={self.user_id} sentence_length_limit={self.sentence_length_limit}>'
     
     def to_dict(self):
         return {
-            'sentence_length_limit': self.sentence_length_limit
+            'sentence_length_limit': self.sentence_length_limit,
+            'gemini_model': self.gemini_model,
+            'ignore_dialogue': self.ignore_dialogue,
+            'preserve_formatting': self.preserve_formatting,
+            'fix_hyphenation': self.fix_hyphenation,
+            'min_sentence_length': self.min_sentence_length
         }

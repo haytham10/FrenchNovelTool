@@ -62,20 +62,69 @@ def process_pdf():
     try:
         temp_file_path = pdf_service.save_to_temp()
 
-        # Get user-specific settings - only use sentence_length_limit
+        # Get user-specific settings and merge with any overrides from the request
         settings = user_settings_service.get_user_settings(user_id)
-        
-        # Override with request parameters if provided
+
         form_data = request.form
-        sentence_length_limit = int(form_data.get('sentence_length_limit', settings.get('sentence_length_limit', 8)))
+
+        def _coerce_bool(value, default):
+            if value is None:
+                return default
+            if isinstance(value, bool):
+                return value
+            return str(value).strip().lower() in {'1', 'true', 'yes', 'on'}
+
+        def _coerce_int(value, default):
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return default
+
+        sentence_length_limit = _coerce_int(
+            form_data.get('sentence_length_limit'),
+            settings.get('sentence_length_limit', 8)
+        )
+        gemini_model = (form_data.get('gemini_model') or settings.get('gemini_model', 'balanced')).lower()
+        if gemini_model not in {'balanced', 'quality', 'speed'}:
+            gemini_model = 'balanced'
+        ignore_dialogue = _coerce_bool(
+            form_data.get('ignore_dialogue'),
+            settings.get('ignore_dialogue', False)
+        )
+        preserve_formatting = _coerce_bool(
+            form_data.get('preserve_formatting'),
+            settings.get('preserve_formatting', True)
+        )
+        fix_hyphenation = _coerce_bool(
+            form_data.get('fix_hyphenation'),
+            settings.get('fix_hyphenation', True)
+        )
+        min_sentence_length = max(
+            1,
+            _coerce_int(
+                form_data.get('min_sentence_length'),
+                settings.get('min_sentence_length', 2)
+            )
+        )
+        min_sentence_length = min(min_sentence_length, sentence_length_limit)
 
         # Store processing settings for history
         processing_settings = {
-            'sentence_length_limit': sentence_length_limit
+            'sentence_length_limit': sentence_length_limit,
+            'gemini_model': gemini_model,
+            'ignore_dialogue': ignore_dialogue,
+            'preserve_formatting': preserve_formatting,
+            'fix_hyphenation': fix_hyphenation,
+            'min_sentence_length': min_sentence_length,
         }
 
         gemini_service = GeminiService(
-            sentence_length_limit=sentence_length_limit
+            sentence_length_limit=sentence_length_limit,
+            model_preference=gemini_model,
+            ignore_dialogue=ignore_dialogue,
+            preserve_formatting=preserve_formatting,
+            fix_hyphenation=fix_hyphenation,
+            min_sentence_length=min_sentence_length,
         )
 
         # Use the built-in prompt builder

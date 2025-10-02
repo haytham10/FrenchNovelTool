@@ -1,219 +1,317 @@
 import json
-from typing import List
 import pathlib
+import re
+from typing import List, Optional
 
+from flask import current_app
 from google import genai
 from google.genai import types
-from flask import current_app
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 
 class GeminiService:
-    
-    def __init__(self, sentence_length_limit=8):
+    """Service wrapper around Gemini PDF processing with advanced post-processing."""
+
+    MODEL_PREFERENCE_MAP = {
+        'balanced': 'gemini-2.5-flash',
+        'quality': 'gemini-2.5-pro',
+        'speed': 'gemini-2.5-flash-lite',
+    }
+
+    DIALOGUE_BOUNDARIES = ('"', "'", '«', '»', '“', '”')
+
+    def __init__(
+        self,
+        sentence_length_limit: int = 8,
+        *,
+        model_preference: str = 'balanced',
+        ignore_dialogue: bool = False,
+        preserve_formatting: bool = True,
+        fix_hyphenation: bool = True,
+        min_sentence_length: int = 2,
+    ) -> None:
         self.client = genai.Client(api_key=current_app.config['GEMINI_API_KEY'])
-        self.model_name = current_app.config['GEMINI_MODEL']
+        self.model_preference = model_preference
+        self.model_name = self.MODEL_PREFERENCE_MAP.get(
+            model_preference,
+            current_app.config['GEMINI_MODEL']
+        )
         self.sentence_length_limit = sentence_length_limit
+        self.ignore_dialogue = ignore_dialogue
+        self.preserve_formatting = preserve_formatting
+        self.fix_hyphenation = fix_hyphenation
+        self.min_sentence_length = min_sentence_length
         self.max_retries = current_app.config['GEMINI_MAX_RETRIES']
         self.retry_delay = current_app.config['GEMINI_RETRY_DELAY']
 
-    def build_prompt(self, base_prompt=None) -> str:
-        """Build simple prompt for basic sentence extraction and splitting"""
+    def build_prompt(self, base_prompt: Optional[str] = None) -> str:
+        """Build the advanced Gemini prompt for French literary processing."""
         if base_prompt:
             return base_prompt
-        
-        # Simple, minimal prompt - just extract sentences and split if too long
-        prompt = (
-            f"Extract all sentences from this document. "
-            f"If a sentence is {self.sentence_length_limit} words or less, keep it as is. "
-            f"If a sentence is longer than {self.sentence_length_limit} words, split it into shorter sentences. "
-            f"Return the result as a JSON object with a 'sentences' key containing an array of strings. "
-            f'Example: {{"sentences": ["First sentence.", "Second sentence."]}}'
+
+        dialogue_rule = (
+            "If a sentence is enclosed in quotation marks (« », \" \", or ' '), "
+            "keep it as-is without splitting regardless of length." if self.ignore_dialogue
+            else "Do not split it unless absolutely necessary. If a split is unavoidable, "
+                 "preserve the cadence and meaning of the dialogue."
         )
-        
-        return prompt
+
+        min_length_rule = (
+            f"If any rewritten sentence becomes shorter than {self.min_sentence_length} words, "
+            "merge it with the previous or next sentence so that the narrative remains natural."
+        )
+
+        formatting_rules: List[str] = []
+        if self.preserve_formatting:
+            formatting_rules.append("Preserve the original quotation marks, italics markers, and ellipses.")
+            formatting_rules.append("Keep the literary formatting intact unless it conflicts with readability.")
+        if self.fix_hyphenation:
+            formatting_rules.append(
+                "If words are split with hyphens because of line breaks (e.g., 'ex- ample'), rejoin them into a single word."
+            )
+
+        sections = [
+            "You are a literary assistant specialized in processing French novels. Your task is to extract and process "
+            "EVERY SINGLE SENTENCE from the entire document. You must process the complete text from beginning to end "
+            "without skipping any content.",
+            f"If a sentence is {self.sentence_length_limit} words long or less, add it to the list as is. If a sentence is longer than "
+            f"{self.sentence_length_limit} words, rewrite it into shorter sentences, each with {self.sentence_length_limit} words or fewer.",
+            "",
+            "**Rewriting Rules:**",
+            "- Split long sentences at natural grammatical breaks (conjunctions like 'et', 'mais', 'donc', 'car', 'or'), subordinate clauses, or logical shifts in thought.",
+            "- Maintain semantic integrity; each new sentence must stand alone grammatically and semantically.",
+            "",
+            "**Context-Awareness:**",
+            "- Ensure the rewritten sentences maintain the logical flow and connection to the surrounding text.",
+            "- The final output must read as a continuous, coherent narrative.",
+            "",
+            "**Dialogue Handling:**",
+            f"- {dialogue_rule}",
+            "",
+            "**Style and Tone Preservation:**",
+            "- Maintain the literary tone and voice of the original French text.",
+            "- Preserve the exact original meaning and vocabulary where possible.",
+            "",
+            "**Sentence Length Guardrails:**",
+            f"- {min_length_rule}",
+            "- Do not create sentences with excessive repetition or filler words.",
+            "",
+            "**Hyphenation & Formatting:**",
+        ]
+
+        if formatting_rules:
+            sections.extend(f"- {rule}" for rule in formatting_rules)
+        else:
+            sections.append("- Maintain consistent spacing and punctuation.")
+
+        sections.extend([
+            "",
+            "**Output Format:**",
+            "Present the final output as a JSON object with a single key 'sentences' containing an array of strings.",
+            "For example: {\"sentences\": [\"Voici la première phrase.\", \"Et voici la deuxième.\"]}"
+        ])
+
+        return "\n".join(sections)
 
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=10),
         retry=retry_if_exception_type((ConnectionError, TimeoutError))
     )
-    def generate_content_from_pdf(self, prompt, pdf_path) -> List[str]:
-        """Generate content from PDF using inline data with retry logic"""
-        # Read PDF file as bytes
+    def generate_content_from_pdf(self, prompt: str, pdf_path: str) -> List[str]:
+        """Generate content from a PDF using inline data and post-process sentences."""
         filepath = pathlib.Path(pdf_path)
         pdf_bytes = filepath.read_bytes()
-        
-        # Get some metadata about the PDF for debugging
+
         pdf_size_kb = len(pdf_bytes) / 1024
-        current_app.logger.info(f"Processing PDF: {filepath.name}, Size: {pdf_size_kb:.2f}KB")
-        
+        current_app.logger.info("Processing PDF: %s, Size: %.2fKB", filepath.name, pdf_size_kb)
+
         try:
-            # Try to extract some basic PDF info for debugging purposes
             import PyPDF2
-            with open(pdf_path, 'rb') as f:
+            with open(pdf_path, 'rb') as file_handle:
                 try:
-                    pdf_reader = PyPDF2.PdfReader(f)
-                    num_pages = len(pdf_reader.pages)
-                    current_app.logger.info(f"PDF info: {filepath.name}, Pages: {num_pages}")
-                except Exception as e:
-                    current_app.logger.warning(f"Couldn't extract PDF metadata: {str(e)}")
-        except ImportError:
+                    reader = PyPDF2.PdfReader(file_handle)
+                    current_app.logger.info("PDF info: %s, Pages: %d", filepath.name, len(reader.pages))
+                except Exception as exc:  # pragma: no cover - diagnostic logging
+                    current_app.logger.warning("Couldn't extract PDF metadata: %s", exc)
+        except ImportError:  # pragma: no cover - optional dependency
             current_app.logger.info("PyPDF2 not available for metadata extraction")
-            
-        # Create PDF part from bytes
+
         pdf_part = types.Part.from_bytes(
             data=pdf_bytes,
             mime_type='application/pdf',
         )
-        
-        # Generate content with PDF and prompt
+
         response = self.client.models.generate_content(
             model=self.model_name,
             contents=[pdf_part, prompt],
             config=types.GenerateContentConfig(
                 safety_settings=[
-                    types.SafetySetting(
-                        category='HARM_CATEGORY_HARASSMENT',
-                        threshold='BLOCK_NONE'
-                    ),
-                    types.SafetySetting(
-                        category='HARM_CATEGORY_HATE_SPEECH',
-                        threshold='BLOCK_NONE'
-                    ),
-                    types.SafetySetting(
-                        category='HARM_CATEGORY_SEXUALLY_EXPLICIT',
-                        threshold='BLOCK_NONE'
-                    ),
-                    types.SafetySetting(
-                        category='HARM_CATEGORY_DANGEROUS_CONTENT',
-                        threshold='BLOCK_NONE'
-                    ),
+                    types.SafetySetting(category='HARM_CATEGORY_HARASSMENT', threshold='BLOCK_NONE'),
+                    types.SafetySetting(category='HARM_CATEGORY_HATE_SPEECH', threshold='BLOCK_NONE'),
+                    types.SafetySetting(category='HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold='BLOCK_NONE'),
+                    types.SafetySetting(category='HARM_CATEGORY_DANGEROUS_CONTENT', threshold='BLOCK_NONE'),
                 ]
-            )
+            ),
         )
 
         response_text = response.text if hasattr(response, 'text') else ''
-        
-        # Log the raw response for debugging
         current_app.logger.debug('Raw Gemini response: %s', response_text[:1000])
-        
-        # First level of cleaning - remove markdown code blocks
+
         cleaned_response = response_text.strip().replace('```json', '').replace('```', '')
-        
+
         if not cleaned_response:
             current_app.logger.error('Received empty response from Gemini API.')
             raise ValueError('Gemini returned an empty response.')
-        
-        # Try to find a valid JSON object in the response
-        # Look for the pattern {"sentences": [...]
+
         try:
-            # First attempt - try direct JSON parsing
             data = json.loads(cleaned_response)
         except json.JSONDecodeError:
             current_app.logger.warning('Initial JSON parsing failed, attempting recovery...')
-            
-            # Second attempt - try to extract JSON object
-            try:
-                # Look for start of JSON object
-                json_start = cleaned_response.find('{')
-                if json_start >= 0:
-                    # Find matching closing brace by counting braces
-                    open_braces = 0
-                    json_end = -1
-                    
-                    for i in range(json_start, len(cleaned_response)):
-                        if cleaned_response[i] == '{':
-                            open_braces += 1
-                        elif cleaned_response[i] == '}':
-                            open_braces -= 1
-                            if open_braces == 0:
-                                json_end = i + 1
-                                break
-                    
-                    if json_end > 0:
-                        # Extract the substring that should be valid JSON
-                        json_str = cleaned_response[json_start:json_end]
-                        data = json.loads(json_str)
-                    else:
-                        raise ValueError("Could not find valid JSON object closure")
-                else:
-                    raise ValueError("No JSON object found in response")
-            except (ValueError, json.JSONDecodeError) as extract_error:
-                # Third attempt - fall back to regex-based extraction
-                current_app.logger.warning('JSON extraction failed, trying direct sentence extraction...')
-                import re
-                
-                # Try to find a list pattern like ["sentence1", "sentence2", ...]
-                matches = re.search(r'\[\s*"([^"]*)"(?:\s*,\s*"([^"]*)")*\s*\]', cleaned_response)
-                
-                if matches:
-                    # Construct proper JSON from the matched list
-                    sentence_list = re.findall(r'"([^"]*)"', matches.group(0))
-                    data = {"sentences": sentence_list}
-                else:
-                    # Last resort - split by newlines and create sentences list
-                    sentence_list = [line.strip() for line in cleaned_response.split('\n') 
-                                    if line.strip() and not line.strip().startswith('{') 
-                                    and not line.strip().startswith('}')]
-                    
-                    if sentence_list:
-                        current_app.logger.warning('Extracted %d sentences by line splitting', len(sentence_list))
-                        data = {"sentences": sentence_list}
-                    else:
-                        # Complete failure - log the problem and raise error
-                        current_app.logger.error('Failed to decode Gemini response: %s', cleaned_response[:1000])
-                        raise ValueError('Failed to parse response from Gemini API.') from extract_error
+            data = self._recover_json(cleaned_response)
 
-        # Handle potential unexpected response formats
-        sentences = data.get('sentences')
-        
-        # Log response format for debugging
-        if not sentences:
-            current_app.logger.warning("Response doesn't have 'sentences' key, got keys: %s", list(data.keys()))
-            
-            # Try to find sentences in other places
-            if isinstance(data, list) and all(isinstance(item, str) for item in data):
-                # Direct array of strings
-                sentences = data
-                current_app.logger.info("Found sentences as direct array in response")
-            elif 'results' in data and isinstance(data['results'], list):
-                # Maybe under a 'results' key
-                sentences = data['results']
-                current_app.logger.info("Found sentences under 'results' key")
-            elif any(k for k in data.keys() if 'sentence' in k.lower() or 'text' in k.lower()):
-                # Look for keys with 'sentence' or 'text' in them
-                likely_key = next(k for k in data.keys() if 'sentence' in k.lower() or 'text' in k.lower())
-                if isinstance(data[likely_key], list):
-                    sentences = data[likely_key]
-                    current_app.logger.info(f"Found sentences under '{likely_key}' key")
-            else:
-                # Nothing found
-                current_app.logger.error('Gemini response missing "sentences" key: %s', data)
-                raise ValueError("Gemini response did not include a 'sentences' list.")
-        
-        # If not a list, try to convert or find list inside
-        if not isinstance(sentences, list):
-            current_app.logger.warning("'sentences' is not a list, type: %s", type(sentences))
-            
-            # Try to convert to list if it's a string that looks like a list
-            if isinstance(sentences, str) and sentences.strip().startswith('[') and sentences.strip().endswith(']'):
+        sentences = self._extract_sentence_list(data)
+        processed_sentences = self._post_process_sentences(sentences)
+
+        if not processed_sentences:
+            current_app.logger.error('Gemini response contained no valid sentences after post-processing.')
+            raise ValueError('Gemini response did not contain any valid sentences.')
+
+        return processed_sentences
+
+    def _recover_json(self, response: str) -> dict:
+        """Attempt to recover a JSON document from a loosely formatted response."""
+        json_start = response.find('{')
+        if json_start >= 0:
+            open_braces = 0
+            json_end = -1
+            for idx, char in enumerate(response[json_start:], start=json_start):
+                if char == '{':
+                    open_braces += 1
+                elif char == '}':
+                    open_braces -= 1
+                    if open_braces == 0:
+                        json_end = idx + 1
+                        break
+            if json_end > 0:
                 try:
-                    sentences = json.loads(sentences)
-                    current_app.logger.info("Converted string representation of list to actual list")
+                    return json.loads(response[json_start:json_end])
                 except json.JSONDecodeError:
                     pass
-            
-            # If still not a list, raise error
-            if not isinstance(sentences, list):
-                current_app.logger.error('Gemini response "sentences" is not a list: %s', sentences)
-                raise ValueError("Gemini response 'sentences' is not in list format.")
 
-        # Clean up the sentences
-        normalised_sentences = [str(sentence).strip() for sentence in sentences if sentence and str(sentence).strip()]
+        list_match = re.search(r'\[(?:\s*"[^"]+"\s*,?\s*)+\]', response)
+        if list_match:
+            sentences = re.findall(r'"([^"]+)"', list_match.group(0))
+            return {'sentences': sentences}
 
-        if not normalised_sentences:
+        current_app.logger.error('Failed to decode Gemini response: %s', response[:1000])
+        raise ValueError('Failed to parse response from Gemini API.')
+
+    def _extract_sentence_list(self, data) -> List[str]:
+        """Normalise the sentences payload from a Gemini response."""
+        sentences = None
+        if isinstance(data, dict):
+            sentences = data.get('sentences')
+            if not sentences:
+                if 'results' in data and isinstance(data['results'], list):
+                    sentences = data['results']
+                else:
+                    for key, value in data.items():
+                        if isinstance(value, list) and ('sentence' in key.lower() or 'text' in key.lower()):
+                            sentences = value
+                            break
+        elif isinstance(data, list) and all(isinstance(item, str) for item in data):
+            sentences = data
+
+        if isinstance(sentences, str) and sentences.strip().startswith('[') and sentences.strip().endswith(']'):
+            try:
+                sentences = json.loads(sentences)
+                current_app.logger.info('Converted string representation of list to actual list.')
+            except json.JSONDecodeError:
+                sentences = None
+
+        if not isinstance(sentences, list):
+            current_app.logger.error("Gemini response 'sentences' is not in list format: %s", sentences)
+            raise ValueError("Gemini response 'sentences' is not in list format.")
+
+        normalised = [str(sentence).strip() for sentence in sentences if sentence and str(sentence).strip()]
+        if not normalised:
             current_app.logger.error('Gemini response contained no valid sentences: %s', sentences)
             raise ValueError('Gemini response did not contain any valid sentences.')
 
-        return normalised_sentences
+        return normalised
+
+    def _post_process_sentences(self, sentences: List[str]) -> List[str]:
+        """Apply manual splitting, merging, and normalisation rules to sentences."""
+        processed: List[str] = []
+        for raw_sentence in sentences:
+            text = self._normalise_sentence(raw_sentence)
+            if not text:
+                continue
+
+            if self.ignore_dialogue and self._looks_like_dialogue(text):
+                processed.append(text)
+                continue
+
+            chunks = self._split_sentence(text)
+            original_unsplit = len(chunks) == 1 and chunks[0] == text
+
+            for chunk in chunks:
+                chunk = chunk.strip()
+                if not chunk:
+                    continue
+
+                if len(chunk.split()) < self.min_sentence_length and processed and not original_unsplit:
+                    processed[-1] = f"{processed[-1]} {chunk}".strip()
+                else:
+                    processed.append(chunk)
+
+        return [sentence.strip() for sentence in processed if sentence.strip()]
+
+    def _split_sentence(self, sentence: str) -> List[str]:
+        """Split sentences at natural boundaries while respecting word limits."""
+        words = sentence.split()
+        if len(words) <= self.sentence_length_limit:
+            return [sentence]
+
+        chunks: List[str] = []
+        current_words: List[str] = []
+        for word in words:
+            current_words.append(word)
+            is_boundary = bool(re.search(r'[.!?;:,…]+["»”]*$', word))
+            limit_reached = len(current_words) >= self.sentence_length_limit
+
+            if limit_reached and not is_boundary:
+                chunks.append(' '.join(current_words).strip())
+                current_words = []
+            elif is_boundary and len(current_words) >= max(self.min_sentence_length, self.sentence_length_limit // 2):
+                chunks.append(' '.join(current_words).strip())
+                current_words = []
+
+        if current_words:
+            tail = ' '.join(current_words).strip()
+            if len(tail.split()) < self.min_sentence_length and chunks:
+                chunks[-1] = f"{chunks[-1]} {tail}".strip()
+            else:
+                chunks.append(tail)
+
+        return chunks
+
+    def _normalise_sentence(self, sentence: str) -> str:
+        """Normalise whitespace and optional hyphenation fixes."""
+        text = sentence.replace('\n', ' ').strip()
+        if self.fix_hyphenation:
+            text = re.sub(r'(\w)-\s+(\w)', r'\1\2', text)
+        text = re.sub(r'\s+', ' ', text)
+        if not self.preserve_formatting:
+            text = text.replace('« ', '«').replace(' »', '»')
+        return text.strip()
+
+    def _looks_like_dialogue(self, sentence: str) -> bool:
+        """Determine whether the sentence is likely dialogue."""
+        stripped = sentence.strip()
+        if any(stripped.startswith(ch) for ch in self.DIALOGUE_BOUNDARIES):
+            return True
+        if stripped.endswith((':', '—')):
+            return True
+        return False

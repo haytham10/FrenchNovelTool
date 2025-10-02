@@ -1,8 +1,4 @@
-"""Tests for P1 backend features
-
-NOTE: These tests are currently disabled as Phase 1 advanced features have been rolled back
-to restore basic functionality. See issue #15 for context.
-"""
+"""Tests for P1 backend features."""
 import pytest
 import os
 import sys
@@ -29,8 +25,6 @@ def app_context():
         yield app
 
 
-# DISABLED: Phase 1 features have been rolled back
-@pytest.mark.skip(reason="Phase 1 features rolled back - see issue #15")
 class TestGeminiServiceP1Features:
     """Test advanced normalization features in GeminiService"""
     
@@ -47,7 +41,7 @@ class TestGeminiServiceP1Features:
         )
         
         assert service.sentence_length_limit == 12
-        assert service.model_name == 'gemini-2.0-flash-exp'  # quality maps to this
+        assert service.model_name == 'gemini-2.5-pro'  # quality maps to this
         assert service.ignore_dialogue is True
         assert service.preserve_formatting is False
         assert service.fix_hyphenation is True
@@ -59,11 +53,10 @@ class TestGeminiServiceP1Features:
         balanced_service = GeminiService(model_preference='balanced')
         quality_service = GeminiService(model_preference='quality')
         speed_service = GeminiService(model_preference='speed')
-        
-        # All should map to the same model currently
-        assert balanced_service.model_name == 'gemini-2.0-flash-exp'
-        assert quality_service.model_name == 'gemini-2.0-flash-exp'
-        assert speed_service.model_name == 'gemini-2.0-flash-exp'
+
+        assert balanced_service.model_name == 'gemini-2.5-flash'
+        assert quality_service.model_name == 'gemini-2.5-pro'
+        assert speed_service.model_name == 'gemini-2.5-flash-lite'
     
     @patch('app.services.gemini_service.genai.Client')
     def test_build_prompt_with_ignore_dialogue(self, mock_client, app_context):

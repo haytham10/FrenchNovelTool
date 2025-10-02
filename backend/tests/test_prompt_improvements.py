@@ -1,9 +1,6 @@
 """
 Test suite for Phase 1 Prompt Improvements
 Tests the improved Gemini prompt for French novel sentence rewriting.
-
-NOTE: These tests are currently disabled as Phase 1 advanced features have been rolled back
-to restore basic functionality. See issue #15 for context.
 """
 import sys
 import os
@@ -27,63 +24,13 @@ def app_context():
         yield app
 
 
-# DISABLED: Phase 1 features have been rolled back
-@pytest.mark.skip(reason="Phase 1 features rolled back - see issue #15")
 class TestPhase1PromptImprovements:
     """Test cases for Phase 1 prompt improvements"""
 
     def test_prompt_includes_grammatical_rules(self, app_context):
         """Test that prompt includes specific grammatical splitting rules"""
-        # This test verifies the prompt contains the key phrases
-        # In a real scenario, we'd test against actual Gemini API responses
-
-        # Get the route function
         with app_context.test_request_context():
-            # The prompt is constructed with sentence_length_limit
-            sentence_length_limit = 8
-
-            prompt = (
-                "You are a literary assistant specialized in processing French novels. "
-                "Your task is to extract and process EVERY SINGLE SENTENCE from the entire document. "
-                "You must process the complete text from beginning to end without skipping any content. "
-                f"If a sentence is {sentence_length_limit} words long or less, "
-                "add it to the list as is. "
-                f"If a sentence is longer than {sentence_length_limit} words, "
-                "you must rewrite it into shorter sentences, "
-                f"each with {sentence_length_limit} words or fewer. "
-                "\n\n"
-                "**Rewriting Rules:**\n"
-                "- Split long sentences at natural grammatical breaks, such as "
-                "conjunctions (e.g., 'et', 'mais', 'donc', 'car', 'or'), "
-                "subordinate clauses, or where a logical shift in thought occurs.\n"
-                "- Do not break meaning; each new sentence must stand alone "
-                "grammatically and semantically.\n"
-                "\n"
-                "**Context-Awareness:**\n"
-                "- Ensure the rewritten sentences maintain the logical flow and "
-                "connection to the preceding text. "
-                "The output must read as a continuous, coherent narrative.\n"
-                "\n"
-                "**Dialogue Handling:**\n"
-                "- If a sentence is enclosed in quotation marks (« », \" \", or ' '), "
-                "treat it as dialogue. "
-                "Do not split it unless absolutely necessary. "
-                "If a split is unavoidable, do so in a way that maintains "
-                "the natural cadence of speech.\n"
-                "\n"
-                "**Style and Tone Preservation:**\n"
-                "- Maintain the literary tone and style of the original text. "
-                "Avoid using overly simplistic language or modern idioms "
-                "that would feel out of place.\n"
-                "- Preserve the exact original meaning and use as many of the "
-                "original French words as possible.\n"
-                "\n"
-                "**Output Format:**\n"
-                "Present the final output as a JSON object with a single key "
-                "'sentences' which is an array of strings. "
-                f"For example: {{\"sentences\": [\"Voici la première phrase.\", "
-                "\"Et voici la deuxième.\"]}}"
-            )
+            prompt = GeminiService(sentence_length_limit=8).build_prompt()
 
             # Verify key components are present
             assert "literary assistant" in prompt
@@ -99,7 +46,7 @@ class TestPhase1PromptImprovements:
             assert "For example:" in prompt
 
     @patch('google.genai.Client')
-    def test_json_output_validation(self, mock_client, app_context):
+    def test_json_output_validation(self, mock_client, app_context, tmp_path):
         """Test that the service properly validates JSON output"""
         # Mock the Gemini client
         mock_response = MagicMock()
@@ -114,28 +61,20 @@ class TestPhase1PromptImprovements:
 
         gemini_service = GeminiService(sentence_length_limit=8)
 
-        # Create a minimal test PDF file
         pdf_content = b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n%%EOF"
-        temp_path = "/tmp/test_prompt.pdf"
-        with open(temp_path, 'wb') as f:
-            f.write(pdf_content)
+        temp_path = tmp_path / "test_prompt.pdf"
+        temp_path.write_bytes(pdf_content)
 
-        try:
-            prompt = "Test prompt"
-            sentences = gemini_service.generate_content_from_pdf(prompt, temp_path)
+        prompt = "Test prompt"
+        sentences = gemini_service.generate_content_from_pdf(prompt, str(temp_path))
 
-            # Verify the output is a list
-            assert isinstance(sentences, list)
-            assert len(sentences) == 2
-            assert sentences[0] == "Première phrase."
-            assert sentences[1] == "Deuxième phrase."
-        finally:
-            # Clean up
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
+        assert isinstance(sentences, list)
+        assert len(sentences) == 2
+        assert sentences[0] == "Première phrase."
+        assert sentences[1] == "Deuxième phrase."
 
     @patch('google.genai.Client')
-    def test_invalid_json_handling(self, mock_client, app_context):
+    def test_invalid_json_handling(self, mock_client, app_context, tmp_path):
         """Test that the service handles invalid JSON gracefully"""
         # Mock the Gemini client to return invalid JSON
         mock_response = MagicMock()
@@ -150,23 +89,16 @@ class TestPhase1PromptImprovements:
 
         gemini_service = GeminiService(sentence_length_limit=8)
 
-        # Create a minimal test PDF file
         pdf_content = b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n%%EOF"
-        temp_path = "/tmp/test_invalid_json.pdf"
-        with open(temp_path, 'wb') as f:
-            f.write(pdf_content)
+        temp_path = tmp_path / "test_invalid_json.pdf"
+        temp_path.write_bytes(pdf_content)
 
-        try:
-            prompt = "Test prompt"
-            with pytest.raises(ValueError, match="Failed to parse response from Gemini API"):
-                gemini_service.generate_content_from_pdf(prompt, temp_path)
-        finally:
-            # Clean up
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
+        prompt = "Test prompt"
+        with pytest.raises(ValueError, match="Failed to parse response from Gemini API"):
+            gemini_service.generate_content_from_pdf(prompt, str(temp_path))
 
     @patch('google.genai.Client')
-    def test_empty_response_handling(self, mock_client, app_context):
+    def test_empty_response_handling(self, mock_client, app_context, tmp_path):
         """Test that the service handles empty responses gracefully"""
         # Mock the Gemini client to return empty response
         mock_response = MagicMock()
@@ -181,23 +113,15 @@ class TestPhase1PromptImprovements:
 
         gemini_service = GeminiService(sentence_length_limit=8)
 
-        # Create a minimal test PDF file
         pdf_content = b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n%%EOF"
-        temp_path = "/tmp/test_empty.pdf"
-        with open(temp_path, 'wb') as f:
-            f.write(pdf_content)
+        temp_path = tmp_path / "test_empty.pdf"
+        temp_path.write_bytes(pdf_content)
 
-        try:
-            prompt = "Test prompt"
-            with pytest.raises(ValueError, match="Gemini returned an empty response"):
-                gemini_service.generate_content_from_pdf(prompt, temp_path)
-        finally:
-            # Clean up
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
+        prompt = "Test prompt"
+        with pytest.raises(ValueError, match="Gemini returned an empty response"):
+            gemini_service.generate_content_from_pdf(prompt, str(temp_path))
 
 
-# DISABLED: Phase 1 features have been rolled back
 @pytest.mark.skip(reason="Phase 1 features rolled back - see issue #15")
 class TestPromptExamples:
     """Test cases with example French text scenarios"""

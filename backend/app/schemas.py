@@ -62,12 +62,34 @@ class UserSettingsSchema(Schema):
         required=True,
         validate=validate.Range(min=3, max=50)
     )
+    gemini_model = fields.String(
+        load_default='balanced',
+        validate=validate.OneOf(['balanced', 'quality', 'speed'])
+    )
+    ignore_dialogue = fields.Boolean(load_default=False)
+    preserve_formatting = fields.Boolean(load_default=True)
+    fix_hyphenation = fields.Boolean(load_default=True)
+    min_sentence_length = fields.Integer(
+        load_default=2,
+        validate=validate.Range(min=1, max=10)
+    )
 
 
 class ProcessPdfOptionsSchema(Schema):
     """Schema for basic PDF processing options"""
     sentence_length_limit = fields.Integer(
         validate=validate.Range(min=3, max=50),
+        allow_none=True
+    )
+    gemini_model = fields.String(
+        validate=validate.OneOf(['balanced', 'quality', 'speed']),
+        allow_none=True
+    )
+    ignore_dialogue = fields.Boolean(allow_none=True)
+    preserve_formatting = fields.Boolean(allow_none=True)
+    fix_hyphenation = fields.Boolean(allow_none=True)
+    min_sentence_length = fields.Integer(
+        validate=validate.Range(min=1, max=10),
         allow_none=True
     )
 
