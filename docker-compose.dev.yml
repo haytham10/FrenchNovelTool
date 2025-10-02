@@ -14,10 +14,12 @@ services:
       - SECRET_KEY=dev-secret-key
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
-      # Use DATABASE_URL from .env if connecting to Supabase, otherwise default to SQLite
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      # Use DATABASE_URL from .env.dev if connecting to Supabase, otherwise default to SQLite
       - DATABASE_URL=${DATABASE_URL:-sqlite:///app.db}
       - REDIS_URL=redis://redis:6379/0
-      - CORS_ORIGINS=http://localhost:3000
+      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
       - LOG_LEVEL=DEBUG
       - RATELIMIT_ENABLED=False
     volumes:
@@ -36,12 +38,13 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.dev
     container_name: french-novel-frontend-dev
+    hostname: frontend
     ports:
       - "3000:3000"
       - "6006:6006"  # Storybook
     environment:
       - NODE_ENV=development
-      - NEXT_PUBLIC_API_BASE_URL=https://api.frenchnoveltool.com/api/v1
+      - NEXT_PUBLIC_API_BASE_URL=http://backend:5000/api/v1
     volumes:
       - ./frontend:/app
       - /app/node_modules

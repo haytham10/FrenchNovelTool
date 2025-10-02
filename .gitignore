@@ -62,7 +62,7 @@ coverage.xml
 .venv.bak/
 
 # Environment Variables
-.env
+.env.dev
 .env.local
 .env.*.local
 .env.production

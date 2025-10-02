@@ -9,6 +9,7 @@ from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager
 from config import Config
 from .utils.error_handlers import register_error_handlers
+from .utils.cors_handlers import setup_cors_handling
 from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
@@ -64,6 +65,9 @@ def create_app(config_class=Config):
 
         # Register error handlers
         register_error_handlers(app)
+        
+        # Set up enhanced CORS handling
+        setup_cors_handling(app)
 
     return app
 

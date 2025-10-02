@@ -1,4 +1,5 @@
 """API routes for the French Novel Tool"""
+import json
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from marshmallow import ValidationError
@@ -95,8 +96,15 @@ def process_pdf():
         # Use the built-in prompt builder
         prompt = gemini_service.build_prompt()
 
+        # Log the processing attempt
+        current_app.logger.info(f'User {user.email} attempting to process PDF: {original_filename} with model {gemini_model}')
+        
+        # Process the PDF and get sentences
         processed_sentences = gemini_service.generate_content_from_pdf(prompt, temp_file_path)
-
+        
+        # Log successful processing
+        current_app.logger.info(f'Successfully processed PDF: {original_filename}, extracted {len(processed_sentences)} sentences')
+        
         # Add user-specific history entry with processing settings
         history_service.add_entry(
             user_id=user_id,
@@ -109,6 +117,29 @@ def process_pdf():
         current_app.logger.info(f'User {user.email} processed PDF: {original_filename}')
         return jsonify({'sentences': processed_sentences})
 
+    except json.JSONDecodeError as e:
+        error_message = f"Failed to parse Gemini response: {str(e)}"
+        current_app.logger.exception(f'User {user.email} failed to process PDF {original_filename} due to JSON parsing error')
+        
+        error_code = 'GEMINI_RESPONSE_ERROR'
+        failed_step = 'parse_response'
+        
+        # Add error to user's history
+        history_service.add_entry(
+            user_id=user_id,
+            original_filename=original_filename,
+            processed_sentences_count=0,
+            error_message=error_message,
+            failed_step=failed_step,
+            error_code=error_code
+        )
+        # Return a 422 status code for processing errors (Unprocessable Entity)
+        return jsonify({
+            'error': error_message,
+            'error_code': error_code,
+            'message': 'The PDF was processed, but we had trouble interpreting the results from our AI. Please try again or use a different PDF file.'
+        }), 422
+        
     except Exception as e:
         error_message = str(e)
         current_app.logger.exception(f'User {user.email} failed to process PDF {original_filename}')
@@ -122,7 +153,9 @@ def process_pdf():
         elif 'PDF' in error_message:
             error_code = 'INVALID_PDF'
             failed_step = 'extract'
-        
+        elif 'rate limit' in error_message.lower():
+            error_code = 'RATE_LIMIT_EXCEEDED'
+            
         # Add error to user's history
         history_service.add_entry(
             user_id=user_id,

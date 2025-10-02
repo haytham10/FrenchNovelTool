@@ -5,7 +5,10 @@ FROM python:3.11-slim
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    FLASK_ENV=development \
+    FLASK_DEBUG=1 \
+    FLASK_APP=run.py
 
 WORKDIR /app
 
@@ -14,6 +17,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     curl \
     git \
+    sqlite3 \
+    vim \
+    procps \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements
@@ -21,14 +27,20 @@ COPY requirements.txt requirements-dev.txt ./
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir -r requirements-dev.txt
+    pip install --no-cache-dir -r requirements-dev.txt && \
+    pip install --no-cache-dir debugpy
 
-# Create logs directory
-RUN mkdir -p logs
+# Create necessary directories
+RUN mkdir -p logs instance
 
-# Expose port
-EXPOSE 5000
+# Expose ports (Flask + debugpy)
+EXPOSE 5000 5678
 
-# Run with Flask development server with hot reload
-CMD ["flask", "--app", "run.py", "run", "--host=0.0.0.0", "--port=5000", "--reload"]
+# Start script with debugger support
+COPY ./docker-entrypoint-dev.sh /
+RUN chmod +x /docker-entrypoint-dev.sh
+ENTRYPOINT ["/docker-entrypoint-dev.sh"]
+
+# Default to running Flask dev server with hot reload
+CMD ["flask", "run", "--host=0.0.0.0", "--port=5000", "--reload"]
 

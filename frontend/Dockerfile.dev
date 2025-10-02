@@ -4,7 +4,11 @@ FROM node:20-alpine
 WORKDIR /app
 
 # Install dependencies
-RUN apk add --no-cache libc6-compat curl
+RUN apk add --no-cache libc6-compat curl bash vim
+
+# Set environment variables
+ENV NODE_ENV=development \
+    NEXT_TELEMETRY_DISABLED=1
 
 # Copy package files
 COPY package.json package-lock.json* ./
@@ -12,12 +16,12 @@ COPY package.json package-lock.json* ./
 # Install all dependencies (including dev)
 RUN npm ci && npm cache clean --force
 
-# Copy source code
-COPY . .
+# Don't copy the source code - we'll mount it as a volume
+# This ensures we can make changes locally and see them in the container
 
 # Expose ports
-EXPOSE 3000 6006
+EXPOSE 3000 6006 9229
 
-# Run development server
-CMD ["npm", "run", "dev"]
+# Run development server with debugging enabled
+CMD ["npm", "run", "dev", "--", "--hostname", "0.0.0.0"]
 
