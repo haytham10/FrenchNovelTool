@@ -91,10 +91,5 @@ class UserSettings(db.Model):
     
     def to_dict(self):
         return {
-            'sentence_length_limit': self.sentence_length_limit,
-            'gemini_model': self.gemini_model,
-            'ignore_dialogue': self.ignore_dialogue,
-            'preserve_formatting': self.preserve_formatting,
-            'fix_hyphenation': self.fix_hyphenation,
-            'min_sentence_length': self.min_sentence_length
+            'sentence_length_limit': self.sentence_length_limit
         }
