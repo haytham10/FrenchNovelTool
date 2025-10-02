@@ -17,6 +17,7 @@ import GoogleLoginButton from '@/components/GoogleLoginButton';
 import { useProcessingStore } from '@/stores/useProcessingStore';
 import Icon from '@/components/Icon';
 import { Download } from 'lucide-react';
+import { fadeIn, float } from '@/lib/animations';
 
 import type { ExportOptions } from '@/components/ExportDialog';
 
@@ -106,7 +107,39 @@ export default function Home() {
   };
 
   return (
-    <Box sx={{ minHeight: 'calc(100vh - 64px)', py: { xs: 4, md: 8 } }} className="hero-aura">
+    <Box
+      sx={{
+        position: 'relative',
+        minHeight: 'calc(100vh - 64px)',
+        py: { xs: 4, md: 8 },
+        overflow: 'visible',
+        '&::before, &::after': {
+          content: '""',
+          position: 'absolute',
+          pointerEvents: 'none',
+          filter: 'blur(60px)',
+          opacity: 0.6,
+          zIndex: 0,
+        },
+        '&::before': {
+          top: { xs: '-60px', md: '-80px' },
+          left: { xs: '5%', md: '10%' },
+          width: { xs: '200px', md: '260px' },
+          height: { xs: '200px', md: '260px' },
+          background: 'radial-gradient(closest-side, rgba(124,156,255,0.55), rgba(124,156,255,0) 70%)',
+          animation: `${float} 9s ease-in-out infinite`,
+        },
+        '&::after': {
+          top: { xs: '-20px', md: '-40px' },
+          right: { xs: '5%', md: '15%' },
+          width: { xs: '260px', md: '320px' },
+          height: { xs: '260px', md: '320px' },
+          background: 'radial-gradient(closest-side, rgba(6,182,212,0.45), rgba(6,182,212,0) 70%)',
+          animation: `${float} 11s ease-in-out infinite`,
+          animationDirection: 'reverse',
+        },
+      }}
+    >
         <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 1 }}>
           {/* Hero Section - Enhanced */}
         <Box sx={{ textAlign: 'center', mb: 6 }}>
@@ -201,7 +234,8 @@ export default function Home() {
                     position: 'relative',
                     display: 'inline-flex',
                     mb: 3,
-                    animation: 'fadeIn 0.4s ease-out',
+                    animation: `${fadeIn} 0.4s ease-out`,
+                    animationFillMode: 'both',
                   }}
                 >
                   <CircularProgress 
@@ -239,7 +273,8 @@ export default function Home() {
                   sx={{ 
                     fontWeight: 500,
                     mb: 1,
-                    animation: 'fadeIn 0.5s ease-out',
+                    animation: `${fadeIn} 0.5s ease-out`,
+                    animationFillMode: 'both',
                   }}
                 >
                   {loadingMessage}
@@ -248,7 +283,8 @@ export default function Home() {
                   variant="body2" 
                   color="text.secondary"
                   sx={{
-                    animation: 'fadeIn 0.6s ease-out',
+                    animation: `${fadeIn} 0.6s ease-out`,
+                    animationFillMode: 'both',
                   }}
                 >
                   Please wait while we process your file...
@@ -259,7 +295,8 @@ export default function Home() {
                       width: '100%', 
                       maxWidth: 450, 
                       mt: 3,
-                      animation: 'fadeIn 0.7s ease-out',
+                      animation: `${fadeIn} 0.7s ease-out`,
+                      animationFillMode: 'both',
                     }}
                   >
                     <LinearProgress 
@@ -312,7 +349,8 @@ export default function Home() {
           <Box 
             className="card-gradient"
             sx={{
-              animation: 'fadeIn 0.6s ease-out',
+              animation: `${fadeIn} 0.6s ease-out`,
+              animationFillMode: 'both',
             }}
           >
             <Box className="inner" sx={{ p: { xs: 2, md: 4 } }}>

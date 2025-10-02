@@ -3,6 +3,7 @@ import { useDropzone } from 'react-dropzone';
 import { Button, Box, Typography } from '@mui/material';
 import Icon from './Icon';
 import { Upload } from 'lucide-react';
+import { bounce, pulse } from '@/lib/animations';
 
 interface FileUploadProps {
   onFileUpload: (files: File[]) => void;
@@ -74,7 +75,7 @@ export default function FileUpload({ onFileUpload, disabled = false, variant = '
           gap: 2,
           transition: 'all 0.3s ease',
           transform: isDragActive ? 'translateY(-4px)' : 'translateY(0)',
-          animation: isDragActive ? 'bounce 0.6s ease-in-out infinite' : 'none',
+          animation: isDragActive ? `${bounce} 0.6s ease-in-out infinite` : 'none',
         }}>
           <Box sx={{ 
             display: 'inline-flex', 
@@ -85,7 +86,7 @@ export default function FileUpload({ onFileUpload, disabled = false, variant = '
             borderColor: isDragActive ? 'primary.dark' : 'divider',
             transition: 'all 0.3s ease',
             transform: isDragActive ? 'scale(1.1)' : 'scale(1)',
-            animation: !isDragActive && !disabled ? 'pulse 2s ease-in-out infinite' : 'none',
+            animation: !isDragActive && !disabled ? `${pulse} 2s ease-in-out infinite` : 'none',
           }}>
             <Icon 
               icon={Upload} 
