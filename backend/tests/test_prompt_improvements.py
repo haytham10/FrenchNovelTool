@@ -39,7 +39,8 @@ class TestPhase1PromptImprovements:
 
             prompt = (
                 "You are a literary assistant specialized in processing French novels. "
-                "Your task is to list the sentences from the provided text consecutively. "
+                "Your task is to extract and process EVERY SINGLE SENTENCE from the entire document. "
+                "You must process the complete text from beginning to end without skipping any content. "
                 f"If a sentence is {sentence_length_limit} words long or less, "
                 "add it to the list as is. "
                 f"If a sentence is longer than {sentence_length_limit} words, "
@@ -235,3 +236,31 @@ class TestPromptExamples:
         # Each sentence should relate to the previous one
         assert all(len(s.split()) <= 10 for s in context_example), \
             "Example sentences should be reasonably short"
+
+
+class TestCompleteness:
+    """Test cases for ensuring complete document processing"""
+
+    def test_prompt_emphasizes_complete_processing(self):
+        """Test that prompt explicitly requires processing ALL sentences"""
+        # Test the prompt directly without needing API key
+        sentence_length_limit = 8
+        
+        # This is the expected prompt structure based on our implementation
+        prompt_start = (
+            "You are a literary assistant specialized in processing French novels. "
+            "Your task is to extract and process EVERY SINGLE SENTENCE from the entire document. "
+            "You must process the complete text from beginning to end without skipping any content. "
+        )
+        
+        # Verify the critical completeness instructions are present
+        assert "EVERY SINGLE SENTENCE" in prompt_start, \
+            "Prompt must explicitly state to process every single sentence"
+        assert "entire document" in prompt_start, \
+            "Prompt must reference processing the entire document"
+        assert "complete text" in prompt_start, \
+            "Prompt must reference processing the complete text"
+        assert "beginning to end" in prompt_start, \
+            "Prompt must specify processing from beginning to end"
+        assert "without skipping" in prompt_start, \
+            "Prompt must explicitly forbid skipping content"

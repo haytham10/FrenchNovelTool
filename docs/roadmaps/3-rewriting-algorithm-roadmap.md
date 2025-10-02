@@ -12,7 +12,8 @@ The current algorithm (`backend/app/routes.py`) has been updated with a more sop
 ```python
 prompt = (
     "You are a literary assistant specialized in processing French novels. "
-    "Your task is to list the sentences from the provided text consecutively. "
+    "Your task is to extract and process EVERY SINGLE SENTENCE from the entire document. "
+    "You must process the complete text from beginning to end without skipping any content. "
     f"If a sentence is {sentence_length_limit} words long or less, add it to the list as is. "
     f"If a sentence is longer than {sentence_length_limit} words, you must rewrite it into "
     f"shorter sentences, each with {sentence_length_limit} words or fewer. "
