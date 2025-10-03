@@ -11,6 +11,7 @@ interface NormalizeControlsProps {
   disabled?: boolean;
   advancedOptions?: AdvancedNormalizationOptions;
   onAdvancedOptionsChange?: (options: AdvancedNormalizationOptions) => void;
+  compact?: boolean;
 }
 
 export interface AdvancedNormalizationOptions {
@@ -39,6 +40,7 @@ export default function NormalizeControls({
   disabled = false,
   advancedOptions = {},
   onAdvancedOptionsChange,
+  compact = false,
 }: NormalizeControlsProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [previewText, setPreviewText] = useState('');
@@ -56,6 +58,96 @@ export default function NormalizeControls({
     const sentences = text.split(/[.!?]+/).filter(s => s.trim());
     return sentences.map((s, i) => `${i + 1}. ${s.trim().substring(0, sentenceLength * 5)}...`).join('\n');
   };
+
+  // Compact mode: No paper wrapper, simpler layout
+  if (compact) {
+    return (
+      <Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+          <Box sx={{ 
+            p: 1.5, 
+            borderRadius: 2, 
+            bgcolor: 'primary.main',
+            color: 'primary.contrastText',
+            display: 'inline-flex'
+          }}>
+            <Icon icon={Sliders} sx={{ fontSize: 24 }} />
+          </Box>
+          <Box>
+            <Typography variant="h6" fontWeight={600}>
+              Normalization Settings
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Customize how AI processes your sentences
+            </Typography>
+          </Box>
+        </Box>
+
+        {/* Compact Basic Controls */}
+        <Box sx={{ mb: 3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="subtitle2" fontWeight={600}>
+              Target Sentence Length
+            </Typography>
+            <Chip 
+              label={`${sentenceLength} words`} 
+              color="primary" 
+              size="small"
+              sx={{ fontWeight: 600 }}
+            />
+          </Box>
+          <Slider
+            value={sentenceLength}
+            onChange={(_, value) => onSentenceLengthChange(value as number)}
+            min={5}
+            max={20}
+            step={1}
+            marks={[
+              { value: 5, label: '5' },
+              { value: 10, label: '10' },
+              { value: 15, label: '15' },
+              { value: 20, label: '20' },
+            ]}
+            disabled={disabled}
+            valueLabelDisplay="auto"
+            sx={{ 
+              mt: 2,
+              '& .MuiSlider-thumb': {
+                width: 16,
+                height: 16,
+              },
+              '& .MuiSlider-track': {
+                height: 4,
+              },
+              '& .MuiSlider-rail': {
+                height: 4,
+              }
+            }}
+          />
+        </Box>
+
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="caption" fontWeight={600} gutterBottom display="block" sx={{ mb: 1 }}>
+            Quick Presets
+          </Typography>
+          <Stack direction="row" spacing={1}>
+            {PRESETS.map((preset) => (
+              <Chip
+                key={preset.value}
+                label={`${preset.label} (${preset.value}w)`}
+                onClick={() => onSentenceLengthChange(preset.value)}
+                color={sentenceLength === preset.value ? 'primary' : 'default'}
+                variant={sentenceLength === preset.value ? 'filled' : 'outlined'}
+                disabled={disabled}
+                clickable
+                size="small"
+              />
+            ))}
+          </Stack>
+        </Box>
+      </Box>
+    );
+  }
 
   return (
     <Paper 

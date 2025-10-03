@@ -301,11 +301,23 @@ export default function Home() {
           <UploadStepper activeStep={loading ? 1 : sentences.length ? 3 : 0} />
         )}
 
-        {/* Empty State with Drag-and-Drop */}
+        {/* Empty State with Drag-and-Drop - Now includes Normalization Settings */}
         {!loading && sentences.length === 0 && user && (
           <Box className="card-gradient" sx={{ mb: 4 }}>
             <Box className="inner" sx={{ p: { xs: 2, md: 4 } }}>
               <FileUpload onFileUpload={handleFileUpload} disabled={loading} variant="dropzone" />
+              
+              {/* Normalization Settings integrated at bottom of drop container */}
+              <Box sx={{ mt: 4, pt: 3, borderTop: 1, borderColor: 'divider' }}>
+                <NormalizeControls
+                  sentenceLength={sentenceLength}
+                  onSentenceLengthChange={setSentenceLength}
+                  disabled={loading}
+                  advancedOptions={advancedOptions}
+                  onAdvancedOptionsChange={setAdvancedOptions}
+                  compact
+                />
+              </Box>
             </Box>
           </Box>
         )}
@@ -412,27 +424,7 @@ export default function Home() {
             </Box>
           </Box>
         )}
-        
-        
-        {/* Normalize Controls Section - Always visible when not loading */}
-        {!loading && user && (
-          <Box className="card-gradient" sx={{ mb: 4 }}>
-            <Box className="inner" sx={{ p: { xs: 2, md: 4 } }}>
-              <NormalizeControls
-                sentenceLength={sentenceLength}
-                onSentenceLengthChange={setSentenceLength}
-                disabled={loading}
-                advancedOptions={advancedOptions}
-                onAdvancedOptionsChange={setAdvancedOptions}
-              />
-              <Box sx={{ mt: 3 }}>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  <strong>Note:</strong> These settings will be applied during the next PDF processing.
-                </Typography>
-              </Box>
-            </Box>
-          </Box>
-        )}
+
         {loading && (
           <Box className="card-gradient">
             <Box className="inner" sx={{ p: { xs: 2, md: 4 } }}>
@@ -475,30 +467,53 @@ export default function Home() {
                     Review and export your processed sentences
                   </Typography>
                 </Box>
-                <Button 
-                  onClick={() => setExportDialogOpen(true)}
-                  variant="contained"
-                  color="primary"
-                  disabled={loading}
-                  size="large"
-                  startIcon={<Icon icon={Download} />}
-                  sx={{
-                    minWidth: 200,
-                    fontWeight: 600,
-                    boxShadow: 2,
-                    '&:hover': {
-                      boxShadow: 4,
-                    },
-                    '&:focus-visible': {
-                      outline: '3px solid',
-                      outlineColor: 'primary.dark',
-                      outlineOffset: '2px',
-                    },
-                  }}
-                  aria-label="Export results to Google Sheets"
-                >
-                  Export to Sheets
-                </Button>
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                  <Button 
+                    onClick={() => {
+                      setSentences([]);
+                      setCurrentFile(null);
+                      setCostEstimate(null);
+                    }}
+                    variant="outlined"
+                    disabled={loading}
+                    size="large"
+                    sx={{
+                      fontWeight: 600,
+                      '&:focus-visible': {
+                        outline: '3px solid',
+                        outlineColor: 'primary.dark',
+                        outlineOffset: '2px',
+                      },
+                    }}
+                    aria-label="Process a new PDF file"
+                  >
+                    Process New File
+                  </Button>
+                  <Button 
+                    onClick={() => setExportDialogOpen(true)}
+                    variant="contained"
+                    color="primary"
+                    disabled={loading}
+                    size="large"
+                    startIcon={<Icon icon={Download} />}
+                    sx={{
+                      minWidth: 200,
+                      fontWeight: 600,
+                      boxShadow: 2,
+                      '&:hover': {
+                        boxShadow: 4,
+                      },
+                      '&:focus-visible': {
+                        outline: '3px solid',
+                        outlineColor: 'primary.dark',
+                        outlineOffset: '2px',
+                      },
+                    }}
+                    aria-label="Export results to Google Sheets"
+                  >
+                    Export to Sheets
+                  </Button>
+                </Box>
               </Box>
               <ResultsTable sentences={sentences} advancedOptions={advancedOptions} />
             </Box>
