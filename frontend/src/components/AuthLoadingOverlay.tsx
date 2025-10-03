@@ -6,9 +6,10 @@ import { fadeIn } from '@/lib/animations';
 
 interface AuthLoadingOverlayProps {
   open: boolean;
+  message?: string;
 }
 
-export default function AuthLoadingOverlay({ open }: AuthLoadingOverlayProps) {
+export default function AuthLoadingOverlay({ open, message }: AuthLoadingOverlayProps) {
   return (
     <Backdrop
       open={open}
@@ -43,7 +44,7 @@ export default function AuthLoadingOverlay({ open }: AuthLoadingOverlayProps) {
             textAlign: 'center',
           }}
         >
-          Signing you in...
+          {message || 'Signing you in...'}
         </Typography>
         <Typography
           variant="body2"
@@ -53,7 +54,10 @@ export default function AuthLoadingOverlay({ open }: AuthLoadingOverlayProps) {
             maxWidth: 400,
           }}
         >
-          Please wait while we securely authenticate your account
+          {message?.includes('Verifying') 
+            ? 'Please wait while we verify your authentication token'
+            : 'Please wait while we securely authenticate your account'
+          }
         </Typography>
       </Box>
     </Backdrop>

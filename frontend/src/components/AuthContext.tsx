@@ -30,6 +30,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const [user, setUser] = useState<AuthUser>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState<string>('');
   const { enqueueSnackbar } = useSnackbar();
 
   // Load user from stored token on mount
@@ -40,6 +41,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       
       if (token) {
         try {
+          setLoadingMessage('Verifying authentication...');
           console.log('[AuthContext] Fetching user info from /auth/me...');
           console.log('[AuthContext] Using token:', token.substring(0, 50) + '...');
           const userData = await getCurrentUser();
@@ -65,6 +67,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         console.log('[AuthContext] No token found, user needs to login');
       }
       setIsLoading(false);
+      setLoadingMessage('');
     };
 
     loadUser();
@@ -79,6 +82,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
     try {
       setIsAuthenticating(true);
+      setLoadingMessage('Authenticating with Google...');
       console.log('[AuthContext] Exchanging Google ID token for JWT (legacy flow)...');
       // Call backend to exchange Google token for our JWT
       const loginResponse = await loginWithGoogle(response.credential);
@@ -107,6 +111,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       setUser(null);
     } finally {
       setIsAuthenticating(false);
+      setLoadingMessage('');
     }
   }, [enqueueSnackbar]);
 
@@ -114,6 +119,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     // OAuth authorization code flow (recommended - includes Sheets/Drive access)
     try {
       setIsAuthenticating(true);
+      setLoadingMessage('Completing authentication...');
       console.log('[AuthContext] Exchanging authorization code for tokens...');
       // Call backend to exchange authorization code for our JWT
       const loginResponse = await loginWithGoogle(undefined, code);
@@ -142,6 +148,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       setUser(null);
     } finally {
       setIsAuthenticating(false);
+      setLoadingMessage('');
     }
   }, [enqueueSnackbar]);
 
@@ -161,7 +168,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     <GoogleOAuthProvider clientId={clientId}>
       <AuthContext.Provider value={value}>
         {children}
-        <AuthLoadingOverlay open={isAuthenticating} />
+        <AuthLoadingOverlay open={isAuthenticating || isLoading} message={loadingMessage} />
       </AuthContext.Provider>
     </GoogleOAuthProvider>
   );
