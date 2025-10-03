@@ -23,6 +23,7 @@ This full-stack application provides a seamless workflow for literary analysis, 
 ### Core Functionality
 - 📄 **PDF Text Extraction**: Upload PDF files and extract raw text content on the server.
 - 🤖 **AI-Powered Normalization**: Utilizes Google Gemini to intelligently split long sentences while preserving their original meaning and context.
+- ⚡ **Async Processing & Chunking**: Large PDFs (>50 pages) are automatically processed asynchronously in chunks, preventing timeouts and providing real-time progress tracking.
 - 📊 **Google Sheets Export**: Export processed sentences directly to a new Google Sheet, with automatic header formatting.
 - 📁 **Google Drive Integration**: Organize exported spreadsheets into user-specified folders in Google Drive.
 
