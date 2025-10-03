@@ -1,7 +1,7 @@
 # Login Loading Animation Feature
 
 ## Overview
-This feature adds a visual loading indicator (skeleton animation) in the header when a user is authenticating via Google OAuth.
+This feature adds a full-page visual loading overlay and error toast notifications during Google OAuth authentication to improve user experience and provide clear feedback during the login process.
 
 ## Implementation Details
 
@@ -11,12 +11,18 @@ This feature adds a visual loading indicator (skeleton animation) in the header 
    - Updated `AuthContextValue` type to include `isAuthenticating: boolean`
    - Modified `loginWithCredential` to set `isAuthenticating` to `true` during login and `false` when complete
    - Modified `loginWithCode` to set `isAuthenticating` to `true` during login and `false` when complete
+   - Integrated `notistack` to display error toast notifications on login failure
+   - Renders `AuthLoadingOverlay` component when `isAuthenticating` is true
 
-2. **frontend/src/components/Header.tsx**
-   - Added `Skeleton` import from `@mui/material`
-   - Added `isAuthenticating` to the destructured `useAuth()` values
-   - Added conditional rendering to show a circular skeleton (32x32) when `isAuthenticating` is true
-   - The skeleton replaces the GoogleLoginButton while authentication is in progress
+2. **frontend/src/components/Providers.tsx**
+   - Reordered provider hierarchy to place `SnackbarProvider` before `AuthProvider`
+   - This allows `AuthProvider` to use `useSnackbar` hook for error notifications
+
+3. **frontend/src/components/AuthLoadingOverlay.tsx** (NEW)
+   - Created full-page loading overlay component
+   - Uses MUI `Backdrop` with blur effect for modern appearance
+   - Displays circular progress indicator with "Signing you in..." message
+   - Accessible with proper ARIA attributes
 
 ### User Experience Flow
 
@@ -25,20 +31,24 @@ This feature adds a visual loading indicator (skeleton animation) in the header 
    - User clicks "Sign in with Google"
    - Google OAuth popup appears
    - After user selects account and consents, the popup closes
-   - A circular skeleton animation appears in the header (where the login button was)
+   - **Full-page loading overlay appears** with blur backdrop and loading message
    - Backend exchanges tokens and fetches user info
-3. **After Login**: The skeleton is replaced with the user's avatar menu
+3. **After Login Success**: The overlay disappears and user's avatar menu appears
+4. **After Login Failure**: The overlay disappears and an error toast notification is displayed
 
 ### Accessibility
-- Uses MUI's `Skeleton` component which includes built-in accessibility features
-- The skeleton has proper ARIA attributes for screen readers
-- Visual loading state helps users with cognitive disabilities understand the system is working
+- Uses MUI's `Backdrop` component with proper z-index layering
+- Loading overlay includes descriptive text for screen readers
+- Toast notifications are announced by screen readers via notistack
+- Keyboard navigation remains functional during loading state
 
 ### Technical Notes
 - The `isAuthenticating` state is independent from `isLoading` (which tracks initial app load)
-- The skeleton animation only shows during active login operations, not during page load
-- Both Google OAuth flows (credential and authorization code) show the loading indicator
-- Error handling ensures `isAuthenticating` is set to `false` even if login fails (via `finally` block)
+- The full-page overlay blocks all interaction during authentication
+- Both Google OAuth flows (credential and authorization code) show the loading overlay
+- Error handling uses `getApiErrorMessage` utility to provide user-friendly error messages
+- Toast notifications automatically dismiss after a few seconds
+- Proper error handling ensures overlay always disappears via `finally` block
 
 ## Testing
 - Build verification: ✅ Passes (no errors)
@@ -48,3 +58,4 @@ This feature adds a visual loading indicator (skeleton animation) in the header 
 ## Related Issues
 - Part of UX/UI Overhaul Phase D: Engagement & Help (#22)
 - Implements loading animation/skeleton when logging in (when fetching user info from backend)
+- Addresses user feedback for full-page loading state instead of header-only skeleton

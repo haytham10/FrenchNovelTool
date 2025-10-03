@@ -2,8 +2,10 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { setTokens, clearTokens, getAccessToken } from '@/lib/auth';
-import { loginWithGoogle, getCurrentUser } from '@/lib/api';
+import { loginWithGoogle, getCurrentUser, getApiErrorMessage } from '@/lib/api';
 import { GoogleOAuthProvider, googleLogout, type CredentialResponse } from '@react-oauth/google';
+import { useSnackbar } from 'notistack';
+import AuthLoadingOverlay from './AuthLoadingOverlay';
 
 type AuthUser = { id: number; email: string; name: string; avatarUrl?: string } | null;
 
@@ -28,6 +30,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const [user, setUser] = useState<AuthUser>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const { enqueueSnackbar } = useSnackbar();
 
   // Load user from stored token on mount
   useEffect(() => {
@@ -96,12 +99,16 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       console.log('[AuthContext] Has Sheets access:', loginResponse.has_sheets_access);
     } catch (error) {
       console.error('[AuthContext] Login failed:', error);
+      enqueueSnackbar(
+        getApiErrorMessage(error, 'Authentication failed. Please try again.'),
+        { variant: 'error' }
+      );
       clearTokens();
       setUser(null);
     } finally {
       setIsAuthenticating(false);
     }
-  }, []);
+  }, [enqueueSnackbar]);
 
   const loginWithCode = useCallback(async (code: string) => {
     // OAuth authorization code flow (recommended - includes Sheets/Drive access)
@@ -127,12 +134,16 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       console.log('[AuthContext] Has Sheets access:', loginResponse.has_sheets_access);
     } catch (error) {
       console.error('[AuthContext] Login with code failed:', error);
+      enqueueSnackbar(
+        getApiErrorMessage(error, 'Authentication failed. Please try again.'),
+        { variant: 'error' }
+      );
       clearTokens();
       setUser(null);
     } finally {
       setIsAuthenticating(false);
     }
-  }, []);
+  }, [enqueueSnackbar]);
 
   const logout = useCallback(() => {
     console.log('[AuthContext] Logging out...');
@@ -148,7 +159,10 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
   return (
     <GoogleOAuthProvider clientId={clientId}>
-      <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+      <AuthContext.Provider value={value}>
+        {children}
+        <AuthLoadingOverlay open={isAuthenticating} />
+      </AuthContext.Provider>
     </GoogleOAuthProvider>
   );
 }

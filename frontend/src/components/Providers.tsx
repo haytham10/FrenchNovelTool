@@ -68,13 +68,13 @@ export default function Providers({ children }: { children: ReactNode }) {
     <AppRouterCacheProvider>
       <QueryClientProvider client={queryClient}>
         <ColorModeContext.Provider value={{ mode, toggle }}>
-          <AuthProvider>
-            <ThemeProvider theme={theme}>
-              <SnackbarProvider maxSnack={3}>
+          <ThemeProvider theme={theme}>
+            <SnackbarProvider maxSnack={3}>
+              <AuthProvider>
                 {children}
-              </SnackbarProvider>
-            </ThemeProvider>
-          </AuthProvider>
+              </AuthProvider>
+            </SnackbarProvider>
+          </ThemeProvider>
         </ColorModeContext.Provider>
       </QueryClientProvider>
     </AppRouterCacheProvider>
