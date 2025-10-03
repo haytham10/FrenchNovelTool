@@ -18,8 +18,9 @@ body {
 /* Light theme tokens (default) */
 :root {
   /* Colors */
-  --color-primary: 59 130 246; /* #3b82f6 */
-  --color-secondary: 6 182 212; /* #06b6d4 */
+  --color-primary: 79 70 229; /* #4f46e5 - Indigo */
+  --color-secondary: 236 72 153; /* #ec4899 - Pink */
+  --color-tertiary: 6 182 212; /* #06b6d4 - Cyan */
   --color-success: 34 197 94; /* #22c55e */
   --color-warning: 245 158 11; /* #f59e0b */
   --color-error: 239 68 68; /* #ef4444 */
@@ -39,8 +40,9 @@ body {
 /* Dark theme tokens */
 [data-theme="dark"] {
   /* Colors */
-  --color-primary: 124 156 255; /* #7c9cff */
-  --color-secondary: 125 211 252; /* #7dd3fc */
+  --color-primary: 129 140 248; /* #818cf8 - Lighter indigo */
+  --color-secondary: 244 114 182; /* #f472b6 - Pink */
+  --color-tertiary: 125 211 252; /* #7dd3fc - Cyan */
   --color-success: 34 197 94; /* #22c55e */
   --color-warning: 251 191 36; /* #fbbf24 */
   --color-error: 248 113 113; /* #f87171 */
@@ -66,10 +68,17 @@ body {
 
 /* Gradient text for hero/branding */
 .gradient-text {
-  background: linear-gradient(92deg, #7c9cff 0%, #06b6d4 45%, #22c55e 100%);
+  background: linear-gradient(135deg, #4f46e5 0%, #ec4899 50%, #06b6d4 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  animation: gradient-shift 8s ease infinite;
+  background-size: 200% 200%;
+}
+
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
 }
 
 /* Hero aura effect */
@@ -91,7 +100,7 @@ body {
   left: 10%;
   width: 260px;
   height: 260px;
-  background: radial-gradient(closest-side, rgba(124,156,255,0.55), rgba(124,156,255,0) 70%);
+  background: radial-gradient(closest-side, rgba(79,70,229,0.55), rgba(79,70,229,0) 70%);
   animation: float 9s ease-in-out infinite;
 }
 .hero-aura::after {
@@ -99,7 +108,7 @@ body {
   right: 15%;
   width: 320px;
   height: 320px;
-  background: radial-gradient(closest-side, rgba(6,182,212,0.45), rgba(6,182,212,0) 70%);
+  background: radial-gradient(closest-side, rgba(236,72,153,0.45), rgba(236,72,153,0) 70%);
   animation: float 11s ease-in-out infinite reverse;
 }
 
@@ -137,7 +146,7 @@ body {
   position: relative;
   padding: 1px;
   border-radius: 16px;
-  background: linear-gradient(120deg, rgba(124,156,255,0.45), rgba(6,182,212,0.35));
+  background: linear-gradient(120deg, rgba(79,70,229,0.45), rgba(236,72,153,0.35));
   transition: background 300ms ease;
 }
 .card-gradient .inner {
@@ -145,7 +154,7 @@ body {
   background: rgb(var(--bg-paper));
 }
 [data-theme="dark"] .card-gradient {
-  background: linear-gradient(120deg, rgba(124,156,255,0.35), rgba(6,182,212,0.25));
+  background: linear-gradient(120deg, rgba(129,140,248,0.35), rgba(244,114,182,0.25));
 }
 
 /**
@@ -215,3 +224,128 @@ select:focus-visible {
 html {
   scroll-behavior: smooth;
 }
+
+/**
+ * Glassmorphism Effect for Cards and Hero Elements
+ */
+.glass {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: saturate(180%) blur(12px);
+  -webkit-backdrop-filter: saturate(180%) blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
+}
+
+[data-theme="dark"] .glass {
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+}
+
+/**
+ * Enhanced Hover Effects for Interactive Cards
+ */
+.card-hover {
+  transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px -8px rgba(79, 70, 229, 0.25);
+}
+
+[data-theme="dark"] .card-hover:hover {
+  box-shadow: 0 12px 40px -8px rgba(129, 140, 248, 0.25);
+}
+
+/**
+ * Status Badge Animations
+ */
+@keyframes pulse-success {
+  0%, 100% { 
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+  }
+  50% { 
+    box-shadow: 0 0 0 6px rgba(34, 197, 94, 0);
+  }
+}
+
+@keyframes pulse-processing {
+  0%, 100% { 
+    box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.7);
+  }
+  50% { 
+    box-shadow: 0 0 0 6px rgba(79, 70, 229, 0);
+  }
+}
+
+.status-success {
+  animation: pulse-success 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.status-processing {
+  animation: pulse-processing 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/**
+ * French Literature Inspired Decorative Flourish
+ * Subtle ornamental divider
+ */
+.flourish-divider {
+  position: relative;
+  text-align: center;
+  margin: 2rem 0;
+}
+
+.flourish-divider::before,
+.flourish-divider::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 40%;
+  height: 1px;
+  background: linear-gradient(to right, transparent, rgb(var(--color-primary) / 0.3), transparent);
+}
+
+.flourish-divider::before {
+  left: 0;
+}
+
+.flourish-divider::after {
+  right: 0;
+}
+
+/**
+ * Shimmer Effect for Loading States
+ */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.shimmer {
+  animation: shimmer 2s linear infinite;
+  background: linear-gradient(
+    to right,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.2) 20%,
+    rgba(255, 255, 255, 0.5) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  background-size: 1000px 100%;
+}
+
+[data-theme="dark"] .shimmer {
+  background: linear-gradient(
+    to right,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.05) 20%,
+    rgba(255, 255, 255, 0.1) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+}
+

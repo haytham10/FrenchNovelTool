@@ -376,18 +376,38 @@ export default function HistoryTable() {
               return (
                 <StyledTableRow key={entry.id}>
                   <StyledTableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      {status === 'success' && <Icon icon={CheckCircle} color="success" fontSize="small" />}
-                      {status === 'failed' && <Icon icon={XCircle} color="error" fontSize="small" />}
-                      {status === 'processing' && <Icon icon={Loader2} color="primary" fontSize="small" />}
-                      <Typography variant="body2" sx={{ 
-                        color: status === 'success' ? 'success.main' : status === 'failed' ? 'error.main' : 'primary.main',
-                        fontWeight: 500,
-                        textTransform: 'capitalize'
-                      }}>
-                        {status}
-                      </Typography>
-                    </Box>
+                    <Chip 
+                      icon={
+                        status === 'success' ? <Icon icon={CheckCircle} fontSize="small" /> :
+                        status === 'failed' ? <Icon icon={XCircle} fontSize="small" /> :
+                        <Icon icon={Loader2} fontSize="small" />
+                      }
+                      label={status}
+                      size="small"
+                      className={status === 'success' ? 'status-success' : status === 'processing' ? 'status-processing' : ''}
+                      sx={{ 
+                        fontWeight: 600,
+                        textTransform: 'capitalize',
+                        ...(status === 'success' && {
+                          bgcolor: 'success.main',
+                          color: 'success.contrastText',
+                          '& .MuiChip-icon': { color: 'success.contrastText' }
+                        }),
+                        ...(status === 'failed' && {
+                          bgcolor: 'error.main',
+                          color: 'error.contrastText',
+                          '& .MuiChip-icon': { color: 'error.contrastText' }
+                        }),
+                        ...(status === 'processing' && {
+                          bgcolor: 'primary.main',
+                          color: 'primary.contrastText',
+                          '& .MuiChip-icon': { 
+                            color: 'primary.contrastText',
+                            animation: 'spin 1s linear infinite'
+                          }
+                        }),
+                      }}
+                    />
                   </StyledTableCell>
                   <StyledTableCell>{new Date(entry.timestamp).toLocaleString()}</StyledTableCell>
                   <StyledTableCell>{entry.original_filename}</StyledTableCell>
@@ -403,23 +423,45 @@ export default function HistoryTable() {
                   </StyledTableCell>
                   <StyledTableCell>
                     {entry.error_message ? (
-                      <Box>
-                        <Typography variant="body2" color="error.main" sx={{ fontWeight: 500 }}>
-                          {entry.error_message}
-                        </Typography>
-                        {entry.error_code && (
-                          <Typography variant="caption" color="text.secondary">
-                            Code: {entry.error_code}
+                      <Tooltip 
+                        title={
+                          <Box>
+                            <Typography variant="body2" fontWeight={600} gutterBottom>
+                              Technical Details:
+                            </Typography>
+                            <Typography variant="body2">
+                              {entry.error_message}
+                            </Typography>
+                            {entry.error_code && (
+                              <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                                Error Code: {entry.error_code}
+                              </Typography>
+                            )}
+                            {entry.failed_step && (
+                              <Typography variant="caption" display="block">
+                                Failed Step: {entry.failed_step}
+                              </Typography>
+                            )}
+                          </Box>
+                        }
+                        arrow
+                        placement="left"
+                      >
+                        <Box sx={{ cursor: 'help' }}>
+                          <Typography variant="body2" color="error.main" sx={{ fontWeight: 500 }}>
+                            {entry.failed_step === 'normalize' ? '❌ AI processing failed' :
+                             entry.failed_step === 'export' ? '❌ Export failed' :
+                             entry.error_code?.includes('INVALID') ? '❌ Invalid file' :
+                             entry.error_code?.includes('AUTH') ? '❌ Authentication error' :
+                             '❌ Processing error'}
                           </Typography>
-                        )}
-                        {entry.failed_step && (
-                          <Typography variant="caption" color="text.secondary" display="block">
-                            Failed at: {entry.failed_step}
+                          <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                            Hover for details
                           </Typography>
-                        )}
-                      </Box>
+                        </Box>
+                      </Tooltip>
                     ) : (
-                      'N/A'
+                      <Typography variant="body2" color="text.secondary">—</Typography>
                     )}
                   </StyledTableCell>
                   <StyledTableCell>

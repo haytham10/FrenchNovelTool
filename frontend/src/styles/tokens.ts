@@ -8,8 +8,9 @@ export const tokens = {
   // Color tokens (RGB values for CSS variables)
   colors: {
     light: {
-      primary: { r: 59, g: 130, b: 246 },      // #3b82f6
-      secondary: { r: 6, g: 182, b: 212 },     // #06b6d4
+      primary: { r: 79, g: 70, b: 229 },       // #4f46e5 - More distinctive indigo
+      secondary: { r: 236, g: 72, b: 153 },    // #ec4899 - Pink accent for French flair
+      tertiary: { r: 6, g: 182, b: 212 },      // #06b6d4 - Cyan for accents
       success: { r: 34, g: 197, b: 94 },       // #22c55e
       warning: { r: 245, g: 158, b: 11 },      // #f59e0b
       error: { r: 239, g: 68, b: 68 },         // #ef4444
@@ -22,8 +23,9 @@ export const tokens = {
       },
     },
     dark: {
-      primary: { r: 124, g: 156, b: 255 },     // #7c9cff
-      secondary: { r: 125, g: 211, b: 252 },   // #7dd3fc
+      primary: { r: 129, g: 140, b: 248 },     // #818cf8 - Lighter indigo for dark mode
+      secondary: { r: 244, g: 114, b: 182 },   // #f472b6 - Pink accent for dark mode
+      tertiary: { r: 125, g: 211, b: 252 },    // #7dd3fc - Cyan for dark mode
       success: { r: 34, g: 197, b: 94 },       // #22c55e
       warning: { r: 251, g: 191, b: 36 },      // #fbbf24
       error: { r: 248, g: 113, b: 113 },       // #f87171
@@ -39,7 +41,9 @@ export const tokens = {
 
   // Typography scale
   typography: {
-    fontFamily: 'Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Helvetica Neue", sans-serif',
+    fontFamily: 'var(--font-inter), Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Helvetica Neue", sans-serif',
+    // French-literature inspired serif for headings
+    serifFamily: 'var(--font-libre-baskerville), "Libre Baskerville", "Playfair Display", Georgia, "Times New Roman", serif',
     fontSize: {
       xs: '0.75rem',      // 12px
       sm: '0.875rem',     // 14px
