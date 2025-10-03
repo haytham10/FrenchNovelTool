@@ -171,6 +171,31 @@ export async function getProcessingHistory(): Promise<ProcessingHistory[]> {
 export const fetchHistory = getProcessingHistory;
 
 /**
+ * Retry a failed history entry
+ */
+export async function retryHistoryEntry(entryId: number): Promise<{ message: string; entry_id: number; settings: Record<string, unknown> }> {
+  const response = await api.post(`/history/${entryId}/retry`);
+  return response.data;
+}
+
+/**
+ * Duplicate a history entry with same settings
+ */
+export async function duplicateHistoryEntry(entryId: number): Promise<{ message: string; settings: Record<string, unknown>; original_filename: string }> {
+  const response = await api.post(`/history/${entryId}/duplicate`);
+  return response.data;
+}
+
+/**
+ * Export history entry to Google Sheets
+ */
+export async function exportHistoryToSheet(entryId: number, data: ExportToSheetRequest): Promise<string> {
+  const response = await api.post('/export-to-sheet', data);
+  // Update history entry with spreadsheet URL
+  return response.data.spreadsheet_url;
+}
+
+/**
  * Settings APIs
  */
 

@@ -16,7 +16,7 @@ import { useAuth } from '@/components/AuthContext';
 import GoogleLoginButton from '@/components/GoogleLoginButton';
 import { useProcessingStore } from '@/stores/useProcessingStore';
 import Icon from '@/components/Icon';
-import { Download } from 'lucide-react';
+import { Download, BookOpenText, Zap, CheckCircle, Shield, User } from 'lucide-react';
 import { fadeIn, float } from '@/lib/animations';
 
 import type { ExportOptions } from '@/components/ExportDialog';
@@ -423,56 +423,124 @@ export default function Home() {
 
         {/* Public About & Data Usage sections for transparency and verification */}
         <Box id="about" sx={{ mt: 6 }}>
-          <Paper variant="outlined" sx={{ p: { xs: 2, md: 4 } }}>
-            <Typography variant="h4" gutterBottom>
-              About French Novel Tool
-            </Typography>
-            <Typography variant="body1" color="text.secondary" paragraph>
-              French Novel Tool helps you process French-language PDF novels, intelligently split
-              long sentences using Google Gemini, and export the results to your Google Sheets for
-              study, editing, or sharing.
-            </Typography>
-            <Divider sx={{ my: 2 }} />
-            <Typography variant="h5" gutterBottom>
-              Why we request Google permissions
-            </Typography>
-            <List>
-              <ListItem>
-                <ListItemText
-                  primary="Basic profile (email, name, picture)"
-                  secondary="Used to identify your account and personalize your experience."
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="Google Drive/Sheets access"
-                  secondary="Used only when you explicitly export results — to create or update a spreadsheet in your Google Drive."
-                />
-              </ListItem>
-            </List>
-            <Typography variant="h5" gutterBottom>
-              How we handle your data
-            </Typography>
-            <List>
-              <ListItem>
-                <ListItemText
-                  primary="We don’t sell your data"
-                  secondary="Your information is used solely to provide the functionality you request."
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemText
-                  primary="You control access"
-                  secondary="You can revoke Google access at any time from your Google Account settings."
-                />
-              </ListItem>
-            </List>
-            <Typography variant="body2" color="text.secondary">
-              For full details, see our{' '}
-              <Link href="/policy" style={{ textDecoration: 'underline' }}>Privacy Policy</Link>{' '}
-              and{' '}
-              <Link href="/terms" style={{ textDecoration: 'underline' }}>Terms of Service</Link>.
-            </Typography>
+          <Paper 
+            elevation={3} 
+            sx={{ 
+              p: { xs: 3, md: 5 },
+              background: 'linear-gradient(135deg, rgba(124,156,255,0.05) 0%, rgba(6,182,212,0.05) 100%)',
+              border: 1,
+              borderColor: 'divider',
+            }}
+          >
+            <Box sx={{ textAlign: 'center', mb: 4 }}>
+              <Typography variant="h3" gutterBottom fontWeight={700}>
+                About French Novel Tool
+              </Typography>
+              <Typography variant="h6" color="text.secondary" sx={{ maxWidth: 800, mx: 'auto' }}>
+                Transform how you read and study French literature with AI-powered sentence processing
+              </Typography>
+            </Box>
+            
+            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 4, mb: 4 }}>
+              <Box sx={{ flex: 1, textAlign: 'center', p: 2 }}>
+                <Icon icon={BookOpenText} sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
+                <Typography variant="h6" gutterBottom fontWeight={600}>
+                  Smart Processing
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Upload French PDF novels and let our AI intelligently split long, complex sentences into digestible chunks perfect for learning
+                </Typography>
+              </Box>
+              <Box sx={{ flex: 1, textAlign: 'center', p: 2 }}>
+                <Icon icon={Zap} sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
+                <Typography variant="h6" gutterBottom fontWeight={600}>
+                  Powered by Gemini
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Leverages Google&apos;s Gemini AI to understand context and preserve meaning while normalizing sentence structure
+                </Typography>
+              </Box>
+              <Box sx={{ flex: 1, textAlign: 'center', p: 2 }}>
+                <Icon icon={CheckCircle} sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
+                <Typography variant="h6" gutterBottom fontWeight={600}>
+                  Seamless Export
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Export processed sentences directly to Google Sheets with one click for easy study, annotation, and sharing
+                </Typography>
+              </Box>
+            </Box>
+
+            <Divider sx={{ my: 4 }} />
+            
+            <Box sx={{ mb: 4 }}>
+              <Typography variant="h5" gutterBottom fontWeight={600}>
+                Privacy & Permissions
+              </Typography>
+              <Typography variant="body1" color="text.secondary" paragraph>
+                We take your privacy seriously. Here&apos;s exactly what we need access to and why:
+              </Typography>
+              <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 3 }}>
+                <Paper variant="outlined" sx={{ p: 3, flex: 1 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'start', gap: 2 }}>
+                    <Icon icon={User} color="primary" />
+                    <Box>
+                      <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                        Basic Profile Information
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        We request your email, name, and profile picture to identify your account and personalize your experience. This information is never shared with third parties.
+                      </Typography>
+                    </Box>
+                  </Box>
+                </Paper>
+                <Paper variant="outlined" sx={{ p: 3, flex: 1 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'start', gap: 2 }}>
+                    <Icon icon={Shield} color="primary" />
+                    <Box>
+                      <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                        Google Drive & Sheets Access
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Required only when you explicitly choose to export results. We create or update spreadsheets in your Google Drive only when you request it.
+                      </Typography>
+                    </Box>
+                  </Box>
+                </Paper>
+              </Box>
+            </Box>
+
+            <Box sx={{ bgcolor: 'action.hover', p: 3, borderRadius: 2, border: 1, borderColor: 'divider' }}>
+              <Typography variant="h6" gutterBottom fontWeight={600}>
+                Your Data, Your Control
+              </Typography>
+              <List>
+                <ListItem>
+                  <ListItemText
+                    primary="We don't sell your data"
+                    secondary="Your information is used solely to provide the functionality you request — nothing more."
+                  />
+                </ListItem>
+                <ListItem>
+                  <ListItemText
+                    primary="Full transparency"
+                    secondary="All processing is logged in your history, and you can review what was processed at any time."
+                  />
+                </ListItem>
+                <ListItem>
+                  <ListItemText
+                    primary="Revocable access"
+                    secondary="You can revoke Google access at any time from your Google Account settings."
+                  />
+                </ListItem>
+              </List>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                For complete details, please review our{' '}
+                <Link href="/policy" style={{ textDecoration: 'underline', fontWeight: 600 }}>Privacy Policy</Link>{' '}
+                and{' '}
+                <Link href="/terms" style={{ textDecoration: 'underline', fontWeight: 600 }}>Terms of Service</Link>.
+              </Typography>
+            </Box>
           </Paper>
         </Box>
 

@@ -11,6 +11,8 @@ import {
   getProcessingHistory,
   getUserSettings,
   updateUserSettings,
+  retryHistoryEntry,
+  duplicateHistoryEntry,
   getApiErrorMessage,
   type ProcessPdfOptions,
   type ExportToSheetRequest,
@@ -122,6 +124,7 @@ export function useProcessPdf() {
  * Export Mutations
  */
 export function useExportToSheet() {
+  const queryClient = useQueryClient();
   const { enqueueSnackbar } = useSnackbar();
 
   return useMutation({
@@ -129,11 +132,57 @@ export function useExportToSheet() {
     
     onSuccess: () => {
       enqueueSnackbar('Exported to Google Sheets successfully!', { variant: 'success' });
+      // Invalidate history to refresh the spreadsheet_url
+      queryClient.invalidateQueries({ queryKey: queryKeys.history });
     },
     
     onError: (error) => {
       enqueueSnackbar(
         getApiErrorMessage(error, 'Failed to export to Google Sheets'),
+        { variant: 'error' }
+      );
+    },
+  });
+}
+
+/**
+ * Retry History Entry Mutation
+ */
+export function useRetryHistoryEntry() {
+  const { enqueueSnackbar } = useSnackbar();
+
+  return useMutation({
+    mutationFn: (entryId: number) => retryHistoryEntry(entryId),
+    
+    onSuccess: (data) => {
+      enqueueSnackbar(data.message || 'Retry information retrieved', { variant: 'info' });
+    },
+    
+    onError: (error) => {
+      enqueueSnackbar(
+        getApiErrorMessage(error, 'Failed to retry entry'),
+        { variant: 'error' }
+      );
+    },
+  });
+}
+
+/**
+ * Duplicate History Entry Mutation
+ */
+export function useDuplicateHistoryEntry() {
+  const { enqueueSnackbar } = useSnackbar();
+
+  return useMutation({
+    mutationFn: (entryId: number) => duplicateHistoryEntry(entryId),
+    
+    onSuccess: (data) => {
+      enqueueSnackbar(data.message || 'Settings retrieved for duplication', { variant: 'info' });
+    },
+    
+    onError: (error) => {
+      enqueueSnackbar(
+        getApiErrorMessage(error, 'Failed to duplicate entry'),
         { variant: 'error' }
       );
     },

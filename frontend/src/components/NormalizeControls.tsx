@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Box, Typography, Slider, Paper, Chip, Stack, FormControlLabel, Switch, Select, MenuItem, FormControl, InputLabel, Collapse, Button, TextField, Divider } from '@mui/material';
+import { Box, Typography, Slider, Paper, Chip, Stack, FormControlLabel, Switch, Select, MenuItem, FormControl, Collapse, Button, TextField, Divider } from '@mui/material';
 import Icon from './Icon';
 import { Sliders, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
 
@@ -58,23 +58,40 @@ export default function NormalizeControls({
   };
 
   return (
-    <Paper elevation={0} sx={{ p: 3, bgcolor: 'background.paper', border: 1, borderColor: 'divider' }}>
+    <Paper 
+      elevation={0} 
+      sx={{ 
+        p: 3, 
+        bgcolor: 'background.paper', 
+        border: 1, 
+        borderColor: 'divider',
+        borderRadius: 2,
+      }}
+    >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-        <Icon icon={Sliders} color="primary" />
+        <Icon icon={Sliders} color="primary" sx={{ fontSize: 28 }} />
         <Typography variant="h6" fontWeight={600}>
           Normalization Settings
         </Typography>
       </Box>
       
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Configure how sentences are normalized. Adjust length, model, and advanced options for optimal results.
+        Configure sentence normalization parameters. Adjust length targets, AI model selection, and advanced processing options for optimal results.
       </Typography>
 
       {/* Basic Controls */}
       <Box sx={{ mb: 3 }}>
-        <Typography variant="subtitle2" gutterBottom>
-          Target Length: <strong>{sentenceLength} words</strong>
-        </Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+          <Typography variant="subtitle2" fontWeight={600}>
+            Target Sentence Length
+          </Typography>
+          <Chip 
+            label={`${sentenceLength} words`} 
+            color="primary" 
+            size="small"
+            sx={{ fontWeight: 600 }}
+          />
+        </Box>
         <Slider
           value={sentenceLength}
           onChange={(_, value) => onSentenceLengthChange(value as number)}
@@ -94,14 +111,14 @@ export default function NormalizeControls({
       </Box>
 
       <Box sx={{ mb: 3 }}>
-        <Typography variant="subtitle2" gutterBottom>
+        <Typography variant="subtitle2" fontWeight={600} gutterBottom>
           Quick Presets
         </Typography>
-        <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+        <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap', gap: 1 }}>
           {PRESETS.map((preset) => (
             <Chip
               key={preset.value}
-              label={`${preset.label} (${preset.value})`}
+              label={`${preset.label} (${preset.value}w)`}
               onClick={() => onSentenceLengthChange(preset.value)}
               color={sentenceLength === preset.value ? 'primary' : 'default'}
               variant={sentenceLength === preset.value ? 'filled' : 'outlined'}
@@ -115,15 +132,15 @@ export default function NormalizeControls({
       {/* Gemini Model Selection */}
       {onAdvancedOptionsChange && (
         <Box sx={{ mb: 3 }}>
+          <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+            AI Model Selection
+          </Typography>
           <FormControl fullWidth size="small">
-            <InputLabel id="gemini-model-label">AI Model</InputLabel>
             <Select
-              labelId="gemini-model-label"
               value={advancedOptions.geminiModel || 'balanced'}
               onChange={(e) => handleAdvancedOptionChange('geminiModel', e.target.value)}
               disabled={disabled}
-              label="AI Model"
-              startAdornment={<Icon icon={Sparkles} fontSize="small" sx={{ mr: 1 }} />}
+              startAdornment={<Icon icon={Sparkles} fontSize="small" sx={{ mr: 1, color: 'primary.main' }} />}
             >
               {GEMINI_MODELS.map((model) => (
                 <MenuItem key={model.value} value={model.value}>
