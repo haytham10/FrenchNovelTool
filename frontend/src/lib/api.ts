@@ -138,7 +138,31 @@ export async function extractPdfText(file: File): Promise<{ text: string; page_c
   return response.data;
 }
 
-export async function processPdf(file: File, options?: ProcessPdfOptions): Promise<string[]> {
+export interface ProcessPdfOptions {
+  jobId?: number;
+  sentenceLength?: number;
+  advancedOptions?: {
+    gemini_model?: string;
+    ignore_dialogue?: boolean;
+    preserve_formatting?: boolean;
+    fix_hyphenation?: boolean;
+    min_sentence_length?: number;
+  };
+  onUploadProgress?: (progress: number) => void;
+}
+
+export interface ProcessPdfResponse {
+  sentences?: string[];
+  job_id?: number;
+  status?: string;
+  async?: boolean;
+  message?: string;
+}
+
+export async function processPdf(
+  file: File, 
+  options?: ProcessPdfOptions
+): Promise<string[] | ProcessPdfResponse> {
   const formData = new FormData();
   formData.append('pdf_file', file);
   
@@ -146,7 +170,19 @@ export async function processPdf(file: File, options?: ProcessPdfOptions): Promi
     formData.append('job_id', options.jobId.toString());
   }
   
-  const response = await api.post('/process-pdf', formData, {
+  if (options?.sentenceLength) {
+    formData.append('sentence_length_limit', String(options.sentenceLength));
+  }
+  
+  if (options?.advancedOptions) {
+    Object.entries(options.advancedOptions).forEach(([key, value]) => {
+      if (value !== undefined) {
+        formData.append(key, String(value));
+      }
+    });
+  }
+  
+  const response = await api.post<ProcessPdfResponse>('/process-pdf', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
@@ -158,6 +194,12 @@ export async function processPdf(file: File, options?: ProcessPdfOptions): Promi
     },
   });
   
+  // If async processing, return the full response
+  if (response.data.async) {
+    return response.data;
+  }
+  
+  // For sync processing, return sentences for backward compatibility
   return response.data.sentences || [];
 }
 
@@ -270,6 +312,38 @@ export interface CostEstimate {
 
 export async function estimateCost(request: CostEstimateRequest): Promise<CostEstimate> {
   const response = await api.post('/estimate', request);
+  return response.data;
+}
+
+export async function getJob(jobId: number): Promise<Job> {
+  const response = await api.get(`/jobs/${jobId}`);
+  return response.data;
+}
+
+export interface Job {
+  id: number;
+  user_id: number;
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  original_filename: string;
+  model: string;
+  estimated_tokens?: number;
+  actual_tokens?: number;
+  estimated_credits: number;
+  actual_credits?: number;
+  total_chunks?: number;
+  completed_chunks?: number;
+  progress_percent?: number;
+  celery_task_id?: string;
+  created_at: string;
+  started_at?: string;
+  completed_at?: string;
+  error_message?: string;
+  error_code?: string;
+  history_id?: number;
+}
+
+export async function cancelJob(jobId: number): Promise<{ message: string }> {
+  const response = await api.post(`/jobs/${jobId}/cancel`);
   return response.data;
 }
 

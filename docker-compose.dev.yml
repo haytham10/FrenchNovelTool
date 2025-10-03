@@ -72,6 +72,33 @@ services:
       retries: 5
     command: redis-server --appendonly yes
 
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: french-novel-celery-worker-dev
+    command: celery -A celery_app.celery_app worker --loglevel=info --concurrency=4
+    environment:
+      - FLASK_ENV=development
+      - SECRET_KEY=dev-secret-key
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///app.db}
+      - REDIS_URL=redis://redis:6379/0
+      - LOG_LEVEL=DEBUG
+    volumes:
+      - ./backend:/app
+      - /app/__pycache__
+      - /app/.venv
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app-network
+
 volumes:
   redis-data-dev:
 

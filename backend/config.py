@@ -88,6 +88,18 @@ class Config:
     SQLALCHEMY_DATABASE_URI = database_url
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
+    # Celery Configuration
+    CELERY_BROKER_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+    CELERY_RESULT_BACKEND = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+    
+    # Async Processing Configuration
+    ASYNC_PROCESSING_ENABLED = os.getenv('ASYNC_PROCESSING_ENABLED', 'True').lower() == 'true'
+    CHUNKING_THRESHOLD_PAGES = int(os.getenv('CHUNKING_THRESHOLD_PAGES', '50'))  # Files larger than this will be chunked
+    CHUNK_SIZE_PAGES = int(os.getenv('CHUNK_SIZE_PAGES', '50'))  # Pages per chunk
+    MAX_WORKERS = int(os.getenv('MAX_WORKERS', '4'))  # Maximum concurrent workers
+    WORKER_MEMORY_LIMIT_MB = int(os.getenv('WORKER_MEMORY_LIMIT_MB', '2048'))  # 2GB default
+    TASK_TIMEOUT_SECONDS = int(os.getenv('TASK_TIMEOUT_SECONDS', '3600'))  # 1 hour default
+    
     # Logging
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
     LOG_FILE = os.getenv('LOG_FILE', os.path.join(basedir, 'logs', 'app.log'))

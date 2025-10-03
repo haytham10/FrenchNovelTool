@@ -9,11 +9,6 @@ from flask import current_app
 class PDFChunkingService:
     """Service for splitting PDFs into chunks for parallel processing"""
     
-    # Default: 50 pages per chunk for balanced processing
-    DEFAULT_CHUNK_SIZE_PAGES = 50
-    # Threshold: files larger than this will be chunked
-    CHUNKING_THRESHOLD_PAGES = 50
-    
     def __init__(self, pdf_path: str):
         """
         Initialize chunking service with a PDF file.
@@ -23,6 +18,15 @@ class PDFChunkingService:
         """
         self.pdf_path = pdf_path
         self.total_pages = self._get_page_count()
+        
+        # Load config from Flask app if available
+        try:
+            self.chunking_threshold = current_app.config.get('CHUNKING_THRESHOLD_PAGES', 50)
+            self.default_chunk_size = current_app.config.get('CHUNK_SIZE_PAGES', 50)
+        except RuntimeError:
+            # Not in Flask app context
+            self.chunking_threshold = 50
+            self.default_chunk_size = 50
     
     def _get_page_count(self) -> int:
         """Get total number of pages in the PDF"""
@@ -41,18 +45,21 @@ class PDFChunkingService:
         Returns:
             True if PDF should be chunked, False otherwise
         """
-        return self.total_pages > self.CHUNKING_THRESHOLD_PAGES
+        return self.total_pages > self.chunking_threshold
     
-    def calculate_chunks(self, chunk_size_pages: int = DEFAULT_CHUNK_SIZE_PAGES) -> List[Tuple[int, int]]:
+    def calculate_chunks(self, chunk_size_pages: int = None) -> List[Tuple[int, int]]:
         """
         Calculate chunk ranges for the PDF.
         
         Args:
-            chunk_size_pages: Number of pages per chunk
+            chunk_size_pages: Number of pages per chunk (defaults to config value)
             
         Returns:
             List of (start_page, end_page) tuples (0-indexed, end is exclusive)
         """
+        if chunk_size_pages is None:
+            chunk_size_pages = self.default_chunk_size
+            
         chunks = []
         for start_page in range(0, self.total_pages, chunk_size_pages):
             end_page = min(start_page + chunk_size_pages, self.total_pages)
