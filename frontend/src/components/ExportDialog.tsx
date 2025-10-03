@@ -83,6 +83,11 @@ export default function ExportDialog({
     setSelectedFolderName(folderName);
   };
 
+  const handleClearFolder = () => {
+    setSelectedFolderId(null);
+    setSelectedFolderName(null);
+  };
+
   const handleExport = () => {
     const options: ExportOptions = {
       sheetName,
@@ -230,6 +235,7 @@ export default function ExportDialog({
         <DriveFolderPicker 
           onFolderSelect={handleFolderSelect}
           selectedFolderName={selectedFolderName}
+          onClearSelection={handleClearFolder}
         />
 
         <Divider sx={{ my: 3 }} />
