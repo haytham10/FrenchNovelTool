@@ -10,6 +10,7 @@ type AuthUser = { id: number; email: string; name: string; avatarUrl?: string } 
 type AuthContextValue = {
   user: AuthUser;
   isLoading: boolean;
+  isAuthenticating: boolean;
   loginWithCredential: (response: CredentialResponse) => Promise<void>;
   loginWithCode: (code: string) => Promise<void>;
   logout: () => void;
@@ -26,6 +27,7 @@ export function useAuth(): AuthContextValue {
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
 
   // Load user from stored token on mount
   useEffect(() => {
@@ -73,6 +75,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     }
 
     try {
+      setIsAuthenticating(true);
       console.log('[AuthContext] Exchanging Google ID token for JWT (legacy flow)...');
       // Call backend to exchange Google token for our JWT
       const loginResponse = await loginWithGoogle(response.credential);
@@ -95,12 +98,15 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       console.error('[AuthContext] Login failed:', error);
       clearTokens();
       setUser(null);
+    } finally {
+      setIsAuthenticating(false);
     }
   }, []);
 
   const loginWithCode = useCallback(async (code: string) => {
     // OAuth authorization code flow (recommended - includes Sheets/Drive access)
     try {
+      setIsAuthenticating(true);
       console.log('[AuthContext] Exchanging authorization code for tokens...');
       // Call backend to exchange authorization code for our JWT
       const loginResponse = await loginWithGoogle(undefined, code);
@@ -123,6 +129,8 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       console.error('[AuthContext] Login with code failed:', error);
       clearTokens();
       setUser(null);
+    } finally {
+      setIsAuthenticating(false);
     }
   }, []);
 
@@ -134,7 +142,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     console.log('[AuthContext] Logout complete');
   }, []);
 
-  const value = useMemo<AuthContextValue>(() => ({ user, isLoading, loginWithCredential, loginWithCode, logout }), [user, isLoading, loginWithCredential, loginWithCode, logout]);
+  const value = useMemo<AuthContextValue>(() => ({ user, isLoading, isAuthenticating, loginWithCredential, loginWithCode, logout }), [user, isLoading, isAuthenticating, loginWithCredential, loginWithCode, logout]);
 
   const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
 

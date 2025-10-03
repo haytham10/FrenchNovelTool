@@ -1,7 +1,7 @@
 "use client";
 
 import React from 'react';
-import { AppBar, Toolbar, Typography, Box, Button, Container, IconButton as MIconButton } from '@mui/material';
+import { AppBar, Toolbar, Typography, Box, Button, Container, IconButton as MIconButton, Skeleton } from '@mui/material';
 import Link from 'next/link';
 import ThemeToggle from './ThemeToggle';
 import Icon from './Icon';
@@ -16,7 +16,7 @@ import { useAuth } from './AuthContext';
 export default function Header() {
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [helpOpen, setHelpOpen] = React.useState(false);
-  const { user } = useAuth();
+  const { user, isAuthenticating } = useAuth();
   return (
     <AppBar position="sticky" color="transparent" elevation={0} sx={{ backdropFilter: 'blur(8px)' }}>
       <Container maxWidth="lg">
@@ -40,7 +40,11 @@ export default function Header() {
                 <Button component={Link} href="/settings" color="inherit">Settings</Button>
               </>
             )}
-            {user ? <UserMenu /> : <GoogleLoginButton />}
+            {isAuthenticating ? (
+              <Skeleton variant="circular" width={32} height={32} />
+            ) : (
+              user ? <UserMenu /> : <GoogleLoginButton />
+            )}
             <ThemeToggle />
           </Box>
         </Toolbar>
