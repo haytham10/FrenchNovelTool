@@ -13,6 +13,7 @@ import Icon from './Icon';
 import IconButton from './IconButton';
 import { CheckCircle, XCircle, Loader2, RefreshCw, Copy, Eye, Filter, Send, Calendar } from 'lucide-react';
 import ExportDialog from './ExportDialog';
+import JobCreditDisplay from './JobCreditDisplay';
 import { useRouter } from 'next/navigation';
 
 type Order = 'asc' | 'desc';
@@ -347,6 +348,7 @@ export default function HistoryTable() {
                   Sentences
                 </TableSortLabel>
               </StyledTableCell>
+              <StyledTableCell>Credits</StyledTableCell>
               <StyledTableCell>
                 <TableSortLabel
                   active={orderBy === 'spreadsheet_url'}
@@ -412,6 +414,15 @@ export default function HistoryTable() {
                   <StyledTableCell>{new Date(entry.timestamp).toLocaleString()}</StyledTableCell>
                   <StyledTableCell>{entry.original_filename}</StyledTableCell>
                   <StyledTableCell>{entry.processed_sentences_count}</StyledTableCell>
+                  <StyledTableCell>
+                    {entry.job_id ? (
+                      <JobCreditDisplay jobId={entry.job_id} />
+                    ) : (
+                      <Typography variant="caption" color="text.secondary">
+                        N/A
+                      </Typography>
+                    )}
+                  </StyledTableCell>
                   <StyledTableCell>
                     {entry.spreadsheet_url ? (
                       <Link href={entry.spreadsheet_url} target="_blank" rel="noopener noreferrer">

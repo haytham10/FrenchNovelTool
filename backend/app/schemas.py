@@ -94,3 +94,30 @@ class ProcessPdfOptionsSchema(Schema):
     )
 
 
+class EstimateRequestSchema(Schema):
+    """Schema for credit estimate request"""
+    text = fields.String(required=True, validate=validate.Length(min=1))
+    model_preference = fields.String(
+        required=True,
+        validate=validate.OneOf(['balanced', 'quality', 'speed'])
+    )
+
+
+class JobConfirmSchema(Schema):
+    """Schema for job confirmation request"""
+    estimated_credits = fields.Integer(required=True, validate=validate.Range(min=1))
+    model_preference = fields.String(
+        required=True,
+        validate=validate.OneOf(['balanced', 'quality', 'speed'])
+    )
+    processing_settings = fields.Dict(required=False)
+
+
+class JobFinalizeSchema(Schema):
+    """Schema for job finalization request"""
+    job_id = fields.Integer(required=True, validate=validate.Range(min=1))
+    actual_tokens = fields.Integer(required=True, validate=validate.Range(min=0))
+    success = fields.Boolean(required=True)
+    error_message = fields.String(allow_none=True)
+    error_code = fields.String(allow_none=True)
+

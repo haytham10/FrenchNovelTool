@@ -13,10 +13,18 @@ import {
   updateUserSettings,
   retryHistoryEntry,
   duplicateHistoryEntry,
+  getCredits,
+  estimateCost,
+  confirmJob,
+  finalizeJob,
+  getJob,
   getApiErrorMessage,
   type ProcessPdfOptions,
   type ExportToSheetRequest,
   type UserSettings,
+  type CostEstimateRequest,
+  type JobConfirmRequest,
+  type JobFinalizeRequest,
 } from './api';
 
 /**
@@ -25,6 +33,8 @@ import {
 export const queryKeys = {
   history: ['history'] as const,
   settings: ['settings'] as const,
+  credits: ['credits'] as const,
+  jobs: ['jobs'] as const,
 };
 
 /**
@@ -185,6 +195,62 @@ export function useDuplicateHistoryEntry() {
         getApiErrorMessage(error, 'Failed to duplicate entry'),
         { variant: 'error' }
       );
+    },
+  });
+}
+
+/**
+ * Credit Queries
+ */
+export function useCredits() {
+  return useQuery({
+    queryKey: queryKeys.credits,
+    queryFn: getCredits,
+    staleTime: 1000 * 60 * 5, // 5 minutes
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useJob(jobId: number | null | undefined) {
+  return useQuery({
+    queryKey: [...queryKeys.jobs, jobId],
+    queryFn: () => (jobId ? getJob(jobId) : null),
+    enabled: !!jobId,
+    staleTime: 1000 * 60 * 5, // 5 minutes
+  });
+}
+
+/**
+ * Credit Mutations
+ */
+export function useEstimateCost() {
+  return useMutation({
+    mutationFn: (request: CostEstimateRequest) => estimateCost(request),
+  });
+}
+
+export function useConfirmJob() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: JobConfirmRequest) => confirmJob(request),
+    onSuccess: () => {
+      // Invalidate credits to refresh balance
+      queryClient.invalidateQueries({ queryKey: queryKeys.credits });
+    },
+  });
+}
+
+export function useFinalizeJob() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ jobId, request }: { jobId: number; request: JobFinalizeRequest }) =>
+      finalizeJob(jobId, request),
+    onSuccess: () => {
+      // Invalidate credits and history to refresh
+      queryClient.invalidateQueries({ queryKey: queryKeys.credits });
+      queryClient.invalidateQueries({ queryKey: queryKeys.history });
     },
   });
 }
