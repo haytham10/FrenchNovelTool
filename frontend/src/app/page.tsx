@@ -5,8 +5,9 @@ import FileUpload from '@/components/FileUpload';
 import ResultsTable from '@/components/ResultsTable';
 import NormalizeControls from '@/components/NormalizeControls';
 import ExportDialog from '@/components/ExportDialog';
-import { getApiErrorMessage } from '@/lib/api';
-import { useProcessPdf, useExportToSheet } from '@/lib/queries';
+import PreflightModal from '@/components/PreflightModal';
+import { getApiErrorMessage, extractPdfText } from '@/lib/api';
+import { useProcessPdf, useExportToSheet, useEstimateCost, useConfirmJob, useFinalizeJob } from '@/lib/queries';
 import { CircularProgress, Button, Typography, Box, Container, Paper, Divider, List, ListItem, ListItemText, LinearProgress } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import UploadStepper from '@/components/UploadStepper';
@@ -20,10 +21,16 @@ import { Download, BookOpenText, Zap, CheckCircle, Shield, User } from 'lucide-r
 import { fadeIn, float } from '@/lib/animations';
 
 import type { ExportOptions } from '@/components/ExportDialog';
+import type { CostEstimate } from '@/lib/types';
 
 export default function Home() {
   const { user } = useAuth();
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [preflightModalOpen, setPreflightModalOpen] = useState(false);
+  const [currentFile, setCurrentFile] = useState<File | null>(null);
+  const [costEstimate, setCostEstimate] = useState<CostEstimate | null>(null);
+  const [estimating, setEstimating] = useState(false);
+  const [currentJobId, setCurrentJobId] = useState<number | null>(null);
   const { enqueueSnackbar } = useSnackbar();
   
   // Use Zustand store for processing state
@@ -44,40 +51,107 @@ export default function Home() {
   // Use React Query for API calls
   const processPdfMutation = useProcessPdf();
   const exportMutation = useExportToSheet();
+  const estimateMutation = useEstimateCost();
+  const confirmJobMutation = useConfirmJob();
+  const finalizeJobMutation = useFinalizeJob();
 
   const handleFileUpload = async (files: File[]) => {
-    setLoading(true, 'Uploading and processing PDF(s)...');
-    setSentences([]);
-
-    let allProcessedSentences: string[] = [];
+    if (!files || files.length === 0) return;
+    
+    // For now, process one file at a time
+    const file = files[0];
+    setCurrentFile(file);
+    setEstimating(true);
+    setPreflightModalOpen(true);
 
     try {
-      for (const file of files) {
-        setLoading(true, `Processing ${file.name}...`);
-        setUploadProgress(0);
-        
-        const sentences = await processPdfMutation.mutateAsync({
-          file,
-          options: {
-            onUploadProgress: (progress) => {
-              setUploadProgress(progress);
-            },
-          },
-        });
-        
-        allProcessedSentences = allProcessedSentences.concat(sentences);
-      }
-      setSentences(allProcessedSentences);
-      enqueueSnackbar('PDF(s) processed successfully!', { variant: 'success' });
+      // Extract text from PDF
+      const { text } = await extractPdfText(file);
+      
+      // Get cost estimate
+      const estimate = await estimateMutation.mutateAsync({
+        text,
+        model_preference: advancedOptions.geminiModel || 'balanced',
+      });
+      
+      setCostEstimate(estimate);
     } catch (error) {
       enqueueSnackbar(
-        getApiErrorMessage(error, 'An unexpected error occurred while processing the PDF(s).'),
+        getApiErrorMessage(error, 'Failed to estimate cost'),
         { variant: 'error' }
       );
+      setPreflightModalOpen(false);
+    } finally {
+      setEstimating(false);
+    }
+  };
+
+  const handleConfirmProcessing = async () => {
+    if (!currentFile || !costEstimate) return;
+
+    try {
+      // Confirm job and reserve credits
+      const jobResponse = await confirmJobMutation.mutateAsync({
+        estimated_credits: costEstimate.estimated_credits,
+        model_preference: costEstimate.model_preference,
+        processing_settings: {
+          original_filename: currentFile.name,
+          estimated_tokens: costEstimate.estimated_tokens,
+          sentence_length_limit: sentenceLength,
+          gemini_model: advancedOptions.geminiModel,
+          ignore_dialogue: advancedOptions.ignoreDialogues,
+          preserve_formatting: advancedOptions.preserveQuotes,
+          fix_hyphenation: advancedOptions.fixHyphenations,
+          min_sentence_length: advancedOptions.minSentenceLength,
+        },
+      });
+
+      const jobId = jobResponse.job_id;
+      setCurrentJobId(jobId);
+      setPreflightModalOpen(false);
+
+      // Now process the PDF with the job_id
+      setLoading(true, `Processing ${currentFile.name}...`);
+      setSentences([]);
+      setUploadProgress(0);
+
+      const processedSentences = await processPdfMutation.mutateAsync({
+        file: currentFile,
+        options: {
+          jobId: jobId,
+          onUploadProgress: (progress) => {
+            setUploadProgress(progress);
+          },
+        },
+      });
+
+      setSentences(processedSentences);
+      enqueueSnackbar('PDF processed successfully!', { variant: 'success' });
+      
+      // Reset state
+      setCurrentFile(null);
+      setCostEstimate(null);
+      setCurrentJobId(null);
+    } catch (error) {
+      enqueueSnackbar(
+        getApiErrorMessage(error, 'Failed to process PDF'),
+        { variant: 'error' }
+      );
+      
+      // If we have a job ID, the backend will have handled the refund
+      if (currentJobId) {
+        enqueueSnackbar('Credits have been refunded', { variant: 'info' });
+      }
     } finally {
       setLoading(false, '');
       setUploadProgress(0);
     }
+  };
+
+  const handleCancelPreflight = () => {
+    setPreflightModalOpen(false);
+    setCurrentFile(null);
+    setCostEstimate(null);
   };
 
   const handleExport = async (options: ExportOptions) => {
@@ -432,15 +506,26 @@ export default function Home() {
           </Box>
         )}
 
-        {/* Export Dialog */}
+        {/* Modals */}
         {user && (
-          <ExportDialog
-            open={exportDialogOpen}
-            onClose={() => setExportDialogOpen(false)}
-            onExport={handleExport}
-            loading={loading}
-            defaultSheetName="French Novel Sentences"
-          />
+          <>
+            <PreflightModal
+              open={preflightModalOpen}
+              onClose={handleCancelPreflight}
+              onConfirm={handleConfirmProcessing}
+              estimate={costEstimate}
+              loading={estimating}
+              fileName={currentFile?.name || ''}
+            />
+            
+            <ExportDialog
+              open={exportDialogOpen}
+              onClose={() => setExportDialogOpen(false)}
+              onExport={handleExport}
+              loading={loading}
+              defaultSheetName="French Novel Sentences"
+            />
+          </>
         )}
 
         {/* Public About & Data Usage sections for transparency and verification */}

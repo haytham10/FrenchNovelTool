@@ -3,15 +3,19 @@ import json
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from marshmallow import ValidationError
-from app import limiter
+from app import limiter, db
 from .services.pdf_service import PDFService
 from .services.gemini_service import GeminiService
 from .services.google_sheets_service import GoogleSheetsService
 from .services.history_service import HistoryService
 from .services.user_settings_service import UserSettingsService
+from .services.job_service import JobService
+from .services.credit_service import CreditService
 from .schemas import ExportToSheetSchema, UserSettingsSchema
 from .utils.validators import validate_pdf_file
-from .models import User
+from .models import User, Job
+from .constants import JOB_STATUS_PENDING, JOB_STATUS_PROCESSING, ERROR_INSUFFICIENT_CREDITS
+import PyPDF2
 
 main_bp = Blueprint('main', __name__)
 history_service = HistoryService()
@@ -32,17 +36,66 @@ def health_check():
         'version': API_VERSION
     }), 200
 
-@main_bp.route('/process-pdf', methods=['POST'])
+
+@main_bp.route('/extract-pdf-text', methods=['POST'])
 @jwt_required()
-@limiter.limit("10 per hour")
-def process_pdf():
-    """Process PDF file and extract/normalize sentences (requires authentication)"""
-    # Get current user
-    user_id = int(get_jwt_identity())  # Convert string to int
+@limiter.limit("20 per minute")
+def extract_pdf_text():
+    """Extract text from PDF for cost estimation (requires authentication)"""
+    user_id = int(get_jwt_identity())
     user = User.query.get(user_id)
     
     if not user or not user.is_active:
         return jsonify({'error': 'User not found or inactive'}), 401
+    
+    if 'pdf_file' not in request.files:
+        return jsonify({'error': 'No PDF file provided'}), 400
+
+    file = request.files['pdf_file']
+    
+    # Validate file
+    try:
+        validate_pdf_file(file)
+    except ValidationError as e:
+        return jsonify({'error': str(e)}), 400
+
+    pdf_service = PDFService(file)
+    
+    try:
+        temp_file_path = pdf_service.save_to_temp()
+        
+        # Extract text from PDF
+        text = ""
+        with open(temp_file_path, 'rb') as pdf_file:
+            pdf_reader = PyPDF2.PdfReader(pdf_file)
+            for page in pdf_reader.pages:
+                text += page.extract_text() + "\n"
+        
+        # Return first 50000 characters for estimation (safety limit)
+        text = text[:50000]
+        
+        return jsonify({'text': text, 'page_count': len(pdf_reader.pages)}), 200
+        
+    except Exception as e:
+        current_app.logger.exception('Failed to extract PDF text')
+        return jsonify({'error': str(e)}), 500
+    finally:
+        pdf_service.delete_temp_file()
+
+@main_bp.route('/process-pdf', methods=['POST'])
+@jwt_required()
+@limiter.limit("10 per hour")
+def process_pdf():
+    """Process PDF file with credit system integration (requires authentication)"""
+    # Get current user
+    user_id = int(get_jwt_identity())
+    user = User.query.get(user_id)
+    
+    if not user or not user.is_active:
+        return jsonify({'error': 'User not found or inactive'}), 401
+    
+    # Check if job_id is provided (credit flow) or if it's direct processing (backward compatibility)
+    job_id = request.form.get('job_id')
     
     if 'pdf_file' not in request.files:
         return jsonify({'error': 'No PDF file provided'}), 400
@@ -58,6 +111,7 @@ def process_pdf():
 
     pdf_service = PDFService(file)
     gemini_service = None
+    job = None
 
     try:
         temp_file_path = pdf_service.save_to_temp()
@@ -118,6 +172,18 @@ def process_pdf():
             'min_sentence_length': min_sentence_length,
         }
 
+        # If job_id provided, verify and update job status
+        if job_id:
+            job = Job.query.get(int(job_id))
+            if not job or job.user_id != user_id:
+                return jsonify({'error': 'Job not found or unauthorized'}), 404
+            
+            if job.status != JOB_STATUS_PENDING:
+                return jsonify({'error': f'Job is in {job.status} status, cannot process'}), 400
+            
+            # Update job to processing
+            JobService.start_job(job.id)
+
         gemini_service = GeminiService(
             sentence_length_limit=sentence_length_limit,
             model_preference=gemini_model,
@@ -140,7 +206,7 @@ def process_pdf():
         current_app.logger.info(f'Successfully processed PDF: {original_filename}, extracted {len(processed_sentences)} sentences')
         
         # Add user-specific history entry with processing settings
-        history_service.add_entry(
+        history_entry = history_service.add_entry(
             user_id=user_id,
             original_filename=original_filename,
             processed_sentences_count=len(processed_sentences),
@@ -148,8 +214,32 @@ def process_pdf():
             processing_settings=processing_settings
         )
 
+        # If job exists, finalize it with actual token usage
+        if job:
+            # Get actual token count from Gemini response if available
+            # For now, estimate from output
+            actual_tokens = JobService.estimate_tokens_heuristic(' '.join(processed_sentences))
+            
+            # Complete the job
+            JobService.complete_job(job.id, actual_tokens, history_entry.id)
+            
+            # Adjust credits based on actual usage
+            CreditService.adjust_final_credits(
+                user_id=user_id,
+                job_id=job.id,
+                reserved_amount=job.estimated_credits,
+                actual_amount=JobService.calculate_credits(actual_tokens, job.model)
+            )
+            
+            # Update history entry with job_id
+            history_entry.job_id = job.id
+            db.session.commit()
+
         current_app.logger.info(f'User {user.email} processed PDF: {original_filename}')
-        return jsonify({'sentences': processed_sentences})
+        return jsonify({
+            'sentences': processed_sentences,
+            'job_id': job.id if job else None
+        })
 
     except json.JSONDecodeError as e:
         error_message = f"Failed to parse Gemini response: {str(e)}"
@@ -157,6 +247,16 @@ def process_pdf():
         
         error_code = 'GEMINI_RESPONSE_ERROR'
         failed_step = 'parse_response'
+        
+        # If job exists, fail it and refund credits
+        if job:
+            JobService.fail_job(job.id, error_message, error_code)
+            CreditService.refund_credits(
+                user_id=user_id,
+                job_id=job.id,
+                amount=job.estimated_credits,
+                description=f'Refund for failed job: {error_message}'
+            )
         
         # Add error to user's history
         history_service.add_entry(
@@ -189,6 +289,16 @@ def process_pdf():
             failed_step = 'extract'
         elif 'rate limit' in error_message.lower():
             error_code = 'RATE_LIMIT_EXCEEDED'
+        
+        # If job exists, fail it and refund credits
+        if job:
+            JobService.fail_job(job.id, error_message, error_code)
+            CreditService.refund_credits(
+                user_id=user_id,
+                job_id=job.id,
+                amount=job.estimated_credits,
+                description=f'Refund for failed job: {error_message}'
+            )
             
         # Add error to user's history
         history_service.add_entry(

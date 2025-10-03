@@ -11,6 +11,7 @@ import GlobalSearch from './GlobalSearch';
 import UserMenu from './UserMenu';
 import GoogleLoginButton from './GoogleLoginButton';
 import HelpModal from './HelpModal';
+import CreditBalance from './CreditBalance';
 import { useAuth } from './AuthContext';
 import Image from 'next/image';
 
@@ -42,6 +43,7 @@ export default function Header() {
             </MIconButton>
             {user && (
               <>
+                <CreditBalance />
                 <MIconButton color="inherit" onClick={() => setSearchOpen(true)} aria-label="Search">
                   <Icon icon={Search} fontSize="small" />
                 </MIconButton>

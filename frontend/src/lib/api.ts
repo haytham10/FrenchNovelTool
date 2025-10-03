@@ -122,11 +122,29 @@ export async function refreshAccessToken(): Promise<LoginResponse> {
 
 export interface ProcessPdfOptions {
   onUploadProgress?: (progress: number) => void;
+  jobId?: number; // Optional job ID for credit flow
+}
+
+export async function extractPdfText(file: File): Promise<{ text: string; page_count: number }> {
+  const formData = new FormData();
+  formData.append('pdf_file', file);
+  
+  const response = await api.post('/extract-pdf-text', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  
+  return response.data;
 }
 
 export async function processPdf(file: File, options?: ProcessPdfOptions): Promise<string[]> {
   const formData = new FormData();
   formData.append('pdf_file', file);
+  
+  if (options?.jobId) {
+    formData.append('job_id', options.jobId.toString());
+  }
   
   const response = await api.post('/process-pdf', formData, {
     headers: {
