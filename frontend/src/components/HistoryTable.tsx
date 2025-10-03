@@ -5,13 +5,15 @@ import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper
 import { styled } from '@mui/material/styles';
 import { useSnackbar } from 'notistack';
 import Link from 'next/link';
-import { useHistory } from '@/lib/queries';
+import { useHistory, useRetryHistoryEntry, useDuplicateHistoryEntry, useExportToSheet } from '@/lib/queries';
 import type { HistoryEntry } from '@/lib/types';
 import { getHistoryStatus } from '@/lib/types';
 import { useDebounce } from '@/lib/hooks';
 import Icon from './Icon';
 import IconButton from './IconButton';
-import { CheckCircle, XCircle, Loader2, RefreshCw, Copy, Eye, Filter, Send } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, RefreshCw, Copy, Eye, Filter, Send, Calendar } from 'lucide-react';
+import ExportDialog from './ExportDialog';
+import { useRouter } from 'next/navigation';
 
 type Order = 'asc' | 'desc';
 type StatusFilter = 'all' | 'success' | 'failed' | 'processing';
@@ -46,11 +48,19 @@ export default function HistoryTable() {
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [detailsDrawerOpen, setDetailsDrawerOpen] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<HistoryEntry | null>(null);
+  const [dateRangeStart, setDateRangeStart] = useState<string>('');
+  const [dateRangeEnd, setDateRangeEnd] = useState<string>('');
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [entryToExport, setEntryToExport] = useState<HistoryEntry | null>(null);
   const debouncedFilter = useDebounce(filter, 300);
   const { enqueueSnackbar } = useSnackbar();
+  const router = useRouter();
   
   // Use React Query for data fetching
   const { data: history = [], isLoading: loading, error, refetch } = useHistory();
+  const retryMutation = useRetryHistoryEntry();
+  const duplicateMutation = useDuplicateHistoryEntry();
+  const exportMutation = useExportToSheet();
 
   const handleRequestSort = (
     _event: React.MouseEvent<unknown>,
@@ -93,6 +103,17 @@ export default function HistoryTable() {
       filtered = filtered.filter(entry => getHistoryStatus(entry) === statusFilter);
     }
     
+    // Apply date range filter
+    if (dateRangeStart) {
+      const startDate = new Date(dateRangeStart);
+      filtered = filtered.filter(entry => new Date(entry.timestamp) >= startDate);
+    }
+    if (dateRangeEnd) {
+      const endDate = new Date(dateRangeEnd);
+      endDate.setHours(23, 59, 59, 999); // Include the entire end day
+      filtered = filtered.filter(entry => new Date(entry.timestamp) <= endDate);
+    }
+    
     // Apply text filter
     if (!debouncedFilter) return filtered;
     return filtered.filter(entry =>
@@ -100,7 +121,7 @@ export default function HistoryTable() {
       (entry.spreadsheet_url && entry.spreadsheet_url.toLowerCase().includes(debouncedFilter.toLowerCase())) ||
       (entry.error_message && entry.error_message.toLowerCase().includes(debouncedFilter.toLowerCase()))
     );
-  }, [sortedHistory, debouncedFilter, statusFilter]);
+  }, [sortedHistory, debouncedFilter, statusFilter, dateRangeStart, dateRangeEnd]);
 
   const handleChangePage = (_event: unknown, newPage: number) => {
     setPage(newPage);
@@ -116,8 +137,57 @@ export default function HistoryTable() {
     setDetailsDrawerOpen(true);
   };
 
-  const handleSendToSheets = (_entry: HistoryEntry) => {
-    enqueueSnackbar('Send to Sheets functionality coming soon', { variant: 'info' });
+  const handleSendToSheets = (entry: HistoryEntry) => {
+    setEntryToExport(entry);
+    setExportDialogOpen(true);
+  };
+
+  const handleExport = async (_options: { sheetName: string; folderId?: string | null }) => {
+    if (!entryToExport) return;
+    
+    try {
+      // For history entries, we don't have the sentences stored
+      // In a real implementation, you would either:
+      // 1. Store sentences in the history entry
+      // 2. Re-process the file
+      // For now, we'll show a message
+      enqueueSnackbar('This feature requires storing processed sentences. Please reprocess the file to export.', { variant: 'info' });
+      setExportDialogOpen(false);
+    } catch (_error) {
+      // Error is handled by the mutation
+    }
+  };
+
+  const handleRetry = async (entry: HistoryEntry) => {
+    try {
+      const result = await retryMutation.mutateAsync(entry.id);
+      enqueueSnackbar(result.message, { variant: 'info' });
+      
+      // Navigate to home with settings
+      if (result.settings) {
+        // Store settings in localStorage for the home page to use
+        localStorage.setItem('retrySettings', JSON.stringify(result.settings));
+        router.push('/');
+      }
+    } catch (_error) {
+      // Error handled by mutation
+    }
+  };
+
+  const handleDuplicate = async (entry: HistoryEntry) => {
+    try {
+      const result = await duplicateMutation.mutateAsync(entry.id);
+      enqueueSnackbar(result.message, { variant: 'info' });
+      
+      // Navigate to home with settings
+      if (result.settings) {
+        // Store settings in localStorage for the home page to use
+        localStorage.setItem('duplicateSettings', JSON.stringify(result.settings));
+        router.push('/');
+      }
+    } catch (_error) {
+      // Error handled by mutation
+    }
   };
 
   if (loading) {
@@ -154,8 +224,48 @@ export default function HistoryTable() {
           sx={{ mb: 2 }}
         />
         
+        {/* Date Range Filter */}
+        <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Icon icon={Calendar} fontSize="small" />
+            <Typography variant="body2" color="text.secondary">
+              Date Range:
+            </Typography>
+          </Box>
+          <TextField
+            label="Start Date"
+            type="date"
+            value={dateRangeStart}
+            onChange={(e) => setDateRangeStart(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+            size="small"
+            sx={{ minWidth: 150 }}
+          />
+          <TextField
+            label="End Date"
+            type="date"
+            value={dateRangeEnd}
+            onChange={(e) => setDateRangeEnd(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+            size="small"
+            sx={{ minWidth: 150 }}
+          />
+          {(dateRangeStart || dateRangeEnd) && (
+            <Button
+              size="small"
+              variant="text"
+              onClick={() => {
+                setDateRangeStart('');
+                setDateRangeEnd('');
+              }}
+            >
+              Clear Dates
+            </Button>
+          )}
+        </Box>
+        
         {/* Status Filter Chips */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 2 }}>
           <Icon icon={Filter} fontSize="small" />
           <Typography variant="body2" color="text.secondary">
             Status:
@@ -194,6 +304,15 @@ export default function HistoryTable() {
             />
           </Stack>
         </Box>
+
+        {/* Info for large datasets */}
+        {filteredHistory.length > 100 && (
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="body2" color="text.secondary">
+              Showing {filteredHistory.length} entries. Use filters and pagination for better performance with large datasets.
+            </Typography>
+          </Box>
+        )}
       </Box>
       
       <TableContainer component={Paper}>
@@ -331,8 +450,9 @@ export default function HistoryTable() {
                           <IconButton 
                             size="small" 
                             color="primary"
-                            onClick={() => enqueueSnackbar('Retry functionality coming soon', { variant: 'info' })}
+                            onClick={() => handleRetry(entry)}
                             aria-label="Retry processing"
+                            disabled={retryMutation.isPending}
                           >
                             <Icon icon={RefreshCw} fontSize="small" />
                           </IconButton>
@@ -342,8 +462,9 @@ export default function HistoryTable() {
                         <Tooltip title="Duplicate with same settings">
                           <IconButton 
                             size="small"
-                            onClick={() => enqueueSnackbar('Duplicate functionality coming soon', { variant: 'info' })}
+                            onClick={() => handleDuplicate(entry)}
                             aria-label="Duplicate run"
+                            disabled={duplicateMutation.isPending}
                           >
                             <Icon icon={Copy} fontSize="small" />
                           </IconButton>
@@ -500,7 +621,11 @@ export default function HistoryTable() {
                 <Button
                   variant="outlined"
                   startIcon={<Icon icon={RefreshCw} />}
-                  onClick={() => enqueueSnackbar('Retry functionality coming soon', { variant: 'info' })}
+                  onClick={() => {
+                    handleRetry(selectedEntry);
+                    setDetailsDrawerOpen(false);
+                  }}
+                  disabled={retryMutation.isPending}
                 >
                   Retry
                 </Button>
@@ -509,7 +634,11 @@ export default function HistoryTable() {
                 <Button
                   variant="outlined"
                   startIcon={<Icon icon={Copy} />}
-                  onClick={() => enqueueSnackbar('Duplicate functionality coming soon', { variant: 'info' })}
+                  onClick={() => {
+                    handleDuplicate(selectedEntry);
+                    setDetailsDrawerOpen(false);
+                  }}
+                  disabled={duplicateMutation.isPending}
                 >
                   Duplicate
                 </Button>
@@ -524,6 +653,20 @@ export default function HistoryTable() {
           </Box>
         )}
       </Drawer>
+
+      {/* Export Dialog for history entries */}
+      {entryToExport && (
+        <ExportDialog
+          open={exportDialogOpen}
+          onClose={() => {
+            setExportDialogOpen(false);
+            setEntryToExport(null);
+          }}
+          onExport={handleExport}
+          loading={exportMutation.isPending}
+          defaultSheetName={`${entryToExport.original_filename.replace('.pdf', '')} - Retry`}
+        />
+      )}
     </Box>
   );
 }
