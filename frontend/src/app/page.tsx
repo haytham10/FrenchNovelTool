@@ -114,7 +114,7 @@ export default function Home() {
       setSentences([]);
       setUploadProgress(0);
 
-      const processedSentences = await processPdfMutation.mutateAsync({
+      const processedResult = await processPdfMutation.mutateAsync({
         file: currentFile,
         options: {
           jobId: jobId,
@@ -124,7 +124,11 @@ export default function Home() {
         },
       });
 
-      setSentences(processedSentences);
+      const normalizedSentences = Array.isArray(processedResult)
+        ? processedResult
+        : processedResult.sentences ?? [];
+
+      setSentences(normalizedSentences);
       enqueueSnackbar('PDF processed successfully!', { variant: 'success' });
       
       // Reset state

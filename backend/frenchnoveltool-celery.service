@@ -1,0 +1,35 @@
+[Unit]
+Description=French Novel Tool Celery Worker
+After=network.target redis.service postgresql.service
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/var/www/frenchnoveltool/backend
+Environment="PATH=/var/www/frenchnoveltool/backend/.venv/bin"
+Environment="FLASK_APP=run.py"
+
+# Load environment variables from .env file
+EnvironmentFile=/var/www/frenchnoveltool/backend/.env
+
+# Celery worker command
+ExecStart=/var/www/frenchnoveltool/backend/.venv/bin/celery -A app.celery_app.celery_app worker \
+    --loglevel=info \
+    --concurrency=4 \
+    --max-tasks-per-child=50 \
+    --max-memory-per-child=2048000 \
+    --time-limit=3600 \
+    --soft-time-limit=3300 \
+    --logfile=/var/log/frenchnoveltool/celery.log
+
+# Restart policy
+Restart=always
+RestartSec=10
+
+# Resource limits
+LimitNOFILE=65536
+# Limit memory to 10GB total (4 workers * 2GB + 2GB buffer)
+MemoryLimit=10G
+
+[Install]
+WantedBy=multi-user.target
