@@ -1,6 +1,5 @@
 
 import type { Metadata } from "next";
-import { Inter, Libre_Baskerville } from 'next/font/google';
 import "./globals.css";
 import Providers from '../components/Providers';
 import ErrorBoundary from '../components/ErrorBoundary';
@@ -9,19 +8,6 @@ import Header from '../components/Header';
 import ConnectionStatusBanner from '../components/ConnectionStatusBanner';
 import SkipLink from '../components/SkipLink';
 
-const inter = Inter({ 
-  subsets: ['latin'],
-  display: 'swap',
-  variable: '--font-inter',
-});
-
-const libreBaskerville = Libre_Baskerville({ 
-  weight: ['400', '700'],
-  subsets: ['latin'],
-  display: 'swap',
-  variable: '--font-libre-baskerville',
-});
-
 export const metadata: Metadata = {
   title: "French Novel Tool",
   description: "Process French novels and export to Google Sheets",
@@ -29,13 +15,17 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${inter.variable} ${libreBaskerville.variable}`}>
+    <html lang="en">
       <head>
+        {/* Google Fonts - loaded at runtime */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
         {/* Scripts are loaded asynchronously using Next.js Script component */}
         <Script src="https://apis.google.com/js/api.js" strategy="afterInteractive" />
         <Script src="https://accounts.google.com/gsi/client" strategy="afterInteractive" />
       </head>
-      <body style={{ fontFamily: 'var(--font-inter), system-ui, -apple-system, sans-serif' }}>
+      <body>
         <ErrorBoundary>
           <Providers>
             <SkipLink />

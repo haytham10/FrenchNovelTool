@@ -41,9 +41,9 @@ export const tokens = {
 
   // Typography scale
   typography: {
-    fontFamily: 'var(--font-inter), Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Helvetica Neue", sans-serif',
+    fontFamily: '"Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Helvetica Neue", sans-serif',
     // French-literature inspired serif for headings
-    serifFamily: 'var(--font-libre-baskerville), "Libre Baskerville", "Playfair Display", Georgia, "Times New Roman", serif',
+    serifFamily: '"Libre Baskerville", "Playfair Display", Georgia, "Times New Roman", serif',
     fontSize: {
       xs: '0.75rem',      // 12px
       sm: '0.875rem',     // 14px

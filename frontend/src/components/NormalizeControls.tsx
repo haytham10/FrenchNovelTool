@@ -61,35 +61,59 @@ export default function NormalizeControls({
     <Paper 
       elevation={0} 
       sx={{ 
-        p: 3, 
-        bgcolor: 'background.paper', 
+        p: { xs: 3, md: 4 }, 
+        background: 'linear-gradient(135deg, rgba(79,70,229,0.03) 0%, rgba(236,72,153,0.03) 100%)',
         border: 1, 
         borderColor: 'divider',
-        borderRadius: 2,
+        borderRadius: 3,
+        position: 'relative',
+        overflow: 'hidden',
+        '&::before': {
+          content: '""',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: '4px',
+          background: 'linear-gradient(90deg, #4f46e5 0%, #ec4899 100%)',
+        }
       }}
     >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-        <Icon icon={Sliders} color="primary" sx={{ fontSize: 28 }} />
-        <Typography variant="h6" fontWeight={600}>
-          Normalization Settings
-        </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+        <Box sx={{ 
+          p: 1.5, 
+          borderRadius: 2, 
+          bgcolor: 'primary.main',
+          color: 'primary.contrastText',
+          display: 'inline-flex'
+        }}>
+          <Icon icon={Sliders} sx={{ fontSize: 28 }} />
+        </Box>
+        <Box>
+          <Typography variant="h6" fontWeight={700}>
+            Normalization Settings
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Customize how AI processes your sentences
+          </Typography>
+        </Box>
       </Box>
-      
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Configure sentence normalization parameters. Adjust length targets, AI model selection, and advanced processing options for optimal results.
-      </Typography>
 
       {/* Basic Controls */}
-      <Box sx={{ mb: 3 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-          <Typography variant="subtitle2" fontWeight={600}>
+      <Box sx={{ mb: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="subtitle1" fontWeight={700} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             Target Sentence Length
           </Typography>
           <Chip 
             label={`${sentenceLength} words`} 
             color="primary" 
-            size="small"
-            sx={{ fontWeight: 600 }}
+            size="medium"
+            sx={{ 
+              fontWeight: 700,
+              fontSize: '1rem',
+              px: 1,
+            }}
           />
         </Box>
         <Slider
@@ -106,15 +130,27 @@ export default function NormalizeControls({
           ]}
           disabled={disabled}
           valueLabelDisplay="auto"
-          sx={{ mt: 2 }}
+          sx={{ 
+            mt: 3,
+            '& .MuiSlider-thumb': {
+              width: 20,
+              height: 20,
+            },
+            '& .MuiSlider-track': {
+              height: 6,
+            },
+            '& .MuiSlider-rail': {
+              height: 6,
+            }
+          }}
         />
       </Box>
 
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+      <Box sx={{ mb: 4 }}>
+        <Typography variant="subtitle2" fontWeight={600} gutterBottom sx={{ mb: 1.5 }}>
           Quick Presets
         </Typography>
-        <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap', gap: 1 }}>
+        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
           {PRESETS.map((preset) => (
             <Chip
               key={preset.value}
@@ -124,6 +160,14 @@ export default function NormalizeControls({
               variant={sentenceLength === preset.value ? 'filled' : 'outlined'}
               disabled={disabled}
               clickable
+              sx={{
+                fontWeight: sentenceLength === preset.value ? 600 : 500,
+                transition: 'all 200ms ease',
+                '&:hover': {
+                  transform: 'translateY(-2px)',
+                  boxShadow: 2,
+                }
+              }}
             />
           ))}
         </Stack>
@@ -131,21 +175,29 @@ export default function NormalizeControls({
 
       {/* Gemini Model Selection */}
       {onAdvancedOptionsChange && (
-        <Box sx={{ mb: 3 }}>
-          <Typography variant="subtitle2" fontWeight={600} gutterBottom>
-            AI Model Selection
-          </Typography>
-          <FormControl fullWidth size="small">
+        <Box sx={{ mb: 4 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+            <Icon icon={Sparkles} sx={{ fontSize: 20, color: 'primary.main' }} />
+            <Typography variant="subtitle1" fontWeight={700}>
+              AI Model Selection
+            </Typography>
+          </Box>
+          <FormControl fullWidth>
             <Select
               value={advancedOptions.geminiModel || 'balanced'}
               onChange={(e) => handleAdvancedOptionChange('geminiModel', e.target.value)}
               disabled={disabled}
-              startAdornment={<Icon icon={Sparkles} fontSize="small" sx={{ mr: 1, color: 'primary.main' }} />}
+              sx={{ 
+                borderRadius: 2,
+                '& .MuiOutlinedInput-notchedOutline': {
+                  borderColor: 'divider',
+                },
+              }}
             >
               {GEMINI_MODELS.map((model) => (
                 <MenuItem key={model.value} value={model.value}>
                   <Box>
-                    <Typography variant="body2" fontWeight={600}>{model.label}</Typography>
+                    <Typography variant="body1" fontWeight={600}>{model.label}</Typography>
                     <Typography variant="caption" color="text.secondary">{model.description}</Typography>
                   </Box>
                 </MenuItem>
