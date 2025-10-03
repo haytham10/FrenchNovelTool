@@ -1,285 +1,204 @@
-# French Novel Tool
+<div align="center">
+  <img src="https://raw.githubusercontent.com/haytham10/FrenchNovelTool/master/frontend/public/logo.png" alt="French Novel Tool Logo" width="120">
+  <h1>French Novel Tool</h1>
+  <p>
+    <strong>An AI-powered web application to process French novel PDFs, normalize sentence length using Google Gemini, and export results directly to Google Sheets.</strong>
+  </p>
+  <p>
+    <a href="#-features">Features</a> •
+    <a href="#-architecture">Architecture</a> •
+    <a href="#-tech-stack">Tech Stack</a> •
+    <a href="#-getting-started">Getting Started</a> •
+    <a href="#-api-overview">API Overview</a> •
+    <a href="#-contributing">Contributing</a>
+  </p>
+</div>
 
-Process French novel PDFs, normalize sentence length with Google Gemini AI, and export the results to Google Sheets through a polished web interface.
+---
+
+This full-stack application provides a seamless workflow for literary analysis, featuring a sophisticated credit system, robust job tracking, and a polished, responsive user interface built with Next.js and Material-UI.
 
 ## ✨ Features
 
 ### Core Functionality
-- 📄 **PDF Processing**: Upload French novel PDFs and extract text
-- 🤖 **AI-Powered Normalization**: Uses Google Gemini to split long sentences while preserving meaning
-- 📊 **Google Sheets Export**: Export processed sentences with formatted headers
-- 📁 **Drive Integration**: Organize exports in specific Google Drive folders
-- 📜 **History Tracking**: Keep track of all processed documents with status indicators
-- ⚙️ **Configurable Settings**: Adjust sentence length limits with intuitive slider and presets
+- 📄 **PDF Text Extraction**: Upload PDF files and extract raw text content on the server.
+- 🤖 **AI-Powered Normalization**: Utilizes Google Gemini to intelligently split long sentences while preserving their original meaning and context.
+- 📊 **Google Sheets Export**: Export processed sentences directly to a new Google Sheet, with automatic header formatting.
+- 📁 **Google Drive Integration**: Organize exported spreadsheets into user-specified folders in Google Drive.
 
-### UX/UI Features (P0 Roadmap Implemented)
-- 🎨 **Modern UI**: Material-UI v7 with light/dark theme support
-- ♿ **Accessible**: WCAG 2.1 AA baseline with semantic landmarks and ARIA labels
-- ✏️ **Inline Editing**: Edit sentences directly in the results table (Enter to save, Esc to cancel)
-- 🔍 **Debounced Search**: Fast, responsive filtering across results and history
-- 📊 **Status Indicators**: Visual feedback for Success/Failed/Processing states
-- 🎚️ **Normalize Controls**: Sentence length slider with quick presets (8, 12, 16 words)
-- 📱 **Responsive Design**: Works seamlessly on desktop and mobile
-- ⌨️ **Keyboard Navigation**: Full keyboard support for core workflows
-- 🔔 **Smart Notifications**: Toast feedback for all user actions
+### Credit & Job Tracking System
+- 💳 **Monthly Credit Allocation**: Users receive a monthly grant of credits for processing documents.
+- 📈 **Usage-Based Pricing**: A pay-per-use model where credits are consumed based on the number of tokens processed and the AI model selected.
+- 🔄 **Two-Phase Commit Accounting**:
+    1. **Preflight Estimate**: Get a cost estimate before committing to a job.
+    2. **Credit Reservation**: Credits are "soft-reserved" when a job is confirmed.
+    3. **Finalization**: After processing, the actual credit cost is calculated, and the user's balance is adjusted.
+- 🗂️ **Job Tracking & History**: A complete audit trail of all processing jobs, including status, cost, and links to results.
+- 💰 **Transparent Ledger**: A detailed credit ledger provides a full history of all transactions (grants, reservations, final costs, and refunds).
 
-### Technical Features
-- 🔒 **Rate Limiting**: Built-in API rate limiting for security
-- 🐳 **Docker Support**: Easy deployment with Docker and docker-compose
-- 📝 **Comprehensive API**: RESTful API with versioning and validation
-- 🔄 **Auto Token Refresh**: Seamless OAuth token management
+### Authentication & Security
+- 🔐 **JWT Authentication**: Secure, stateless authentication using JSON Web Tokens with automated token refresh.
+- 🔑 **Google OAuth 2.0**: Seamless and secure user login via Google accounts, requesting necessary permissions for Google Sheets and Drive.
+- 🛡️ **API Rate Limiting**: Per-endpoint rate limiting to prevent abuse and ensure fair usage.
+- ⚙️ **CORS Protection**: Whitelist-based Cross-Origin Resource Sharing to secure the API.
+- 📝 **Schema Validation**: All incoming API requests are validated against Marshmallow schemas to prevent invalid data.
 
-## Project Structure
+### User Experience & Interface
+- 🎨 **Modern UI**: A clean, responsive interface built with Next.js 15 and Material-UI v7.
+- 🌓 **Light/Dark Mode**: Switch between themes for user comfort.
+- ✏️ **Inline Editing**: Directly edit normalized sentences in the results table before exporting.
+- 🔍 **Debounced Search & Filtering**: Fast, responsive filtering in the processing history table.
+- 🔔 **Real-Time Notifications**: Toast notifications for all major actions (success, error, info).
+- ⏳ **Context-Aware Loading**: Full-page overlays and granular loading indicators provide clear feedback during authentication, file processing, and data fetching.
+- ♿ **Accessibility**: Designed with accessibility in mind, including semantic HTML and ARIA attributes.
 
-```
-backend/   Flask API (v1.0) with Gemini + Google Sheets integrations
-frontend/  Next.js 15 UI with Material-UI and TypeScript
-```
+## 🏗️ Architecture
 
-## Prerequisites
+The project follows a modern, decoupled architecture with a service-oriented backend and a reactive frontend.
 
-- Python 3.10+
-- Node.js 18+
-- Docker & Docker Compose (optional, for containerized deployment)
-- Google Cloud project with Gemini and Drive/Sheets APIs enabled
-- Redis (optional, for rate limiting in production)
+- **Backend (Flask)**: A robust API built with a service layer that encapsulates all business logic (e.g., `CreditService`, `JobService`, `PDFService`). This promotes separation of concerns and makes the codebase modular and testable. Flask Blueprints are used to organize routes by functionality (auth, credits, main).
 
-## Quick Start with Docker
+- **Frontend (Next.js)**: A server-side rendered (SSR) React application using the App Router. It communicates with the backend via a centralized API client (axios) that handles automatic JWT token refresh. Global state is managed with Zustand, while server state and data fetching are handled by TanStack Query.
 
-The easiest way to run the entire stack:
+- **Database (PostgreSQL)**: A relational database managed by SQLAlchemy and Flask-Migrate. The schema is designed to support the credit system, job tracking, and user data.
 
-```bash
-# Copy environment files
-cp backend/.env.example backend/.env
-cp frontend/.env.example frontend/.env.local
+- **Authentication Flow**:
+  1. Frontend initiates Google OAuth 2.0 login.
+  2. Backend receives the Google auth code, validates it, and creates a user record.
+  3. Backend generates a JWT access token and a refresh token.
+  4. Frontend stores the tokens, using the access token for API requests. An axios interceptor automatically uses the refresh token to get a new access token when it expires.
 
-# Edit .env files with your API keys
-# At minimum, set GEMINI_API_KEY in backend/.env
+## 🛠️ Tech Stack
 
-# Start all services
-docker-compose up --build
-```
+| Category | Technology | Description |
+| --- | --- | --- |
+| **Backend** | Flask 3.0 | Core web framework with a service-oriented architecture. |
+| | Flask-JWT-Extended | For handling JSON Web Token authentication. |
+| | SQLAlchemy | ORM for interacting with the PostgreSQL database. |
+| | Flask-Migrate | For handling database schema migrations. |
+| | Marshmallow | For request/response validation and serialization. |
+| | Google Gemini AI | AI model for sentence normalization. |
+| | Gunicorn | Production-ready WSGI server. |
+| **Frontend** | Next.js 15 | React framework with App Router for SSR and routing. |
+| | React 19 | Core UI library. |
+| | TypeScript | For type safety and improved developer experience. |
+| | Material-UI v7 | Component library for a polished and responsive UI. |
+| | TanStack Query v5 | For managing server state, caching, and data fetching. |
+| | Zustand | For minimal and efficient client state management. |
+| | Axios | For making API requests with a token-refresh interceptor. |
+| **Database** | PostgreSQL | Relational database for storing all application data. |
+| | Redis | Used for rate limiting in production environments. |
+| **DevOps** | Docker & Docker Compose | For containerizing the application for easy setup and deployment. |
+| | Vercel | Optimized for serverless deployment of both frontend and backend. |
+| | Pytest | For backend testing with comprehensive coverage reports. |
+| | Pre-commit Hooks | For automated code formatting and linting (Black, Flake8, ESLint). |
 
-Visit [http://localhost:3000](http://localhost:3000) to use the app.
+## 🚀 Getting Started
 
-## Manual Setup
+### Prerequisites
+- Docker & Docker Compose
+- A Google Cloud project with **Gemini, Google Drive, and Google Sheets APIs** enabled.
+- OAuth 2.0 Credentials (Client ID & Secret).
 
-### 1. Backend Setup
+### 1. Docker Quick Start (Recommended)
+This is the fastest way to get the entire application running.
+
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/haytham10/FrenchNovelTool.git
+    cd FrenchNovelTool
+    ```
+
+2.  **Set up environment files:**
+    ```bash
+    # For the backend
+    cp backend/.env.example backend/.env
+
+    # For the frontend
+    cp frontend/.env.example frontend/.env.local
+    ```
+
+3.  **Configure environment variables:**
+    - Edit `backend/.env` and `frontend/.env.local` to add your Google Client ID, Client Secret, Gemini API Key, and a database URL.
+
+4.  **Run the application:**
+    ```bash
+    docker-compose up --build
+    ```
+    The application will be available at `http://localhost:3000`.
+
+### 2. Manual Setup
+Follow these steps to run the frontend and backend services separately.
+
+<details>
+<summary><strong>Backend Manual Setup</strong></summary>
 
 ```bash
 cd backend
 python -m venv .venv
-.venv\Scripts\activate  # Windows
-# On Unix: source .venv/bin/activate
+# On Windows: .venv\Scripts\activate
+# On macOS/Linux: source .venv/bin/activate
 
-# Install dependencies
 pip install -r requirements.txt
+pip install -r requirements-dev.txt # For development
 
-# For development, also install:
-pip install -r requirements-dev.txt
-
-# Copy and configure environment
+# Set up and configure your .env file
 cp .env.example .env
-# Edit .env with your API keys
+# Edit .env with your credentials
 
-# Initialize database
-flask db init
-flask db migrate -m "Initial migration"
+# Initialize and upgrade the database
 flask db upgrade
 
 # Run the development server
-flask --app run.py run
+flask run
 ```
+The API will be available at `http://localhost:5000`.
+</details>
 
-The API listens on `http://localhost:5000/api/v1` by default.
-
-### 2. Frontend Setup
+<details>
+<summary><strong>Frontend Manual Setup</strong></summary>
 
 ```bash
 cd frontend
 npm install
 
-# Copy and configure environment
+# Set up and configure your .env.local file
 cp .env.example .env.local
-# Edit .env.local with your API URL
+# Edit .env.local with your Google Client ID and API URL
 
 # Run the development server
 npm run dev
 ```
+The frontend will be available at `http://localhost:3000`.
+</details>
 
-Visit [http://localhost:3000](http://localhost:3000) to use the app.
 
-## 🧪 Testing
+## 📡 API Overview
 
-### Backend Tests
-```bash
-cd backend
-pytest                                    # Run all tests
-pytest --cov=app --cov-report=html       # With coverage report
-```
+The backend exposes a versioned REST API at `/api/v1`.
 
-### Frontend Linting
-```bash
-cd frontend
-npm run lint
-```
+| Group | Endpoint | Method | Description |
+| --- | --- | --- | --- |
+| **Auth** | `/auth/google` | `POST` | Exchange a Google auth code for a JWT. |
+| | `/auth/refresh` | `POST` | Refresh an expired access token. |
+| | `/auth/me` | `GET` | Get the currently authenticated user's profile. |
+| **Processing** | `/process-pdf` | `POST` | Upload and process a PDF file. |
+| | `/export-to-sheet`| `POST` | Export processed sentences to Google Sheets. |
+| **Credits** | `/me/credits` | `GET` | Get the user's current credit balance. |
+| | `/credits/ledger` | `GET` | Get the user's transaction history. |
+| **Jobs** | `/estimate` | `POST` | Estimate the credit cost for processing text. |
+| | `/jobs/confirm` | `POST` | Confirm a job and reserve credits. |
+| | `/jobs/{id}/finalize`|`POST` | Finalize a job with actual token usage. |
+| | `/jobs` | `GET` | Get a list of the user's past jobs. |
+| **Data** | `/history` | `GET` | Get the user's processing history. |
+| | `/settings` | `GET/POST` | Get or update user settings. |
 
-### Pre-commit Hooks
-```bash
-# Install pre-commit (from backend directory)
-cd backend
-pip install pre-commit
-pre-commit install
-
-# Now your code will be automatically formatted before commits
-```
-
-## 📚 Documentation
-
-- [API Documentation](backend/API_DOCUMENTATION.md) - Complete API reference
-- [Contributing Guidelines](CONTRIBUTING.md) - How to contribute
-- [TODO](TODO.md) - Planned improvements and features
-
-## 🔧 Configuration
-
-### Backend Environment Variables
-
-Key variables in `backend/.env`:
-
-```bash
-# Required
-GEMINI_API_KEY=your-gemini-api-key
-SECRET_KEY=your-secret-key
-
-# Optional (with defaults)
-GEMINI_MODEL=gemini-2.5-flash
-MAX_FILE_SIZE=52428800  # 50MB
-RATELIMIT_ENABLED=True
-RATELIMIT_DEFAULT=100 per hour
-CORS_ORIGINS=http://localhost:3000
-LOG_LEVEL=INFO
-```
-
-See `backend/.env.example` for all available options.
-
-### Frontend Environment Variables
-
-In `frontend/.env.local`:
-
-```bash
-NEXT_PUBLIC_API_BASE_URL=http://localhost:5000/api/v1
-```
-
-## 🐳 Docker Deployment
-
-The project includes complete Docker support:
-
-- `backend/Dockerfile` - Backend container with gunicorn
-- `frontend/Dockerfile` - Frontend container with Next.js
-- `docker-compose.yml` - Complete stack with Redis
-
-Health checks are configured for all services.
-
-## 🚀 Production Deployment
-
-Ready to deploy to production? We provide comprehensive deployment guides:
-
-- 📘 **[Full Deployment Guide](DEPLOYMENT.md)** - Complete step-by-step deployment instructions with Vercel & Supabase
-- ⚡ **[Quick Start Guide](DEPLOYMENT_QUICKSTART.md)** - Deploy in 30 minutes
-- 📋 **[Deployment Checklist](DEPLOYMENT_CHECKLIST.md)** - Organized checklist for all deployment tasks
-- 🏗️ **[Deployment Architecture](DEPLOYMENT_ARCHITECTURE.md)** - Architecture diagrams and system overview
-
-The application is optimized for deployment on:
-- **Frontend**: Vercel (serverless Next.js)
-- **Backend**: Vercel (serverless Flask with Python)
-- **Database**: Supabase (PostgreSQL)
-
-All necessary configuration files (`vercel.json`, environment templates) are included.
-
-## 🔒 Security Features
-
-- ✅ Rate limiting (configurable per endpoint)
-- ✅ Input validation and sanitization
-- ✅ File size limits and extension validation
-- ✅ CORS whitelist configuration
-- ✅ Request/response schema validation
-- ✅ Structured logging
-
-## 🚀 API Endpoints
-
-- `GET /api/v1/health` - Health check
-- `POST /api/v1/process-pdf` - Process PDF (rate limit: 10/hour)
-- `POST /api/v1/export-to-sheet` - Export to Google Sheets (rate limit: 20/hour)
-- `GET /api/v1/history` - Get processing history
-- `GET /api/v1/settings` - Get user settings
-- `POST /api/v1/settings` - Update user settings
-
-See [API Documentation](backend/API_DOCUMENTATION.md) for detailed information.
-
-## 📊 Tech Stack
-
-### Backend
-- Flask 3.0 with Blueprint architecture
-- Flask-Migrate for database migrations
-- Flask-Limiter for rate limiting
-- Marshmallow for validation
-- Google Gemini AI
-- Google Sheets & Drive APIs
-- SQLAlchemy ORM
-- Tenacity for retry logic
-
-### Frontend
-- Next.js 15 (App Router)
-- React 19
-- TypeScript (strict mode)
-- Material-UI v7
-- Tailwind CSS v4
-- Axios for API calls
-- React Dropzone
-
-### DevOps
-- Docker & Docker Compose
-- Redis for rate limiting
-- Pre-commit hooks (Black, Flake8, ESLint, Bandit)
-- pytest for testing
-
-## 🛠️ Google Configuration
-
-1. Create a Google Cloud project (or reuse an existing one).
-2. Enable the **Gemini API**, **Google Sheets API**, and **Google Drive API** for the project.
-3. Configure the OAuth consent screen and add the following scopes:
-   - `https://www.googleapis.com/auth/userinfo.email`
-   - `https://www.googleapis.com/auth/userinfo.profile`
-   - `https://www.googleapis.com/auth/spreadsheets`
-   - `https://www.googleapis.com/auth/drive.file`
-4. Create OAuth 2.0 credentials of type **Web application**:
-   - Authorized JavaScript origins: add `http://localhost:3000` (and your production domain when deploying).
-   - Authorized redirect URIs: add `http://localhost:3000` (and production equivalents). The frontend uses the Google Identity Services popup with the `postmessage` flow.
-   - Copy the generated **Client ID** and **Client Secret**.
-5. Update environment files:
-   - `backend/.env`: set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` to the values obtained above.
-   - `frontend/.env.local`: set `NEXT_PUBLIC_GOOGLE_CLIENT_ID` to the same Client ID.
-6. Restart the backend and frontend. The first login will prompt each user to grant Sheets/Drive access; tokens are stored per user in the database for subsequent requests.
+For more details, see the [API Documentation](backend/API_DOCUMENTATION.md).
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for:
-
-- Development setup
-- Coding standards
-- Testing requirements
-- Pull request process
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for development standards, testing procedures, and the pull request process.
 
 ## 📝 License
 
-MIT
-
-## 🙏 Acknowledgments
-
-- Google Gemini for AI processing
-- Material-UI for beautiful components
-- All contributors to this project
-
-## 📮 Support
-
-For issues, questions, or feature requests, please open a GitHub issue.
+This project is licensed under the MIT License.
