@@ -216,16 +216,26 @@ html {
   scroll-behavior: smooth;
 }
 
+/**
+ * Force Animations Enabled
+ * 
+ * Per product requirements (#23), we intentionally override OS/browser reduced-motion
+ * settings to ensure consistent animations across all platforms. This provides a 
+ * uniform user experience on desktop browsers.
+ * 
+ * Note: This overrides accessibility settings and should only be done when explicitly
+ * required by product specifications.
+ */
 @media (prefers-reduced-motion: reduce) {
   html {
-    scroll-behavior: auto;
+    scroll-behavior: smooth !important;
   }
   
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+  :root *,
+  :root *::before,
+  :root *::after {
+    animation-duration: initial !important;
+    animation-iteration-count: initial !important;
+    transition-duration: initial !important;
   }
 }
