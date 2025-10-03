@@ -81,6 +81,33 @@ services:
       retries: 5
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
 
+  celery:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: runner
+    image: french-novel-backend:latest
+    container_name: french-novel-celery
+    environment:
+      - FLASK_ENV=production
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY is required}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:?GEMINI_API_KEY is required}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///app.db}
+      - REDIS_URL=redis://redis:6379/0
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - backend-logs:/app/logs
+      - backend-data:/app/data
+      - ./backend/client_secret.json:/app/client_secret.json:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app-network
+    command: celery -A worker worker --loglevel=info --concurrency=2
+
 volumes:
   redis-data:
     driver: local

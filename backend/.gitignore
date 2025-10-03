@@ -56,6 +56,11 @@ credentials.json
 logs/
 *.log
 
+# Celery
+celerybeat-schedule
+celerybeat.pid
+*.db-celery
+
 # Temporary files
 *.tmp
 temp/
