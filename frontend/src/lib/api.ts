@@ -214,6 +214,138 @@ export const fetchSettings = getUserSettings;
 export const saveSettings = updateUserSettings;
 
 /**
+ * Credit System APIs
+ */
+
+export interface CreditSummary {
+  balance: number;
+  granted: number;
+  used: number;
+  refunded: number;
+  adjusted: number;
+  month: string;
+  next_reset: string;
+}
+
+export async function getCredits(): Promise<CreditSummary> {
+  const response = await api.get('/me/credits');
+  return response.data;
+}
+
+export interface CostEstimateRequest {
+  text: string;
+  model_preference: 'balanced' | 'quality' | 'speed';
+}
+
+export interface CostEstimate {
+  model: string;
+  model_preference: string;
+  estimated_tokens: number;
+  estimated_credits: number;
+  pricing_rate: number;
+  pricing_version: string;
+  estimation_method: 'api' | 'heuristic';
+  current_balance: number;
+  allowed: boolean;
+  message?: string;
+}
+
+export async function estimateCost(request: CostEstimateRequest): Promise<CostEstimate> {
+  const response = await api.post('/estimate', request);
+  return response.data;
+}
+
+export interface JobConfirmRequest {
+  estimated_credits: number;
+  model_preference: string;
+  processing_settings?: Record<string, unknown>;
+}
+
+export interface JobConfirmResponse {
+  job_id: number;
+  status: string;
+  estimated_credits: number;
+  reserved: boolean;
+  message: string;
+}
+
+export async function confirmJob(request: JobConfirmRequest): Promise<JobConfirmResponse> {
+  const response = await api.post('/jobs/confirm', request);
+  return response.data;
+}
+
+export interface JobFinalizeRequest {
+  actual_tokens: number;
+  success: boolean;
+  error_message?: string;
+  error_code?: string;
+}
+
+export interface JobFinalizeResponse {
+  job_id: number;
+  status: string;
+  estimated_credits: number;
+  actual_credits: number;
+  adjustment: number;
+  refunded: boolean;
+  refund_amount?: number;
+  message: string;
+}
+
+export async function finalizeJob(jobId: number, request: JobFinalizeRequest): Promise<JobFinalizeResponse> {
+  const response = await api.post(`/jobs/${jobId}/finalize`, request);
+  return response.data;
+}
+
+export interface Job {
+  id: number;
+  user_id: number;
+  history_id?: number;
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  original_filename: string;
+  model: string;
+  estimated_tokens?: number;
+  actual_tokens?: number;
+  estimated_credits: number;
+  actual_credits?: number;
+  pricing_version: string;
+  pricing_rate: number;
+  processing_settings?: Record<string, unknown>;
+  created_at: string;
+  started_at?: string;
+  completed_at?: string;
+  error_message?: string;
+  error_code?: string;
+}
+
+export async function getJob(jobId: number): Promise<Job> {
+  const response = await api.get(`/jobs/${jobId}`);
+  return response.data;
+}
+
+export async function getJobs(params?: { limit?: number; status?: string }): Promise<Job[]> {
+  const response = await api.get('/jobs', { params });
+  return response.data || [];
+}
+
+export interface CreditLedgerEntry {
+  id: number;
+  user_id: number;
+  month: string;
+  delta_credits: number;
+  reason: 'monthly_grant' | 'job_reserve' | 'job_final' | 'job_refund' | 'admin_adjustment';
+  job_id?: number;
+  pricing_version?: string;
+  description?: string;
+  timestamp: string;
+}
+
+export async function getCreditLedger(params?: { month?: string; limit?: number }): Promise<CreditLedgerEntry[]> {
+  const response = await api.get('/credits/ledger', { params });
+  return response.data || [];
+}
+
+/**
  * Error handling utility with user-friendly messages
  */
 

@@ -677,3 +677,407 @@ The API behavior can be configured via environment variables:
 For questions or issues, please open a GitHub issue or contact the maintainers.
 
 
+
+---
+
+## Credit System
+
+The French Novel Tool uses a monthly credit system to manage usage. Credits are consumed based on document size and AI model used.
+
+### Credit Allocation
+
+- Users receive a monthly credit grant on the 1st of each month
+- Default allocation: 10,000 credits per month
+- Credits reset automatically at the start of each month
+- Unused credits do not roll over to the next month
+
+### Pricing
+
+Credits are charged based on token usage and model selected:
+
+| Model | Credits per 1,000 tokens |
+|-------|-------------------------|
+| Balanced (gemini-2.5-flash) | 1 |
+| Speed (gemini-2.5-flash-lite) | 1 |
+| Quality (gemini-2.5-pro) | 5 |
+
+### Two-Phase Accounting
+
+1. **Preflight Estimate**: Before processing, get a cost estimate and confirm
+2. **Soft Reservation**: Credits are reserved when job is confirmed
+3. **Finalization**: After processing, actual usage is calculated and credits are adjusted
+4. **Refund**: If processing fails, reserved credits are fully refunded
+
+### Get Credit Balance
+
+Get current user's credit balance and summary.
+
+**Endpoint:** `GET /me/credits`
+
+**Authentication:** Required
+
+**Response:**
+```json
+{
+  "balance": 9500,
+  "granted": 10000,
+  "used": 500,
+  "refunded": 0,
+  "adjusted": 0,
+  "month": "2025-10",
+  "next_reset": "2025-11-01T00:00:00Z"
+}
+```
+
+**Status Codes:**
+- `200 OK`: Credit summary retrieved successfully
+- `401 Unauthorized`: Authentication required
+
+---
+
+### Estimate Job Cost
+
+Estimate credit cost for processing text before submitting a job.
+
+**Endpoint:** `POST /estimate`
+
+**Authentication:** Required
+
+**Rate Limit:** 20 requests per minute
+
+**Request:**
+```json
+{
+  "text": "Content to process...",
+  "model_preference": "balanced"
+}
+```
+
+**Parameters:**
+- `text` (string, required): Text content to estimate
+- `model_preference` (string, required): Model to use - one of "balanced", "quality", "speed"
+
+**Response:**
+```json
+{
+  "model": "gemini-2.5-flash",
+  "model_preference": "balanced",
+  "estimated_tokens": 1200,
+  "estimated_credits": 2,
+  "pricing_rate": 1.0,
+  "pricing_version": "v1.0",
+  "estimation_method": "api",
+  "current_balance": 9500,
+  "allowed": true
+}
+```
+
+**Fields:**
+- `model`: Actual Gemini model name
+- `model_preference`: User-friendly model preference
+- `estimated_tokens`: Estimated token count
+- `estimated_credits`: Estimated credits required
+- `pricing_rate`: Credits per 1,000 tokens
+- `pricing_version`: Pricing configuration version
+- `estimation_method`: "api" (using Gemini countTokens) or "heuristic" (character-based)
+- `current_balance`: User's current credit balance
+- `allowed`: Whether user has sufficient credits
+
+**Status Codes:**
+- `200 OK`: Estimate calculated successfully
+- `400 Bad Request`: Invalid request data
+- `401 Unauthorized`: Authentication required
+
+---
+
+### Confirm Job
+
+Confirm a job after reviewing the estimate. This reserves credits and creates a job entry.
+
+**Endpoint:** `POST /jobs/confirm`
+
+**Authentication:** Required
+
+**Rate Limit:** 10 requests per hour
+
+**Request:**
+```json
+{
+  "estimated_credits": 2,
+  "model_preference": "balanced",
+  "processing_settings": {
+    "original_filename": "chapter1.pdf",
+    "estimated_tokens": 1200,
+    "sentence_length_limit": 8,
+    "ignore_dialogue": false
+  }
+}
+```
+
+**Parameters:**
+- `estimated_credits` (integer, required): Credits to reserve (from estimate)
+- `model_preference` (string, required): Model preference
+- `processing_settings` (object, optional): Processing configuration snapshot
+
+**Response:**
+```json
+{
+  "job_id": 123,
+  "status": "pending",
+  "estimated_credits": 2,
+  "reserved": true,
+  "message": "Credits reserved successfully"
+}
+```
+
+**Status Codes:**
+- `201 Created`: Job created and credits reserved
+- `400 Bad Request`: Invalid request data
+- `401 Unauthorized`: Authentication required
+- `402 Payment Required`: Insufficient credits
+
+**Example Error (Insufficient Credits):**
+```json
+{
+  "error": "Insufficient credits. Current: 100, Required: 500, Overdraft limit: -100",
+  "error_code": "INSUFFICIENT_CREDITS",
+  "reserved": false
+}
+```
+
+---
+
+### Finalize Job
+
+Finalize a job after processing completes. Adjusts credits based on actual usage or refunds on failure.
+
+**Endpoint:** `POST /jobs/{job_id}/finalize`
+
+**Authentication:** Required
+
+**Request:**
+```json
+{
+  "actual_tokens": 1150,
+  "success": true
+}
+```
+
+**Parameters:**
+- `actual_tokens` (integer, required): Actual tokens used during processing
+- `success` (boolean, required): Whether processing succeeded
+- `error_message` (string, optional): Error message if failed
+- `error_code` (string, optional): Error code if failed
+
+**Success Response:**
+```json
+{
+  "job_id": 123,
+  "status": "completed",
+  "estimated_credits": 2,
+  "actual_credits": 2,
+  "adjustment": 0,
+  "refunded": false,
+  "message": "Job finalized successfully"
+}
+```
+
+**Failure Response (with refund):**
+```json
+{
+  "job_id": 123,
+  "status": "failed",
+  "estimated_credits": 2,
+  "actual_credits": 0,
+  "adjustment": 0,
+  "refunded": true,
+  "refund_amount": 2,
+  "message": "Job failed, credits refunded"
+}
+```
+
+**Status Codes:**
+- `200 OK`: Job finalized successfully
+- `400 Bad Request`: Invalid job status or request data
+- `401 Unauthorized`: Authentication required
+- `403 Forbidden`: Not authorized to finalize this job
+- `404 Not Found`: Job not found
+
+---
+
+### Get Job Details
+
+Get details of a specific job.
+
+**Endpoint:** `GET /jobs/{job_id}`
+
+**Authentication:** Required
+
+**Response:**
+```json
+{
+  "id": 123,
+  "user_id": 1,
+  "history_id": 456,
+  "status": "completed",
+  "original_filename": "chapter1.pdf",
+  "model": "gemini-2.5-flash",
+  "estimated_tokens": 1200,
+  "actual_tokens": 1150,
+  "estimated_credits": 2,
+  "actual_credits": 2,
+  "pricing_version": "v1.0",
+  "pricing_rate": 1.0,
+  "processing_settings": {},
+  "created_at": "2025-10-03T10:00:00Z",
+  "started_at": "2025-10-03T10:00:05Z",
+  "completed_at": "2025-10-03T10:00:30Z",
+  "error_message": null,
+  "error_code": null
+}
+```
+
+**Status Codes:**
+- `200 OK`: Job details retrieved successfully
+- `401 Unauthorized`: Authentication required
+- `403 Forbidden`: Not authorized to view this job
+- `404 Not Found`: Job not found
+
+---
+
+### List Jobs
+
+Get list of user's jobs with optional filtering.
+
+**Endpoint:** `GET /jobs`
+
+**Authentication:** Required
+
+**Query Parameters:**
+- `limit` (integer, optional): Maximum number of jobs to return
+- `status` (string, optional): Filter by status - one of "pending", "processing", "completed", "failed", "cancelled"
+
+**Example:** `GET /jobs?limit=10&status=completed`
+
+**Response:**
+```json
+[
+  {
+    "id": 123,
+    "status": "completed",
+    "original_filename": "chapter1.pdf",
+    "estimated_credits": 2,
+    "actual_credits": 2,
+    "created_at": "2025-10-03T10:00:00Z",
+    "completed_at": "2025-10-03T10:00:30Z"
+  }
+]
+```
+
+**Status Codes:**
+- `200 OK`: Jobs retrieved successfully
+- `401 Unauthorized`: Authentication required
+
+---
+
+### Get Credit Ledger
+
+Get credit transaction history (audit trail).
+
+**Endpoint:** `GET /credits/ledger`
+
+**Authentication:** Required
+
+**Query Parameters:**
+- `month` (string, optional): Filter by month in YYYY-MM format
+- `limit` (integer, optional): Maximum number of entries to return
+
+**Example:** `GET /credits/ledger?month=2025-10&limit=50`
+
+**Response:**
+```json
+[
+  {
+    "id": 1,
+    "user_id": 1,
+    "month": "2025-10",
+    "delta_credits": 10000,
+    "reason": "monthly_grant",
+    "job_id": null,
+    "pricing_version": "v1.0",
+    "description": "Monthly credit grant for 2025-10",
+    "timestamp": "2025-10-01T00:00:00Z"
+  },
+  {
+    "id": 2,
+    "user_id": 1,
+    "month": "2025-10",
+    "delta_credits": -2,
+    "reason": "job_reserve",
+    "job_id": 123,
+    "pricing_version": "v1.0",
+    "description": "Reserved for chapter1.pdf",
+    "timestamp": "2025-10-03T10:00:00Z"
+  }
+]
+```
+
+**Ledger Reasons:**
+- `monthly_grant`: Monthly credit allocation
+- `job_reserve`: Credits reserved for a job
+- `job_final`: Credit adjustment after job completion
+- `job_refund`: Credits refunded for failed job
+- `admin_adjustment`: Manual adjustment by administrator
+
+**Status Codes:**
+- `200 OK`: Ledger entries retrieved successfully
+- `401 Unauthorized`: Authentication required
+
+---
+
+## Admin Operations
+
+### Manual Credit Adjustment
+
+Administrators can manually adjust user credits directly via database or admin panel.
+
+**Database Method:**
+
+```python
+from app.services.credit_service import CreditService
+
+# Grant bonus credits
+CreditService.admin_adjustment(
+    user_id=123,
+    amount=5000,
+    description="Promotional bonus credits",
+    month="2025-10"
+)
+
+# Deduct credits (use negative amount)
+CreditService.admin_adjustment(
+    user_id=123,
+    amount=-1000,
+    description="Credit correction",
+    month="2025-10"
+)
+```
+
+**Note:** Admin UI for credit adjustments is planned for a future release.
+
+---
+
+## Error Handling
+
+### Credit-Related Error Codes
+
+- `INSUFFICIENT_CREDITS`: User does not have enough credits
+- `JOB_NOT_FOUND`: Job ID does not exist
+- `INVALID_JOB_STATUS`: Job is in wrong status for the requested operation
+
+### HTTP Status Codes
+
+- `402 Payment Required`: Insufficient credits (specific to credit system)
+- All standard HTTP status codes apply (400, 401, 403, 404, 500, etc.)
+
+---
