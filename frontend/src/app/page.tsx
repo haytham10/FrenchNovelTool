@@ -124,7 +124,7 @@ export default function Home() {
         },
       });
 
-      setSentences(processedSentences);
+      setSentences(processedSentences.sentences || []);
       enqueueSnackbar('PDF processed successfully!', { variant: 'success' });
       
       // Reset state
