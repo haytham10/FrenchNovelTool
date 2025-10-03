@@ -11,6 +11,7 @@ from .services.history_service import HistoryService
 from .services.user_settings_service import UserSettingsService
 from .services.job_service import JobService
 from .services.credit_service import CreditService
+from .services.chunking_service import PDFChunkingService
 from .schemas import ExportToSheetSchema, UserSettingsSchema
 from .utils.validators import validate_pdf_file
 from .models import User, Job
@@ -180,8 +181,60 @@ def process_pdf():
             
             if job.status != JOB_STATUS_PENDING:
                 return jsonify({'error': f'Job is in {job.status} status, cannot process'}), 400
+        
+        # Check if file should be processed asynchronously
+        chunking_service = PDFChunkingService(temp_file_path)
+        use_async = chunking_service.should_chunk()
+        
+        if use_async:
+            # Large file - process asynchronously
+            current_app.logger.info(
+                f'Large PDF detected ({chunking_service.total_pages} pages), '
+                f'using async processing for job {job_id if job else "new"}'
+            )
             
-            # Update job to processing
+            # Start async task
+            from app.tasks import process_pdf_async
+            
+            # If no job was created yet, we need to create one
+            if not job:
+                # For backward compatibility, create a job if not provided
+                estimated_tokens = JobService.estimate_tokens_heuristic(
+                    chunking_service.extract_text_from_chunk(0, min(10, chunking_service.total_pages))
+                )
+                job = JobService.create_job(
+                    user_id=user_id,
+                    original_filename=original_filename,
+                    model_preference=gemini_model,
+                    estimated_tokens=estimated_tokens * (chunking_service.total_pages // 10 + 1),
+                    processing_settings=processing_settings
+                )
+            
+            # Update job to processing status
+            JobService.start_job(job.id)
+            
+            # Submit async task
+            task = process_pdf_async.apply_async(
+                args=[user_id, job.id, temp_file_path, original_filename, processing_settings],
+                task_id=f'job_{job.id}'
+            )
+            
+            # Update job with task ID
+            job.celery_task_id = task.id
+            db.session.commit()
+            
+            # Don't delete temp file - the task will handle it
+            pdf_service.temp_file_path = None
+            
+            return jsonify({
+                'job_id': job.id,
+                'status': 'processing',
+                'async': True,
+                'message': 'Large file detected. Processing asynchronously. Check job status for progress.'
+            }), 202
+        
+        # Small file - process synchronously (existing logic)
+        if job:
             JobService.start_job(job.id)
 
         gemini_service = GeminiService(
@@ -312,6 +365,89 @@ def process_pdf():
         return jsonify({'error': error_message}), 500
     finally:
         pdf_service.delete_temp_file()
+
+
+
+@main_bp.route('/jobs/<int:job_id>', methods=['GET'])
+@jwt_required()
+def get_job_status(job_id):
+    """
+    Get status of a processing job (supports async jobs).
+    Includes progress tracking for chunked processing.
+    """
+    user_id = int(get_jwt_identity())
+    
+    job = Job.query.get(job_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+    
+    if job.user_id != user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    response = job.to_dict()
+    
+    # If job is processing and has a Celery task, check task status
+    if job.status == JOB_STATUS_PROCESSING and job.celery_task_id:
+        try:
+            from celery.result import AsyncResult
+            from celery_app import celery_app
+            
+            task = AsyncResult(job.celery_task_id, app=celery_app)
+            
+            # Add task state to response
+            response['task_state'] = task.state
+            response['task_info'] = task.info if task.info else {}
+            
+        except Exception as e:
+            current_app.logger.warning(f'Failed to get task status for job {job_id}: {str(e)}')
+    
+    # If job is completed, include the result
+    if job.status == 'completed' and job.history_id:
+        from .models import History
+        history = History.query.get(job.history_id)
+        if history:
+            response['result_url'] = f'/history/{history.id}'
+    
+    return jsonify(response), 200
+
+
+@main_bp.route('/jobs/<int:job_id>/cancel', methods=['POST'])
+@jwt_required()
+def cancel_job(job_id):
+    """Cancel a pending or processing job"""
+    user_id = int(get_jwt_identity())
+    
+    job = Job.query.get(job_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+    
+    if job.user_id != user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    if job.status not in [JOB_STATUS_PENDING, JOB_STATUS_PROCESSING]:
+        return jsonify({'error': f'Cannot cancel job in {job.status} status'}), 400
+    
+    try:
+        # If job has a Celery task, revoke it
+        if job.celery_task_id:
+            from celery_app import celery_app
+            celery_app.control.revoke(job.celery_task_id, terminate=True)
+        
+        # Cancel the job and refund credits
+        JobService.cancel_job(job_id)
+        CreditService.refund_credits(
+            user_id=user_id,
+            job_id=job_id,
+            amount=job.estimated_credits,
+            description='Refund for cancelled job'
+        )
+        
+        return jsonify({'message': 'Job cancelled successfully'}), 200
+        
+    except Exception as e:
+        current_app.logger.exception(f'Failed to cancel job {job_id}')
+        return jsonify({'error': str(e)}), 500
+
 
 @main_bp.route('/export-to-sheet', methods=['POST'])
 @jwt_required()

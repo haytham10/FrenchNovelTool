@@ -167,6 +167,12 @@ class Job(db.Model):
     # Processing settings snapshot
     processing_settings = db.Column(db.JSON, nullable=True)
     
+    # Progress tracking for chunked processing
+    total_chunks = db.Column(db.Integer, nullable=True, default=0)  # Total number of chunks
+    completed_chunks = db.Column(db.Integer, nullable=True, default=0)  # Number of completed chunks
+    progress_percent = db.Column(db.Integer, nullable=True, default=0)  # Overall progress (0-100)
+    celery_task_id = db.Column(db.String(255), nullable=True, index=True)  # Celery task ID for async jobs
+    
     # Timestamps
     created_at = db.Column(db.DateTime, index=True, default=datetime.utcnow, nullable=False)
     started_at = db.Column(db.DateTime, nullable=True)
@@ -197,6 +203,10 @@ class Job(db.Model):
             'pricing_version': self.pricing_version,
             'pricing_rate': self.pricing_rate,
             'processing_settings': self.processing_settings,
+            'total_chunks': self.total_chunks,
+            'completed_chunks': self.completed_chunks,
+            'progress_percent': self.progress_percent,
+            'celery_task_id': self.celery_task_id,
             'created_at': self.created_at.isoformat() + 'Z',
             'started_at': self.started_at.isoformat() + 'Z' if self.started_at else None,
             'completed_at': self.completed_at.isoformat() + 'Z' if self.completed_at else None,
