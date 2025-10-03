@@ -153,22 +153,19 @@ class CreditService:
         # Use SELECT FOR UPDATE to lock the user's ledger entries for this month
         # This prevents race conditions when multiple requests try to reserve credits
         try:
-            # Calculate current balance with lock
-            current_balance = db.session.query(
-                func.coalesce(func.sum(CreditLedger.delta_credits), 0)
-            ).filter(
+            # Lock all ledger rows for this user/month, then sum in Python
+            rows = db.session.query(CreditLedger.delta_credits).filter(
                 CreditLedger.user_id == user_id,
                 CreditLedger.month == month
-            ).with_for_update().scalar()
-            
-            current_balance = int(current_balance)
+            ).with_for_update().all()
+            current_balance = sum(row[0] for row in rows) if rows else 0
             new_balance = current_balance - amount
-            
+
             # Check if balance would go below overdraft limit
             if new_balance < CREDIT_OVERDRAFT_LIMIT:
                 db.session.rollback()
                 return False, f'Insufficient credits. Current: {current_balance}, Required: {amount}, Overdraft limit: {CREDIT_OVERDRAFT_LIMIT}'
-            
+
             # Create reservation entry
             entry = CreditLedger(
                 user_id=user_id,
@@ -181,9 +178,9 @@ class CreditService:
             )
             db.session.add(entry)
             db.session.commit()
-            
+
             return True, None
-            
+
         except Exception as e:
             db.session.rollback()
             return False, f'Failed to reserve credits: {str(e)}'
