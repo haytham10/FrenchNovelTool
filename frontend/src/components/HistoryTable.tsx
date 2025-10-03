@@ -143,7 +143,7 @@ export default function HistoryTable() {
     setExportDialogOpen(true);
   };
 
-  const handleExport = async (_options: { sheetName: string; folderId?: string | null }) => {
+  const handleExport = async () => {
     if (!entryToExport) return;
     
     try {
@@ -154,7 +154,7 @@ export default function HistoryTable() {
       // For now, we'll show a message
       enqueueSnackbar('This feature requires storing processed sentences. Please reprocess the file to export.', { variant: 'info' });
       setExportDialogOpen(false);
-    } catch (_error) {
+    } catch {
       // Error is handled by the mutation
     }
   };
@@ -170,7 +170,7 @@ export default function HistoryTable() {
         localStorage.setItem('retrySettings', JSON.stringify(result.settings));
         router.push('/');
       }
-    } catch (_error) {
+    } catch {
       // Error handled by mutation
     }
   };
@@ -186,7 +186,7 @@ export default function HistoryTable() {
         localStorage.setItem('duplicateSettings', JSON.stringify(result.settings));
         router.push('/');
       }
-    } catch (_error) {
+    } catch {
       // Error handled by mutation
     }
   };
@@ -415,8 +415,8 @@ export default function HistoryTable() {
                   <StyledTableCell>{entry.original_filename}</StyledTableCell>
                   <StyledTableCell>{entry.processed_sentences_count}</StyledTableCell>
                   <StyledTableCell>
-                    {entry.job_id ? (
-                      <JobCreditDisplay jobId={entry.job_id} />
+                    {(entry as HistoryEntry).job_id ? (
+                      <JobCreditDisplay jobId={(entry as HistoryEntry).job_id!} />
                     ) : (
                       <Typography variant="caption" color="text.secondary">
                         N/A

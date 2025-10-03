@@ -7,7 +7,7 @@ import NormalizeControls from '@/components/NormalizeControls';
 import ExportDialog from '@/components/ExportDialog';
 import PreflightModal from '@/components/PreflightModal';
 import { getApiErrorMessage, extractPdfText } from '@/lib/api';
-import { useProcessPdf, useExportToSheet, useEstimateCost, useConfirmJob, useFinalizeJob } from '@/lib/queries';
+import { useProcessPdf, useExportToSheet, useEstimateCost, useConfirmJob } from '@/lib/queries';
 import { CircularProgress, Button, Typography, Box, Container, Paper, Divider, List, ListItem, ListItemText, LinearProgress } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import UploadStepper from '@/components/UploadStepper';
@@ -53,7 +53,6 @@ export default function Home() {
   const exportMutation = useExportToSheet();
   const estimateMutation = useEstimateCost();
   const confirmJobMutation = useConfirmJob();
-  const finalizeJobMutation = useFinalizeJob();
 
   const handleFileUpload = async (files: File[]) => {
     if (!files || files.length === 0) return;
