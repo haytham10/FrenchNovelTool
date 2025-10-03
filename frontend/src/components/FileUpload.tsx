@@ -41,15 +41,15 @@ export default function FileUpload({ onFileUpload, disabled = false, variant = '
           borderColor: isDragActive ? 'primary.main' : 'divider',
           borderRadius: 4,
           background: isDragActive 
-            ? 'linear-gradient(135deg, rgba(79,70,229,0.08) 0%, rgba(236,72,153,0.08) 100%)' 
-            : 'linear-gradient(135deg, rgba(79,70,229,0.02) 0%, rgba(236,72,153,0.02) 100%)',
+            ? 'linear-gradient(135deg, rgba(124,156,255,0.08) 0%, rgba(6,182,212,0.08) 100%)' 
+            : 'linear-gradient(135deg, rgba(124,156,255,0.02) 0%, rgba(6,182,212,0.02) 100%)',
           cursor: disabled ? 'not-allowed' : 'pointer',
           transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
           transform: isDragActive ? 'scale(1.01)' : 'scale(1)',
-          boxShadow: isDragActive ? '0 12px 40px -8px rgba(79, 70, 229, 0.25)' : 'none',
+          boxShadow: isDragActive ? '0 12px 40px -8px rgba(59, 130, 246, 0.25)' : 'none',
           '&:hover:not([disabled])': {
             borderColor: 'primary.light',
-            background: 'linear-gradient(135deg, rgba(79,70,229,0.05) 0%, rgba(236,72,153,0.05) 100%)',
+            background: 'linear-gradient(135deg, rgba(124,156,255,0.05) 0%, rgba(6,182,212,0.05) 100%)',
             transform: 'scale(1.005)',
           },
           '&:focus-visible': {
@@ -84,8 +84,8 @@ export default function FileUpload({ onFileUpload, disabled = false, variant = '
             p: 4, 
             borderRadius: '50%', 
             background: isDragActive 
-              ? 'linear-gradient(135deg, #4f46e5 0%, #ec4899 100%)' 
-              : 'linear-gradient(135deg, rgba(79,70,229,0.1) 0%, rgba(236,72,153,0.1) 100%)',
+              ? 'linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%)' 
+              : 'linear-gradient(135deg, rgba(124,156,255,0.1) 0%, rgba(6,182,212,0.1) 100%)',
             border: 3,
             borderColor: isDragActive ? 'transparent' : 'divider',
             transition: 'all 0.3s ease',

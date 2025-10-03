@@ -132,7 +132,7 @@ export default function Home() {
           left: { xs: '5%', md: '10%' },
           width: { xs: '200px', md: '260px' },
           height: { xs: '200px', md: '260px' },
-          background: 'radial-gradient(closest-side, rgba(79,70,229,0.55), rgba(79,70,229,0) 70%)',
+          background: 'radial-gradient(closest-side, rgba(124,156,255,0.55), rgba(124,156,255,0) 70%)',
           animation: `${float} 9s ease-in-out infinite`,
         },
         '&::after': {
@@ -140,7 +140,7 @@ export default function Home() {
           right: { xs: '5%', md: '15%' },
           width: { xs: '260px', md: '320px' },
           height: { xs: '260px', md: '320px' },
-          background: 'radial-gradient(closest-side, rgba(236,72,153,0.45), rgba(236,72,153,0) 70%)',
+          background: 'radial-gradient(closest-side, rgba(6,182,212,0.45), rgba(6,182,212,0) 70%)',
           animation: `${float} 11s ease-in-out infinite`,
           animationDirection: 'reverse',
         },
@@ -192,7 +192,7 @@ export default function Home() {
                   transition: 'all 300ms cubic-bezier(0.4, 0, 0.2, 1)',
                   '&:hover': {
                     transform: 'translateY(-2px)',
-                    boxShadow: '0 12px 40px -8px rgba(79, 70, 229, 0.25)',
+                    boxShadow: '0 12px 40px -8px rgba(59, 130, 246, 0.25)',
                   }
                 }}
               >
@@ -449,7 +449,7 @@ export default function Home() {
             elevation={3} 
             sx={{ 
               p: { xs: 3, md: 5 },
-              background: 'linear-gradient(135deg, rgba(79,70,229,0.05) 0%, rgba(236,72,153,0.05) 100%)',
+              background: 'linear-gradient(135deg, rgba(124,156,255,0.05) 0%, rgba(6,182,212,0.05) 100%)',
               border: 1,
               borderColor: 'divider',
             }}

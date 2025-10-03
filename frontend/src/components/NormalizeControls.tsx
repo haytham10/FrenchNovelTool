@@ -62,7 +62,7 @@ export default function NormalizeControls({
       elevation={0} 
       sx={{ 
         p: { xs: 3, md: 4 }, 
-        background: 'linear-gradient(135deg, rgba(79,70,229,0.03) 0%, rgba(236,72,153,0.03) 100%)',
+        background: 'linear-gradient(135deg, rgba(124,156,255,0.03) 0%, rgba(6,182,212,0.03) 100%)',
         border: 1, 
         borderColor: 'divider',
         borderRadius: 3,
@@ -75,7 +75,7 @@ export default function NormalizeControls({
           left: 0,
           right: 0,
           height: '4px',
-          background: 'linear-gradient(90deg, #4f46e5 0%, #ec4899 100%)',
+          background: 'linear-gradient(90deg, #3b82f6 0%, #06b6d4 100%)',
         }
       }}
     >
