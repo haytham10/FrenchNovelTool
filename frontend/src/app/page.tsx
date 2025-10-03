@@ -180,14 +180,30 @@ export default function Home() {
                 <FileUpload onFileUpload={handleFileUpload} disabled={loading} />
               </Box>
             ) : (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <Typography variant="body1" color="text.secondary">
-                  To process PDFs and export to your Google Sheets, please sign in with Google.
+              <Paper 
+                elevation={0}
+                className="glass"
+                sx={{ 
+                  p: 4, 
+                  mb: 2,
+                  width: '100%',
+                  maxWidth: '520px',
+                  textAlign: 'center',
+                  transition: 'all 300ms cubic-bezier(0.4, 0, 0.2, 1)',
+                  '&:hover': {
+                    transform: 'translateY(-2px)',
+                    boxShadow: '0 12px 40px -8px rgba(59, 130, 246, 0.25)',
+                  }
+                }}
+              >
+                <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+                  Ready to transform your French literature?
                 </Typography>
-                <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                  <GoogleLoginButton />
-                </Box>
-              </Box>
+                <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+                  Sign in with Google to start processing PDFs and exporting to your Google Sheets.
+                </Typography>
+                <GoogleLoginButton />
+              </Paper>
             )}
             <Button 
               variant="outlined" 
@@ -448,33 +464,93 @@ export default function Home() {
             </Box>
             
             <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 4, mb: 4 }}>
-              <Box sx={{ flex: 1, textAlign: 'center', p: 2 }}>
-                <Icon icon={BookOpenText} sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
+              <Paper 
+                elevation={0}
+                className="card-hover"
+                sx={{ 
+                  flex: 1, 
+                  textAlign: 'center', 
+                  p: 4, 
+                  border: 1, 
+                  borderColor: 'divider',
+                  borderRadius: 3,
+                  cursor: 'pointer',
+                  '&:hover .feature-icon': {
+                    transform: 'scale(1.1) rotate(5deg)',
+                  }
+                }}
+              >
+                <Box className="feature-icon" sx={{ 
+                  transition: 'transform 300ms cubic-bezier(0.4, 0, 0.2, 1)',
+                  display: 'inline-block'
+                }}>
+                  <Icon icon={BookOpenText} sx={{ fontSize: 56, color: 'primary.main', mb: 2 }} />
+                </Box>
                 <Typography variant="h6" gutterBottom fontWeight={600}>
                   Smart Processing
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Upload French PDF novels and let our AI intelligently split long, complex sentences into digestible chunks perfect for learning
                 </Typography>
-              </Box>
-              <Box sx={{ flex: 1, textAlign: 'center', p: 2 }}>
-                <Icon icon={Zap} sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
+              </Paper>
+              <Paper 
+                elevation={0}
+                className="card-hover"
+                sx={{ 
+                  flex: 1, 
+                  textAlign: 'center', 
+                  p: 4, 
+                  border: 1, 
+                  borderColor: 'divider',
+                  borderRadius: 3,
+                  cursor: 'pointer',
+                  '&:hover .feature-icon': {
+                    transform: 'scale(1.1) rotate(-5deg)',
+                  }
+                }}
+              >
+                <Box className="feature-icon" sx={{ 
+                  transition: 'transform 300ms cubic-bezier(0.4, 0, 0.2, 1)',
+                  display: 'inline-block'
+                }}>
+                  <Icon icon={Zap} sx={{ fontSize: 56, color: 'primary.main', mb: 2 }} />
+                </Box>
                 <Typography variant="h6" gutterBottom fontWeight={600}>
                   Powered by Gemini
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Leverages Google&apos;s Gemini AI to understand context and preserve meaning while normalizing sentence structure
                 </Typography>
-              </Box>
-              <Box sx={{ flex: 1, textAlign: 'center', p: 2 }}>
-                <Icon icon={CheckCircle} sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
+              </Paper>
+              <Paper 
+                elevation={0}
+                className="card-hover"
+                sx={{ 
+                  flex: 1, 
+                  textAlign: 'center', 
+                  p: 4, 
+                  border: 1, 
+                  borderColor: 'divider',
+                  borderRadius: 3,
+                  cursor: 'pointer',
+                  '&:hover .feature-icon': {
+                    transform: 'scale(1.1) rotate(5deg)',
+                  }
+                }}
+              >
+                <Box className="feature-icon" sx={{ 
+                  transition: 'transform 300ms cubic-bezier(0.4, 0, 0.2, 1)',
+                  display: 'inline-block'
+                }}>
+                  <Icon icon={CheckCircle} sx={{ fontSize: 56, color: 'primary.main', mb: 2 }} />
+                </Box>
                 <Typography variant="h6" gutterBottom fontWeight={600}>
                   Seamless Export
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Export processed sentences directly to Google Sheets with one click for easy study, annotation, and sharing
                 </Typography>
-              </Box>
+              </Paper>
             </Box>
 
             <Divider sx={{ my: 4 }} />

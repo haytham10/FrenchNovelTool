@@ -1,5 +1,4 @@
 
-
 import type { Metadata } from "next";
 import "./globals.css";
 import Providers from '../components/Providers';
@@ -18,11 +17,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <head>
+        {/* Google Fonts - loaded at runtime */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
         {/* Scripts are loaded asynchronously using Next.js Script component */}
         <Script src="https://apis.google.com/js/api.js" strategy="afterInteractive" />
         <Script src="https://accounts.google.com/gsi/client" strategy="afterInteractive" />
       </head>
-      <body style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
+      <body>
         <ErrorBoundary>
           <Providers>
             <SkipLink />

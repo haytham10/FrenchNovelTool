@@ -31,16 +31,19 @@ export function getTheme(mode: PaletteMode) {
     typography: {
       fontFamily: tokens.typography.fontFamily,
       h1: { 
+        fontFamily: tokens.typography.serifFamily,
         fontSize: tokens.typography.fontSize['5xl'], 
         fontWeight: tokens.typography.fontWeight.extrabold, 
         letterSpacing: tokens.typography.letterSpacing.tight 
       },
       h2: { 
+        fontFamily: tokens.typography.serifFamily,
         fontSize: tokens.typography.fontSize['4xl'], 
         fontWeight: tokens.typography.fontWeight.bold, 
         letterSpacing: tokens.typography.letterSpacing.tight 
       },
       h3: { 
+        fontFamily: tokens.typography.serifFamily,
         fontSize: tokens.typography.fontSize['2xl'], 
         fontWeight: tokens.typography.fontWeight.bold 
       },

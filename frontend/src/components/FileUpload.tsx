@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { Button, Box, Typography } from '@mui/material';
+import { Button, Box, Typography, Divider } from '@mui/material';
 import Icon from './Icon';
 import { Upload } from 'lucide-react';
 import { bounce, pulse } from '@/lib/animations';
@@ -32,23 +32,25 @@ export default function FileUpload({ onFileUpload, disabled = false, variant = '
         sx={{
           position: 'relative',
           width: '100%',
-          minHeight: '300px',
+          minHeight: '320px',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
           border: '3px dashed',
           borderColor: isDragActive ? 'primary.main' : 'divider',
-          borderRadius: 3,
-          bgcolor: isDragActive ? 'rgba(59, 130, 246, 0.08)' : 'background.paper',
+          borderRadius: 4,
+          background: isDragActive 
+            ? 'linear-gradient(135deg, rgba(124,156,255,0.08) 0%, rgba(6,182,212,0.08) 100%)' 
+            : 'linear-gradient(135deg, rgba(124,156,255,0.02) 0%, rgba(6,182,212,0.02) 100%)',
           cursor: disabled ? 'not-allowed' : 'pointer',
           transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-          transform: isDragActive ? 'scale(1.02)' : 'scale(1)',
-          boxShadow: isDragActive ? '0 8px 24px rgba(59, 130, 246, 0.15)' : 'none',
+          transform: isDragActive ? 'scale(1.01)' : 'scale(1)',
+          boxShadow: isDragActive ? '0 12px 40px -8px rgba(59, 130, 246, 0.25)' : 'none',
           '&:hover:not([disabled])': {
             borderColor: 'primary.light',
-            bgcolor: 'action.hover',
-            transform: 'scale(1.01)',
+            background: 'linear-gradient(135deg, rgba(124,156,255,0.05) 0%, rgba(6,182,212,0.05) 100%)',
+            transform: 'scale(1.005)',
           },
           '&:focus-visible': {
             outline: '3px solid',
@@ -72,26 +74,28 @@ export default function FileUpload({ onFileUpload, disabled = false, variant = '
           display: 'flex', 
           flexDirection: 'column', 
           alignItems: 'center', 
-          gap: 2,
+          gap: 3,
           transition: 'all 0.3s ease',
           transform: isDragActive ? 'translateY(-4px)' : 'translateY(0)',
           animation: isDragActive ? `${bounce} 0.6s ease-in-out infinite` : 'none',
         }}>
           <Box sx={{ 
             display: 'inline-flex', 
-            p: 3, 
-            borderRadius: 4, 
-            bgcolor: isDragActive ? 'primary.main' : 'action.hover',
-            border: 2,
-            borderColor: isDragActive ? 'primary.dark' : 'divider',
+            p: 4, 
+            borderRadius: '50%', 
+            background: isDragActive 
+              ? 'linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%)' 
+              : 'linear-gradient(135deg, rgba(124,156,255,0.1) 0%, rgba(6,182,212,0.1) 100%)',
+            border: 3,
+            borderColor: isDragActive ? 'transparent' : 'divider',
             transition: 'all 0.3s ease',
-            transform: isDragActive ? 'scale(1.1)' : 'scale(1)',
+            transform: isDragActive ? 'scale(1.15)' : 'scale(1)',
             animation: !isDragActive && !disabled ? `${pulse} 2s ease-in-out infinite` : 'none',
           }}>
             <Icon 
               icon={Upload} 
               sx={{ 
-                fontSize: 48,
+                fontSize: 56,
                 transition: 'all 0.3s ease',
               }} 
               color={isDragActive ? 'inherit' : 'primary'}
@@ -101,24 +105,39 @@ export default function FileUpload({ onFileUpload, disabled = false, variant = '
           <Typography 
             variant="h5" 
             sx={{ 
-              fontWeight: 600,
+              fontWeight: 700,
               color: isDragActive ? 'primary.main' : 'text.primary',
               transition: 'color 0.3s ease',
             }}
           >
-            {isDragActive ? 'Drop files here' : 'Get started by uploading a PDF'}
+            {isDragActive ? 'Drop files here' : 'Upload French Novel PDF'}
           </Typography>
           <Typography 
             variant="body1" 
             color="text.secondary"
-            sx={{ textAlign: 'center', maxWidth: '400px' }}
+            sx={{ textAlign: 'center', maxWidth: '420px', lineHeight: 1.6 }}
           >
-            {isDragActive ? 'Release to upload' : 'Click here or drag and drop your French novel PDF'}
+            {isDragActive ? 'Release to upload your file' : 'Drag and drop your PDF here, or click to browse'}
           </Typography>
           {!isDragActive && (
-            <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
-              Supports multiple files • PDF format only
-            </Typography>
+            <Box sx={{ 
+              display: 'flex', 
+              gap: 2, 
+              alignItems: 'center',
+              mt: 1,
+              px: 3,
+              py: 1,
+              borderRadius: 2,
+              bgcolor: 'action.hover',
+            }}>
+              <Typography variant="caption" color="text.secondary" fontWeight={500}>
+                ✓ Multiple files supported
+              </Typography>
+              <Divider orientation="vertical" flexItem sx={{ bgcolor: 'divider' }} />
+              <Typography variant="caption" color="text.secondary" fontWeight={500}>
+                ✓ PDF format only
+              </Typography>
+            </Box>
           )}
         </Box>
       </Box>
