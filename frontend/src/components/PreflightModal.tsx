@@ -50,9 +50,11 @@ export default function PreflightModal({
       onClose={onClose}
       maxWidth="xs"
       fullWidth
-      PaperProps={{
-        sx={{
-          borderRadius: 2,
+      slotProps={{
+        paper: {
+          sx: {
+            borderRadius: 2,
+          },
         },
       }}
     >
@@ -125,7 +127,7 @@ export default function PreflightModal({
         <Button
           onClick={handleConfirm}
           variant="contained"
-          disabled={loading || confirming || (estimate && !estimate.allowed)}
+          disabled={!!(loading || confirming || (estimate && !estimate.allowed))}
           startIcon={confirming ? <CircularProgress size={16} /> : estimate && <Icon icon={Coins} sx={{ fontSize: 18 }} />}
           sx={{ minWidth: 140 }}
         >
