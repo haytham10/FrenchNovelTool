@@ -148,11 +148,19 @@ class Job(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
     history_id = db.Column(db.Integer, db.ForeignKey('history.id'), nullable=True, index=True)  # Link to history entry
-    status = db.Column(db.String(20), nullable=False, index=True, default='pending')  # 'pending', 'processing', 'completed', 'failed', 'cancelled'
+    status = db.Column(db.String(20), nullable=False, index=True, default='pending')  # 'pending', 'queued', 'processing', 'completed', 'failed', 'cancelled'
     
     # File/processing info
     original_filename = db.Column(db.String(128), nullable=False)
     model = db.Column(db.String(50), nullable=False)  # 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'
+    
+    # Chunking support for large PDFs
+    page_count = db.Column(db.Integer, nullable=True)  # Total pages in PDF
+    chunk_size = db.Column(db.Integer, nullable=True)  # Pages per chunk (if chunked)
+    total_chunks = db.Column(db.Integer, nullable=True, default=1)  # Total number of chunks
+    completed_chunks = db.Column(db.Integer, nullable=True, default=0)  # Number of completed chunks
+    progress_percent = db.Column(db.Float, nullable=True, default=0.0)  # Overall progress (0-100)
+    parent_job_id = db.Column(db.Integer, db.ForeignKey('jobs.id'), nullable=True, index=True)  # For chunk jobs
     
     # Token and credit tracking
     estimated_tokens = db.Column(db.Integer, nullable=True)  # Estimated before processing
@@ -178,6 +186,7 @@ class Job(db.Model):
     
     # Relationships
     ledger_entries = db.relationship('CreditLedger', backref='job', lazy='dynamic')
+    chunk_jobs = db.relationship('Job', backref=db.backref('parent_job', remote_side=[id]), lazy='dynamic')
     
     def __repr__(self):
         return f'<Job id={self.id} user_id={self.user_id} status={self.status} file={self.original_filename}>'
@@ -190,6 +199,12 @@ class Job(db.Model):
             'status': self.status,
             'original_filename': self.original_filename,
             'model': self.model,
+            'page_count': self.page_count,
+            'chunk_size': self.chunk_size,
+            'total_chunks': self.total_chunks,
+            'completed_chunks': self.completed_chunks,
+            'progress_percent': self.progress_percent,
+            'parent_job_id': self.parent_job_id,
             'estimated_tokens': self.estimated_tokens,
             'actual_tokens': self.actual_tokens,
             'estimated_credits': self.estimated_credits,

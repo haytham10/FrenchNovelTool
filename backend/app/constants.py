@@ -102,3 +102,12 @@ TOKEN_ESTIMATION_SAFETY_BUFFER = 1.10  # Add 10% buffer to estimates
 CREDIT_OVERDRAFT_LIMIT = -100  # Allow small negative balance to handle overruns
 MIN_CREDITS_FOR_JOB = 1  # Minimum credits required to start a job
 
+# Chunking configuration for large PDFs
+CHUNK_THRESHOLD_PAGES = 50  # PDFs with more than 50 pages will be chunked
+DEFAULT_CHUNK_SIZE_PAGES = 25  # Process 25 pages per chunk
+MAX_CHUNK_SIZE_PAGES = 50  # Maximum pages per chunk
+MIN_CHUNK_SIZE_PAGES = 10  # Minimum pages per chunk
+
+# Job Status (extended for async processing)
+JOB_STATUS_QUEUED = 'queued'  # Job is queued for processing
+

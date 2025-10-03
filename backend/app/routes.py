@@ -14,7 +14,13 @@ from .services.credit_service import CreditService
 from .schemas import ExportToSheetSchema, UserSettingsSchema
 from .utils.validators import validate_pdf_file
 from .models import User, Job
-from .constants import JOB_STATUS_PENDING, JOB_STATUS_PROCESSING, ERROR_INSUFFICIENT_CREDITS
+from .constants import (
+    JOB_STATUS_PENDING,
+    JOB_STATUS_PROCESSING,
+    JOB_STATUS_QUEUED,
+    ERROR_INSUFFICIENT_CREDITS,
+    CHUNK_THRESHOLD_PAGES,
+)
 import PyPDF2
 
 main_bp = Blueprint('main', __name__)
@@ -82,6 +88,46 @@ def extract_pdf_text():
     finally:
         pdf_service.delete_temp_file()
 
+
+@main_bp.route('/jobs/<int:job_id>', methods=['GET'])
+@jwt_required()
+def get_job_status(job_id):
+    """Get status and progress of a processing job (requires authentication)"""
+    user_id = int(get_jwt_identity())
+    user = User.query.get(user_id)
+    
+    if not user or not user.is_active:
+        return jsonify({'error': 'User not found or inactive'}), 401
+    
+    # Get job
+    job = Job.query.get(job_id)
+    
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+    
+    # Verify user owns this job
+    if job.user_id != user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    # Get associated history if completed
+    result = None
+    if job.status == 'completed' and job.history_id:
+        from .models import History
+        history = History.query.get(job.history_id)
+        if history:
+            result = {
+                'sentences_count': history.processed_sentences_count,
+                'spreadsheet_url': history.spreadsheet_url
+            }
+    
+    response = {
+        'job': job.to_dict(),
+        'result': result
+    }
+    
+    return jsonify(response), 200
+
+
 @main_bp.route('/process-pdf', methods=['POST'])
 @jwt_required()
 @limiter.limit("10 per hour")
@@ -96,6 +142,9 @@ def process_pdf():
     
     # Check if job_id is provided (credit flow) or if it's direct processing (backward compatibility)
     job_id = request.form.get('job_id')
+    
+    # Check if async mode is requested (default to True for large PDFs)
+    async_mode = request.form.get('async', 'true').lower() in ('true', '1', 'yes')
     
     if 'pdf_file' not in request.files:
         return jsonify({'error': 'No PDF file provided'}), 400
@@ -172,6 +221,14 @@ def process_pdf():
             'min_sentence_length': min_sentence_length,
         }
 
+        # Get page count to determine if async is needed
+        page_count = pdf_service.get_page_count(temp_file_path)
+        
+        # Force async mode for large PDFs
+        if page_count > CHUNK_THRESHOLD_PAGES:
+            async_mode = True
+            current_app.logger.info(f'PDF {original_filename} has {page_count} pages, forcing async mode')
+
         # If job_id provided, verify and update job status
         if job_id:
             job = Job.query.get(int(job_id))
@@ -180,8 +237,41 @@ def process_pdf():
             
             if job.status != JOB_STATUS_PENDING:
                 return jsonify({'error': f'Job is in {job.status} status, cannot process'}), 400
+        
+        # Process asynchronously if requested or if PDF is large
+        if async_mode:
+            # Create or update job
+            if not job:
+                # This shouldn't happen in normal flow, but handle it gracefully
+                current_app.logger.warning(f'No job_id provided for async processing, this is deprecated flow')
+                return jsonify({'error': 'job_id is required for async processing'}), 400
             
-            # Update job to processing
+            # Update job with page count and settings
+            job.page_count = page_count
+            job.processing_settings = processing_settings
+            
+            # Queue the async task
+            from app.tasks import process_pdf_async
+            
+            # Change status to queued
+            job.status = JOB_STATUS_QUEUED
+            db.session.commit()
+            
+            # Start async task
+            task = process_pdf_async.delay(job.id, temp_file_path)
+            
+            current_app.logger.info(f'User {user.email} queued async job {job.id} for PDF: {original_filename}')
+            
+            return jsonify({
+                'job_id': job.id,
+                'status': 'queued',
+                'page_count': page_count,
+                'message': 'PDF processing started. Check job status for progress.'
+            }), 202
+        
+        # Synchronous processing (backward compatibility for small PDFs)
+        # Update job to processing
+        if job:
             JobService.start_job(job.id)
 
         gemini_service = GeminiService(
@@ -311,7 +401,10 @@ def process_pdf():
         )
         return jsonify({'error': error_message}), 500
     finally:
-        pdf_service.delete_temp_file()
+        # Only delete temp file if not doing async processing
+        if not async_mode:
+            pdf_service.delete_temp_file()
+
 
 @main_bp.route('/export-to-sheet', methods=['POST'])
 @jwt_required()
