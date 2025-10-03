@@ -18,6 +18,7 @@ import {
   confirmJob,
   finalizeJob,
   getJob,
+  getJobStatus,
   getApiErrorMessage,
   type ProcessPdfOptions,
   type ExportToSheetRequest,
@@ -217,6 +218,29 @@ export function useJob(jobId: number | null | undefined) {
     queryFn: () => (jobId ? getJob(jobId) : null),
     enabled: !!jobId,
     staleTime: 1000 * 60 * 5, // 5 minutes
+  });
+}
+
+/**
+ * Job Status Query with Auto-Polling
+ * Polls job status until it's completed or failed
+ */
+export function useJobStatus(jobId: number | null | undefined, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: [...queryKeys.jobs, jobId, 'status'],
+    queryFn: () => (jobId ? getJobStatus(jobId) : null),
+    enabled: options?.enabled !== false && !!jobId,
+    refetchInterval: (data) => {
+      // Stop polling if job is completed, failed, or cancelled
+      if (!data?.job) return false;
+      const status = data.job.status;
+      if (status === 'completed' || status === 'failed' || status === 'cancelled') {
+        return false;
+      }
+      // Poll every 2 seconds for queued/processing jobs
+      return 2000;
+    },
+    staleTime: 0, // Always fresh when polling
   });
 }
 

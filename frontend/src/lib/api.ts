@@ -138,7 +138,7 @@ export async function extractPdfText(file: File): Promise<{ text: string; page_c
   return response.data;
 }
 
-export async function processPdf(file: File, options?: ProcessPdfOptions): Promise<string[]> {
+export async function processPdf(file: File, options?: ProcessPdfOptions): Promise<{ sentences?: string[]; job_id?: number; status?: string; page_count?: number; message?: string }> {
   const formData = new FormData();
   formData.append('pdf_file', file);
   
@@ -158,7 +158,8 @@ export async function processPdf(file: File, options?: ProcessPdfOptions): Promi
     },
   });
   
-  return response.data.sentences || [];
+  // Return full response for async processing support
+  return response.data;
 }
 
 /**
@@ -319,9 +320,15 @@ export interface Job {
   id: number;
   user_id: number;
   history_id?: number;
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  status: 'pending' | 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
   original_filename: string;
   model: string;
+  page_count?: number;
+  chunk_size?: number;
+  total_chunks?: number;
+  completed_chunks?: number;
+  progress_percent?: number;
+  parent_job_id?: number;
   estimated_tokens?: number;
   actual_tokens?: number;
   estimated_credits: number;
@@ -336,10 +343,21 @@ export interface Job {
   error_code?: string;
 }
 
-export async function getJob(jobId: number): Promise<Job> {
+export interface JobStatusResponse {
+  job: Job;
+  result?: {
+    sentences_count?: number;
+    spreadsheet_url?: string;
+  };
+}
+
+export async function getJobStatus(jobId: number): Promise<JobStatusResponse> {
   const response = await api.get(`/jobs/${jobId}`);
   return response.data;
 }
+
+// Alias for backward compatibility
+export const getJob = getJobStatus;
 
 export async function getJobs(params?: { limit?: number; status?: string }): Promise<Job[]> {
   const response = await api.get('/jobs', { params });
