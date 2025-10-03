@@ -88,6 +88,9 @@ export default function Home() {
 
     setLoading(true, 'Exporting to Google Sheets...');
 
+    // Open a blank tab immediately to avoid popup blockers
+    const newTab = window.open('about:blank', '_blank');
+
     try {
       const spreadsheetUrl = await exportMutation.mutateAsync({
         sentences,
@@ -95,8 +98,11 @@ export default function Home() {
         folderId: options.folderId,
       });
       setExportDialogOpen(false);
-      window.open(spreadsheetUrl, '_blank');
+      if (newTab) {
+        newTab.location.href = spreadsheetUrl;
+      }
     } catch (error) {
+      if (newTab) newTab.close();
       enqueueSnackbar(
         getApiErrorMessage(error, 'An unexpected error occurred during the export.'),
         { variant: 'error' }

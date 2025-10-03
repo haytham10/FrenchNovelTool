@@ -5,13 +5,14 @@ import { AppBar, Toolbar, Typography, Box, Button, Container, IconButton as MIco
 import Link from 'next/link';
 import ThemeToggle from './ThemeToggle';
 import Icon from './Icon';
-import { BookOpenText, Search, HelpCircle } from 'lucide-react';
+import { Search, HelpCircle } from 'lucide-react';
 import CommandPalette from './CommandPalette';
 import GlobalSearch from './GlobalSearch';
 import UserMenu from './UserMenu';
 import GoogleLoginButton from './GoogleLoginButton';
 import HelpModal from './HelpModal';
 import { useAuth } from './AuthContext';
+import Image from 'next/image';
 
 export default function Header() {
   const [searchOpen, setSearchOpen] = React.useState(false);
@@ -20,10 +21,18 @@ export default function Header() {
   return (
     <AppBar position="sticky" color="transparent" elevation={0} sx={{ backdropFilter: 'blur(8px)' }}>
       <Container maxWidth="lg">
-        <Toolbar disableGutters sx={{ display: 'flex', gap: 2, py: 1 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, mr: 'auto' }}>
-            <Icon icon={BookOpenText} color="primary" />
-            <Typography variant="h6" sx={{ fontWeight: 900, letterSpacing: '-0.02em' }} className="gradient-text">
+        <Toolbar disableGutters sx={{ display: 'flex', gap: 1, py: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', mr: 'auto' }}>
+            <Image
+              src="/logo.png"
+              alt="French Novel Tool logo"
+              width={45}
+              height={45}
+              style={{ objectFit: 'contain', marginRight: 8 }}
+              aria-hidden="true"
+              priority
+            />
+            <Typography variant="h4" sx={{ fontWeight: 900, letterSpacing: '-0.02em' }} className="gradient-text">
               French Novel Tool
             </Typography>
           </Box>
