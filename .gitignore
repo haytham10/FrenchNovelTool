@@ -67,6 +67,7 @@ coverage.xml
 .env.*.local
 .env.production
 .env.development
+.env.dev
 .env.test
 .envrc
 .python-version
