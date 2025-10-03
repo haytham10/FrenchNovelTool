@@ -1,8 +1,8 @@
 """Add job progress tracking fields
 
-Revision ID: add_job_progress_tracking
+Revision ID: 5c6b67b1ba80
 Revises: e1b51492b2e1
-Create Date: 2025-01-01 00:00:00.000000
+Create Date: 2025-10-03 22:30:00.000000
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'add_job_progress_tracking'
+revision = '5c6b67b1ba80'
 down_revision = 'e1b51492b2e1'
 branch_labels = None
 depends_on = None

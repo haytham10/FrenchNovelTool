@@ -6,36 +6,15 @@ from PyPDF2 import PdfWriter, PdfReader
 from app.services.chunking_service import PDFChunkingService
 
 
-@pytest.fixture
-def sample_pdf():
-    """Create a sample multi-page PDF for testing"""
-    pdf_writer = PdfWriter()
-    
-    # Create a PDF with 100 pages
-    for i in range(100):
-        pdf_writer.add_blank_page(width=612, height=792)
-    
-    # Write to temporary file
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
-        pdf_writer.write(temp_file)
-        temp_path = temp_file.name
-    
-    yield temp_path
-    
-    # Cleanup
-    if os.path.exists(temp_path):
-        os.remove(temp_path)
-
-
-def test_chunking_service_page_count(sample_pdf):
+def test_chunking_service_page_count(large_pdf):
     """Test that chunking service correctly counts pages"""
-    service = PDFChunkingService(sample_pdf)
+    service = PDFChunkingService(large_pdf)
     assert service.total_pages == 100
 
 
-def test_chunking_threshold(sample_pdf):
+def test_chunking_threshold(large_pdf):
     """Test that chunking threshold is correctly applied"""
-    service = PDFChunkingService(sample_pdf)
+    service = PDFChunkingService(large_pdf)
     
     # Default threshold is 50 pages
     assert service.should_chunk() is True
@@ -56,9 +35,9 @@ def test_chunking_threshold(sample_pdf):
     os.remove(small_pdf)
 
 
-def test_calculate_chunks(sample_pdf):
+def test_calculate_chunks(large_pdf):
     """Test chunk calculation"""
-    service = PDFChunkingService(sample_pdf)
+    service = PDFChunkingService(large_pdf)
     
     # With default chunk size (50 pages), should get 2 chunks
     chunks = service.calculate_chunks(chunk_size_pages=50)
@@ -75,9 +54,9 @@ def test_calculate_chunks(sample_pdf):
     assert chunks[3] == (75, 100)
 
 
-def test_extract_chunk(sample_pdf):
+def test_extract_chunk(large_pdf):
     """Test chunk extraction"""
-    service = PDFChunkingService(sample_pdf)
+    service = PDFChunkingService(large_pdf)
     
     # Extract first chunk (pages 0-50)
     chunk_path = service.extract_chunk(0, 50)
@@ -113,9 +92,9 @@ def test_chunk_cleanup():
     assert not os.path.exists(temp_path)
 
 
-def test_extract_text_from_chunk(sample_pdf):
+def test_extract_text_from_chunk(large_pdf):
     """Test text extraction from chunk"""
-    service = PDFChunkingService(sample_pdf)
+    service = PDFChunkingService(large_pdf)
     
     # Extract text from first 10 pages
     text = service.extract_text_from_chunk(0, 10)

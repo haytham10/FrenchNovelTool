@@ -1,0 +1,17 @@
+# Test dependencies for backend
+# Install with: pip install -r requirements-test.txt
+
+# Core test framework
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-mock>=3.11.1
+
+# For async testing (if needed in future)
+pytest-asyncio>=0.21.0
+
+# Testing utilities
+factory-boy>=3.3.0
+faker>=19.6.0
+
+# All runtime dependencies
+-r requirements.txt

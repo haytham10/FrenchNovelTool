@@ -3,65 +3,10 @@ import os
 import tempfile
 import pytest
 from PyPDF2 import PdfWriter
-from app import create_app, db
-from app.models import Job, User
+from app import db
+from app.models import Job
 from app.services.job_service import JobService
 from app.services.chunking_service import PDFChunkingService
-
-
-@pytest.fixture
-def app():
-    """Create and configure a test Flask application"""
-    app = create_app()
-    app.config['TESTING'] = True
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
-    app.config['CHUNKING_THRESHOLD_PAGES'] = 50
-    app.config['CHUNK_SIZE_PAGES'] = 50
-    
-    with app.app_context():
-        db.create_all()
-        yield app
-        db.session.remove()
-        db.drop_all()
-
-
-@pytest.fixture
-def client(app):
-    """Create a test client"""
-    return app.test_client()
-
-
-@pytest.fixture
-def test_user(app):
-    """Create a test user"""
-    with app.app_context():
-        user = User(
-            email='test@example.com',
-            name='Test User',
-            google_id='test123',
-            is_active=True
-        )
-        db.session.add(user)
-        db.session.commit()
-        return user.id
-
-
-@pytest.fixture
-def large_pdf():
-    """Create a large PDF (100 pages) for testing"""
-    pdf_writer = PdfWriter()
-    
-    for i in range(100):
-        pdf_writer.add_blank_page(width=612, height=792)
-    
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
-        pdf_writer.write(temp_file)
-        temp_path = temp_file.name
-    
-    yield temp_path
-    
-    if os.path.exists(temp_path):
-        os.remove(temp_path)
 
 
 def test_chunking_detection(app, large_pdf):
