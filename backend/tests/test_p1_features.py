@@ -195,6 +195,32 @@ class TestExportToSheetSchema:
             schema.load(data)
         
         assert 'mode' in exc_info.value.messages
+    
+    def test_folder_id_schema(self):
+        """Test folder_id in export schema"""
+        schema = ExportToSheetSchema()
+        data = {
+            'sentences': ['Test sentence'],
+            'sheetName': 'Test Sheet',
+            'folderId': '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms'
+        }
+        result = schema.load(data)
+        
+        assert result['folderId'] == data['folderId']
+        assert result['mode'] == 'new'
+    
+    def test_folder_id_null_schema(self):
+        """Test null folder_id in export schema"""
+        schema = ExportToSheetSchema()
+        data = {
+            'sentences': ['Test sentence'],
+            'sheetName': 'Test Sheet',
+            'folderId': None
+        }
+        result = schema.load(data)
+        
+        assert result['folderId'] is None
+
 
 
 class TestUserSettingsSchema:
@@ -325,6 +351,79 @@ class TestGoogleSheetsServiceP1Features:
         assert values_body[2][1] == 'Sentence 3'
         
         assert url == 'https://docs.google.com/spreadsheets/d/test123'
+    
+    @patch('app.services.google_sheets_service.build')
+    def test_export_with_folder_id(self, mock_build):
+        """Test exporting to a specific folder"""
+        # Mock the Google API clients
+        mock_sheets = MagicMock()
+        mock_drive = MagicMock()
+        mock_build.side_effect = [mock_sheets, mock_drive]
+        
+        # Mock credentials
+        mock_creds = MagicMock()
+        
+        # Setup spreadsheet creation mock
+        mock_spreadsheet = {'spreadsheetId': 'test123'}
+        mock_sheets.spreadsheets().create().execute.return_value = mock_spreadsheet
+        
+        # Setup drive file mock
+        mock_file = {'parents': ['root']}
+        mock_drive.files().get().execute.return_value = mock_file
+        
+        service = GoogleSheetsService()
+        sentences = ['Test sentence']
+        folder_id = '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms'
+        
+        # Export with folder_id
+        url = service.export_to_sheet(
+            creds=mock_creds,
+            sentences=sentences,
+            sheet_name='Test Sheet',
+            folder_id=folder_id
+        )
+        
+        # Verify the drive update was called to move the file
+        assert mock_drive.files().update.called
+        
+        # Get the call arguments for the update
+        call_args = mock_drive.files().update.call_args
+        assert call_args[1]['fileId'] == 'test123'
+        assert call_args[1]['addParents'] == folder_id
+        assert 'removeParents' in call_args[1]
+        
+        assert url == 'https://docs.google.com/spreadsheets/d/test123'
+    
+    @patch('app.services.google_sheets_service.build')
+    def test_export_without_folder_id(self, mock_build):
+        """Test exporting without folder_id (default location)"""
+        # Mock the Google API clients
+        mock_sheets = MagicMock()
+        mock_drive = MagicMock()
+        mock_build.side_effect = [mock_sheets, mock_drive]
+        
+        # Mock credentials
+        mock_creds = MagicMock()
+        
+        # Setup spreadsheet creation mock
+        mock_spreadsheet = {'spreadsheetId': 'test123'}
+        mock_sheets.spreadsheets().create().execute.return_value = mock_spreadsheet
+        
+        service = GoogleSheetsService()
+        sentences = ['Test sentence']
+        
+        # Export without folder_id
+        url = service.export_to_sheet(
+            creds=mock_creds,
+            sentences=sentences,
+            sheet_name='Test Sheet'
+        )
+        
+        # Verify the drive update was NOT called
+        assert not mock_drive.files().update.called
+        
+        assert url == 'https://docs.google.com/spreadsheets/d/test123'
+
 
 
 if __name__ == '__main__':

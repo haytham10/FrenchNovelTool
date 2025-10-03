@@ -5,6 +5,7 @@ import { useSnackbar } from 'notistack';
 interface DriveFolderPickerProps {
   onFolderSelect: (folderId: string, folderName: string) => void;
   selectedFolderName: string | null;
+  onClearSelection?: () => void;
 }
 
 declare global {
@@ -58,7 +59,7 @@ const CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID; // You'll need to se
 const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_API_KEY; // You'll need to set this in your .env.local
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 
-export default function DriveFolderPicker({ onFolderSelect, selectedFolderName }: DriveFolderPickerProps) {
+export default function DriveFolderPicker({ onFolderSelect, selectedFolderName, onClearSelection }: DriveFolderPickerProps) {
   const [gapiLoaded, setGapiLoaded] = useState(false);
   const [gisLoaded, setGisLoaded] = useState(false);
   const [tokenClient, setTokenClient] = useState<TokenClient | null>(null);
@@ -202,9 +203,16 @@ export default function DriveFolderPicker({ onFolderSelect, selectedFolderName }
   return (
     <Box mt={2}>
       <Typography variant="subtitle1" gutterBottom>Google Drive Destination (Optional)</Typography>
-      <Button variant="outlined" onClick={handlePickFolder} disabled={!gapiLoaded || !gisLoaded}>
-        Select Folder
-      </Button>
+      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+        <Button variant="outlined" onClick={handlePickFolder} disabled={!gapiLoaded || !gisLoaded}>
+          Select Folder
+        </Button>
+        {selectedFolderName && onClearSelection && (
+          <Button variant="text" size="small" onClick={onClearSelection}>
+            Clear
+          </Button>
+        )}
+      </Box>
       {selectedFolderName && (
         <Typography variant="body2" color="textSecondary" mt={1}>
           Selected: {selectedFolderName}

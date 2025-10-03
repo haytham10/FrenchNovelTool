@@ -169,6 +169,13 @@ export default function Home() {
         sentences,
         sheetName: options.sheetName,
         folderId: options.folderId,
+        mode: options.mode,
+        existingSheetId: options.existingSheetId,
+        tabName: options.tabName,
+        createNewTab: options.createNewTab,
+        headers: options.headers,
+        columnOrder: options.columnOrder,
+        sharing: options.sharing,
       });
       setExportDialogOpen(false);
       if (newTab) {

@@ -169,6 +169,18 @@ export interface ExportToSheetRequest {
   sentences: string[];
   sheetName: string;
   folderId?: string | null;
+  mode?: 'new' | 'append';
+  existingSheetId?: string;
+  tabName?: string;
+  createNewTab?: boolean;
+  headers?: string[];
+  columnOrder?: string[];
+  sharing?: {
+    addCollaborators?: boolean;
+    collaboratorEmails?: string[];
+    publicLink?: boolean;
+  };
+  sentenceIndices?: number[];
 }
 
 export async function exportToSheet(data: ExportToSheetRequest): Promise<string> {
