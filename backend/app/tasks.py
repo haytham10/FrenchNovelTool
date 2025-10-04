@@ -24,6 +24,26 @@ def get_db():
     return db
 
 
+def emit_progress(job_id: int):
+    """Emit job progress via WebSocket (deferred import to avoid circular dependency)"""
+    try:
+        from app.socket_events import emit_job_progress
+        emit_job_progress(job_id)
+    except Exception as e:
+        logger.warning(f"Failed to emit WebSocket progress for job {job_id}: {e}")
+
+def get_celery():
+    """Get celery instance (deferred import to avoid circular dependency)"""
+    from app import celery
+    return celery
+
+
+def get_db():
+    """Get database instance with connection retry logic"""
+    from app import db
+    return db
+
+
 def safe_db_commit(db, max_retries=3, retry_delay=1):
     """
     Safely commit database changes with retry logic for cloud databases.
@@ -247,6 +267,7 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
         job.current_step = "Analyzing PDF"
         job.progress_percent = 5
         safe_db_commit(db)
+        emit_progress(job_id)
         
         # Calculate chunks
         # Ensure file exists in this container; reconstruct if needed
@@ -270,6 +291,7 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
         job.current_step = f"Splitting into {chunk_config['num_chunks']} chunks"
         job.progress_percent = 10
         safe_db_commit(db)
+        emit_progress(job_id)
         
         # Split PDF into chunks
         chunks = chunking_service.split_pdf(file_path, chunk_config)
@@ -305,6 +327,7 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
         job.current_step = "Processing chunks"
         job.progress_percent = 15
         safe_db_commit(db)
+        emit_progress(job_id)
         
         # Process chunks in parallel if multiple chunks
         if len(chunks) == 1:
@@ -340,6 +363,7 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
                     job.progress_percent = max(job.progress_percent or 15, pct)
                     job.current_step = f"Processed {idx}/{job.total_chunks} chunks"
                 safe_db_commit(db)
+                emit_progress(job_id)
         
         # Update progress as chunks complete
         job = Job.query.get(job_id)
@@ -347,6 +371,7 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
         job.progress_percent = 75
         job.current_step = "Merging results"
         safe_db_commit(db)
+        emit_progress(job_id)
         
         # Merge chunk results
         if not chunk_results:
@@ -357,6 +382,7 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
             job.completed_at = datetime.utcnow()
             job.progress_percent = 100
             safe_db_commit(db)
+            emit_progress(job_id)
             return {'status': 'failed', 'error': 'No chunks processed'}
         all_sentences = merge_chunk_results(chunk_results)
         
@@ -388,6 +414,7 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
             job.processing_time_seconds = int(processing_time)
         
         safe_db_commit(db)
+        emit_progress(job_id)
         
         return {
             'status': 'success',
