@@ -647,6 +647,130 @@ def cancel_job(job_id):
     }), 200
 
 
+@main_bp.route('/jobs/<int:job_id>/chunks', methods=['GET'])
+@jwt_required()
+def get_job_chunks(job_id):
+    """Get detailed chunk status for a job"""
+    from app.models import JobChunk
+    
+    user_id = int(get_jwt_identity())
+    
+    # Verify job ownership
+    job = Job.query.filter_by(id=job_id, user_id=user_id).first()
+    if not job:
+        return jsonify({'error': 'Job not found or access denied'}), 404
+    
+    # Load chunks from DB
+    chunks = JobChunk.query.filter_by(job_id=job_id).order_by(JobChunk.chunk_id).all()
+    
+    return jsonify({
+        'job_id': job_id,
+        'total_chunks': len(chunks),
+        'chunks': [c.to_dict() for c in chunks],
+        'summary': {
+            'pending': sum(1 for c in chunks if c.status == 'pending'),
+            'processing': sum(1 for c in chunks if c.status == 'processing'),
+            'success': sum(1 for c in chunks if c.status == 'success'),
+            'failed': sum(1 for c in chunks if c.status == 'failed'),
+            'retry_scheduled': sum(1 for c in chunks if c.status == 'retry_scheduled'),
+        }
+    }), 200
+
+
+@main_bp.route('/jobs/<int:job_id>/chunks/retry', methods=['POST'])
+@jwt_required()
+def retry_failed_chunks(job_id):
+    """
+    Manually retry failed chunks for a job.
+    
+    Request body:
+    {
+        "chunk_ids": [2, 5, 7],  // Optional: specific chunks, or retry all failed
+        "force": false            // Force retry even if max_retries exceeded
+    }
+    """
+    from app.models import JobChunk
+    from app.tasks import process_chunk
+    from celery import group
+    
+    user_id = int(get_jwt_identity())
+    
+    # Verify job ownership
+    job = Job.query.filter_by(id=job_id, user_id=user_id).first()
+    if not job:
+        return jsonify({'error': 'Job not found or access denied'}), 404
+    
+    # Parse request data
+    data = request.get_json() or {}
+    specific_chunk_ids = data.get('chunk_ids')
+    force = data.get('force', False)
+    
+    # Build query for chunks to retry
+    query = JobChunk.query.filter_by(job_id=job_id)
+    
+    if specific_chunk_ids:
+        # Retry specific chunks
+        query = query.filter(JobChunk.chunk_id.in_(specific_chunk_ids))
+    
+    # Get chunks that are eligible for retry
+    all_chunks = query.all()
+    chunks_to_retry = []
+    
+    for chunk in all_chunks:
+        if force:
+            # Force retry regardless of status/attempts
+            if chunk.status in ['failed', 'retry_scheduled', 'success']:
+                chunks_to_retry.append(chunk)
+        else:
+            # Only retry if eligible (failed and under max attempts)
+            if chunk.can_retry():
+                chunks_to_retry.append(chunk)
+    
+    if not chunks_to_retry:
+        return jsonify({
+            'message': 'No chunks eligible for retry',
+            'retried_count': 0
+        }), 200
+    
+    # Dispatch retry tasks
+    retry_tasks = []
+    settings = job.processing_settings or {}
+    
+    for chunk in chunks_to_retry:
+        chunk.status = 'retry_scheduled'
+        if force:
+            chunk.attempts = 0  # Reset attempts if forced
+        chunk.updated_at = datetime.utcnow()
+        db.session.add(chunk)
+        
+        retry_tasks.append(
+            process_chunk.s(chunk.get_chunk_metadata(), user_id, settings)
+        )
+    
+    db.session.commit()
+    
+    # Dispatch tasks (no chord callback — let user check status)
+    group_result = group(retry_tasks).apply_async()
+    
+    # Update job status
+    job.current_step = f"Manually retrying {len(chunks_to_retry)} chunks"
+    job.status = 'processing'
+    job.retry_count += 1
+    db.session.commit()
+    
+    from app.tasks import emit_progress
+    emit_progress(job_id)
+    
+    current_app.logger.info(f"Job {job_id}: manually retrying {len(chunks_to_retry)} chunks, group_id={group_result.id}")
+    
+    return jsonify({
+        'message': f'Retrying {len(chunks_to_retry)} chunks',
+        'retried_count': len(chunks_to_retry),
+        'group_id': str(group_result.id),
+        'chunk_ids': [c.chunk_id for c in chunks_to_retry]
+    }), 200
+
+
 @main_bp.route('/process-pdf-async', methods=['POST'])
 @jwt_required()
 @limiter.limit("10 per hour")

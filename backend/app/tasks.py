@@ -93,10 +93,10 @@ def get_constants():
 @get_celery().task(bind=True, name='app.tasks.process_chunk')
 def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
     """
-    Process a single PDF chunk.
+    Process a single PDF chunk with DB-backed state tracking.
     
     Args:
-        chunk_info: Chunk metadata from ChunkingService
+        chunk_info: Chunk metadata from JobChunk.get_chunk_metadata() or legacy dict
         user_id: User who initiated the job
         settings: Processing settings
         
@@ -112,6 +112,31 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
             'error': str (if failed)
         }
     """
+    db = get_db()
+    chunk_db_record = None
+    
+    # Try to load JobChunk from DB if job_id provided
+    job_id = chunk_info.get('job_id')
+    chunk_id = chunk_info.get('chunk_id')
+    
+    if job_id is not None and chunk_id is not None:
+        try:
+            from app.models import JobChunk
+            chunk_db_record = JobChunk.query.filter_by(
+                job_id=job_id, 
+                chunk_id=chunk_id
+            ).first()
+            
+            if chunk_db_record:
+                # Update status to processing
+                chunk_db_record.status = 'processing'
+                chunk_db_record.celery_task_id = self.request.id
+                chunk_db_record.attempts += 1
+                chunk_db_record.updated_at = datetime.utcnow()
+                safe_db_commit(db)
+        except Exception as e:
+            logger.warning(f"Failed to load/update JobChunk for job={job_id} chunk={chunk_id}: {e}")
+    
     try:
         # Get services
         _, GeminiService, _, _ = get_services()
@@ -153,13 +178,26 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
             except Exception:
                 pass
             
-            return {
+            error_result = {
                 'chunk_id': chunk_info['chunk_id'],
                 'status': 'failed',
                 'error': 'No extractable text in PDF chunk (may be scanned/images only).',
                 'start_page': chunk_info['start_page'],
                 'end_page': chunk_info['end_page']
             }
+            
+            # Persist error to DB chunk record
+            if chunk_db_record:
+                try:
+                    chunk_db_record.status = 'failed'
+                    chunk_db_record.last_error = 'No extractable text in PDF chunk'
+                    chunk_db_record.last_error_code = 'NO_TEXT'
+                    chunk_db_record.updated_at = datetime.utcnow()
+                    safe_db_commit(db)
+                except Exception as e:
+                    logger.warning(f"Failed to persist chunk error to DB: {e}")
+            
+            return error_result
 
         # Process with Gemini
         prompt = gemini_service.build_prompt()
@@ -172,6 +210,29 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
                 os.remove(fp)
         except Exception as e:
             logger.warning(f"Failed to cleanup chunk file {chunk_info.get('file_path')}: {e}")
+
+        # Build result dict
+        result_dict = {
+            'chunk_id': chunk_info['chunk_id'],
+            'sentences': result['sentences'],
+            'tokens': result.get('tokens', 0),
+            'start_page': chunk_info['start_page'],
+            'end_page': chunk_info['end_page'],
+            'status': 'success'
+        }
+        
+        # Persist result to DB chunk record if available
+        if chunk_db_record:
+            try:
+                chunk_db_record.status = 'success'
+                chunk_db_record.result_json = result_dict
+                chunk_db_record.processed_at = datetime.utcnow()
+                chunk_db_record.updated_at = datetime.utcnow()
+                chunk_db_record.last_error = None
+                chunk_db_record.last_error_code = None
+                safe_db_commit(db)
+            except Exception as e:
+                logger.warning(f"Failed to persist chunk result to DB: {e}")
 
         # On successful chunk processing, increment the job's processed_chunks
         # atomically and emit progress so the frontend progress bar advances.
@@ -199,14 +260,7 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
         except Exception as e:
             logger.warning(f"Failed to update job progress for job {chunk_info.get('job_id')}: {e}")
 
-        return {
-            'chunk_id': chunk_info['chunk_id'],
-            'sentences': result['sentences'],
-            'tokens': result.get('tokens', 0),
-            'start_page': chunk_info['start_page'],
-            'end_page': chunk_info['end_page'],
-            'status': 'success'
-        }
+        return result_dict
         
     except SoftTimeLimitExceeded:
         # Cleanup chunk file before returning
@@ -217,13 +271,26 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
         except Exception:
             pass
         
-        return {
+        error_result = {
             'chunk_id': chunk_info['chunk_id'],
             'status': 'failed',
             'error': 'Processing timeout exceeded',
             'start_page': chunk_info['start_page'],
             'end_page': chunk_info['end_page']
         }
+        
+        # Persist error to DB chunk record
+        if chunk_db_record:
+            try:
+                chunk_db_record.status = 'failed'
+                chunk_db_record.last_error = 'Processing timeout exceeded'
+                chunk_db_record.last_error_code = 'TIMEOUT'
+                chunk_db_record.updated_at = datetime.utcnow()
+                safe_db_commit(db)
+            except Exception as e:
+                logger.warning(f"Failed to persist chunk error to DB: {e}")
+        
+        return error_result
     except Exception as e:
         # Decide whether to retry on transient errors
         from flask import current_app
@@ -267,13 +334,34 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
         except Exception:
             pass
 
-        return {
+        error_result = {
             'chunk_id': chunk_info['chunk_id'],
             'status': 'failed',
             'error': str(e),
             'start_page': chunk_info['start_page'],
             'end_page': chunk_info['end_page']
         }
+        
+        # Persist error to DB chunk record (mark as failed permanently)
+        if chunk_db_record:
+            try:
+                chunk_db_record.status = 'failed'
+                chunk_db_record.last_error = str(e)[:1000]  # Limit error length
+                # Try to extract error code
+                error_code = 'PROCESSING_ERROR'
+                if 'timeout' in str(e).lower():
+                    error_code = 'TIMEOUT'
+                elif 'api' in str(e).lower() or 'gemini' in str(e).lower():
+                    error_code = 'API_ERROR'
+                elif 'rate limit' in str(e).lower():
+                    error_code = 'RATE_LIMIT'
+                chunk_db_record.last_error_code = error_code
+                chunk_db_record.updated_at = datetime.utcnow()
+                safe_db_commit(db)
+            except Exception as db_err:
+                logger.warning(f"Failed to persist chunk error to DB: {db_err}")
+        
+        return error_result
 
 
 def merge_chunk_results(chunk_results: List[Dict]) -> List[Dict]:
@@ -322,6 +410,7 @@ def merge_chunk_results(chunk_results: List[Dict]) -> List[Dict]:
 def finalize_job_results(self, chunk_results, job_id):
     """
     Finalize job after all chunks complete (chord callback).
+    Implements automatic retry orchestration for failed chunks.
     
     Args:
         chunk_results: List of results from all process_chunk tasks
@@ -329,10 +418,38 @@ def finalize_job_results(self, chunk_results, job_id):
     """
     db = get_db()
     Job, User = get_models()
+    from app.models import JobChunk
     JOB_STATUS_PROCESSING, JOB_STATUS_COMPLETED, JOB_STATUS_FAILED, _ = get_constants()
     
     try:
         logger.info(f"Job {job_id}: finalizing {len(chunk_results)} chunk results")
+        
+        # Load all chunks from DB to get latest state
+        db_chunks = JobChunk.query.filter_by(job_id=job_id).order_by(JobChunk.chunk_id).all()
+        
+        # Build chunk results from DB if available, else use in-memory results
+        if db_chunks:
+            logger.info(f"Job {job_id}: loaded {len(db_chunks)} chunks from DB for finalization")
+            chunk_results_final = []
+            for chunk in db_chunks:
+                if chunk.result_json:
+                    # Use persisted result from DB
+                    chunk_results_final.append(chunk.result_json)
+                else:
+                    # Find matching in-memory result
+                    mem_result = next((r for r in chunk_results if r.get('chunk_id') == chunk.chunk_id), None)
+                    if mem_result:
+                        chunk_results_final.append(mem_result)
+                    else:
+                        # Chunk has no result - treat as failed
+                        chunk_results_final.append({
+                            'chunk_id': chunk.chunk_id,
+                            'status': 'failed',
+                            'error': chunk.last_error or 'No result available',
+                            'start_page': chunk.start_page,
+                            'end_page': chunk.end_page
+                        })
+            chunk_results = chunk_results_final
         
         # Merge chunk results
         all_sentences = merge_chunk_results(chunk_results)
@@ -342,11 +459,59 @@ def finalize_job_results(self, chunk_results, job_id):
         failed_chunks = [r['chunk_id'] for r in chunk_results if r.get('status') == 'failed']
         success_count = len([r for r in chunk_results if r.get('status') == 'success'])
         
-        # Update job with results
+        # Get job and check retry eligibility
         job = Job.query.get(job_id)
         if not job:
             raise ValueError(f"Job {job_id} not found")
         
+        # Check if we should retry failed chunks automatically
+        should_retry = False
+        chunks_to_retry = []
+        
+        if failed_chunks and job.retry_count < job.max_retries:
+            # Get failed chunks that can be retried from DB
+            if db_chunks:
+                for chunk in db_chunks:
+                    if chunk.status == 'failed' and chunk.can_retry():
+                        chunks_to_retry.append(chunk)
+                        should_retry = True
+        
+        if should_retry and chunks_to_retry:
+            # Orchestrate automatic retry round
+            logger.info(f"Job {job_id}: starting retry round {job.retry_count + 1}/{job.max_retries} for {len(chunks_to_retry)} chunks")
+            
+            # Update job retry count
+            job.retry_count += 1
+            job.current_step = f"Retrying {len(chunks_to_retry)} failed chunks (attempt {job.retry_count}/{job.max_retries})"
+            
+            # Mark chunks as retry_scheduled
+            retry_tasks = []
+            settings = job.processing_settings or {}
+            
+            for chunk in chunks_to_retry:
+                chunk.status = 'retry_scheduled'
+                chunk.updated_at = datetime.utcnow()
+                db.session.add(chunk)
+                retry_tasks.append(
+                    process_chunk.s(chunk.get_chunk_metadata(), job.user_id, settings)
+                )
+            
+            safe_db_commit(db)
+            emit_progress(job_id)
+            
+            # Dispatch retry tasks with new finalization callback
+            from celery import group, chord
+            callback = finalize_job_results.s(job_id=job_id)
+            chord(retry_tasks)(callback)
+            
+            logger.info(f"Job {job_id}: dispatched {len(retry_tasks)} retry tasks")
+            return {
+                'status': 'retrying',
+                'message': f'Retrying {len(chunks_to_retry)} failed chunks',
+                'retry_round': job.retry_count
+            }
+        
+        # No more retries - finalize job with current results
         if success_count == 0:
             job.status = JOB_STATUS_FAILED
             job.current_step = "Failed"
@@ -471,8 +636,33 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
         safe_db_commit(db)
         emit_progress(job_id)
         
-        # Split PDF into chunks
-        chunks = chunking_service.split_pdf(file_path, chunk_config)
+        # Split PDF and persist chunks to DB
+        try:
+            chunk_db_ids = chunking_service.split_pdf_and_persist(
+                file_path,
+                chunk_config,
+                job_id,
+                db
+            )
+            logger.info(f"Job {job_id}: created {len(chunk_db_ids)} JobChunk rows in DB")
+        except Exception as chunk_err:
+            logger.error(f"Job {job_id}: failed to persist chunks to DB: {chunk_err}")
+            # Fall back to legacy in-memory chunking
+            chunks = chunking_service.split_pdf(file_path, chunk_config)
+            chunk_db_ids = []
+        
+        if not chunk_db_ids:
+            # Fall back to legacy chunking if DB persistence failed
+            chunks = chunking_service.split_pdf(file_path, chunk_config)
+        else:
+            # Load chunks from DB for processing
+            from app.models import JobChunk
+            chunks = []
+            for chunk_id in chunk_db_ids:
+                chunk_record = JobChunk.query.get(chunk_id)
+                if chunk_record:
+                    chunks.append(chunk_record.get_chunk_metadata())
+        
         # Attach job_id to each chunk so workers can emit per-chunk progress
         for c in chunks:
             c['job_id'] = job_id

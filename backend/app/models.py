@@ -202,6 +202,7 @@ class Job(db.Model):
     
     # Relationships
     ledger_entries = db.relationship('CreditLedger', backref='job', lazy='dynamic')
+    chunks = db.relationship('JobChunk', backref='job', lazy='dynamic', cascade='all, delete-orphan')
     
     def __repr__(self):
         return f'<Job id={self.id} user_id={self.user_id} status={self.status} file={self.original_filename}>'
@@ -241,4 +242,89 @@ class Job(db.Model):
             'processing_time_seconds': self.processing_time_seconds,
             'gemini_api_calls': self.gemini_api_calls,
             'gemini_tokens_used': self.gemini_tokens_used
+        }
+
+
+class JobChunk(db.Model):
+    """Model for tracking individual PDF chunk processing"""
+    __tablename__ = 'job_chunks'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    job_id = db.Column(db.Integer, db.ForeignKey('jobs.id', ondelete='CASCADE'), nullable=False, index=True)
+    chunk_id = db.Column(db.Integer, nullable=False)  # 0-indexed chunk number
+    
+    # Chunk metadata
+    start_page = db.Column(db.Integer, nullable=False)
+    end_page = db.Column(db.Integer, nullable=False)
+    page_count = db.Column(db.Integer, nullable=False)
+    has_overlap = db.Column(db.Boolean, default=False)
+    
+    # Chunk payload (base64 PDF chunk data)
+    file_b64 = db.Column(db.Text)
+    storage_url = db.Column(db.String(512))  # Future: S3/GCS URL
+    file_size_bytes = db.Column(db.Integer)
+    
+    # Processing state
+    status = db.Column(db.String(20), nullable=False, default='pending', index=True)
+    # Status values: 'pending', 'processing', 'success', 'failed', 'retry_scheduled'
+    celery_task_id = db.Column(db.String(155))  # Current/last task processing this chunk
+    
+    # Retry tracking
+    attempts = db.Column(db.Integer, default=0)
+    max_retries = db.Column(db.Integer, default=3)
+    last_error = db.Column(db.Text)
+    last_error_code = db.Column(db.String(50))
+    
+    # Results (when successful)
+    result_json = db.Column(db.JSON)  # {sentences: [...], tokens: 123, status: 'success'}
+    processed_at = db.Column(db.DateTime)
+    
+    # Timestamps
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Constraints
+    __table_args__ = (
+        db.UniqueConstraint('job_id', 'chunk_id', name='unique_job_chunk'),
+        db.Index('idx_job_chunks_job_status', 'job_id', 'status'),
+    )
+    
+    def __repr__(self):
+        return f'<JobChunk job_id={self.job_id} chunk_id={self.chunk_id} status={self.status}>'
+    
+    def to_dict(self):
+        """Convert JobChunk to dictionary for API responses"""
+        return {
+            'id': self.id,
+            'job_id': self.job_id,
+            'chunk_id': self.chunk_id,
+            'start_page': self.start_page,
+            'end_page': self.end_page,
+            'page_count': self.page_count,
+            'has_overlap': self.has_overlap,
+            'status': self.status,
+            'attempts': self.attempts,
+            'max_retries': self.max_retries,
+            'last_error': self.last_error,
+            'last_error_code': self.last_error_code,
+            'processed_at': self.processed_at.isoformat() + 'Z' if self.processed_at else None,
+            'created_at': self.created_at.isoformat() + 'Z',
+            'updated_at': self.updated_at.isoformat() + 'Z' if self.updated_at else None,
+        }
+    
+    def can_retry(self) -> bool:
+        """Check if chunk can be retried based on status and attempts"""
+        return self.status in ['failed', 'retry_scheduled'] and self.attempts < self.max_retries
+    
+    def get_chunk_metadata(self):
+        """Build chunk metadata dict for process_chunk task"""
+        return {
+            'chunk_id': self.chunk_id,
+            'job_id': self.job_id,
+            'file_b64': self.file_b64,
+            'storage_url': self.storage_url,
+            'start_page': self.start_page,
+            'end_page': self.end_page,
+            'page_count': self.page_count,
+            'has_overlap': self.has_overlap,
         }
