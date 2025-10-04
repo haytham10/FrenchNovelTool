@@ -1,8 +1,8 @@
 """Service for splitting large PDFs into processable chunks"""
 import os
-import tempfile
+import io
+import base64
 from typing import List, Dict
-import PyPDF2
 from PyPDF2 import PdfWriter, PdfReader
 
 
@@ -95,18 +95,23 @@ class ChunkingService:
                 for page_num in range(start_page, end_page):
                     pdf_writer.add_page(pdf_reader.pages[page_num])
                 
-                # Save to temp file
-                chunk_path = tempfile.NamedTemporaryFile(
-                    delete=False,
-                    suffix=f'_chunk_{i}.pdf'
-                ).name
-                
-                with open(chunk_path, 'wb') as chunk_file:
-                    pdf_writer.write(chunk_file)
-                
+                # Write chunk PDF into memory and encode as base64 so the chunk
+                # can be dispatched to other workers without requiring shared
+                # filesystem access. This avoids cases where the creating
+                # worker's /tmp files aren't visible to other workers.
+                buf = io.BytesIO()
+                pdf_writer.write(buf)
+                chunk_bytes = buf.getvalue()
+                chunk_b64 = base64.b64encode(chunk_bytes).decode('ascii')
+
                 chunks.append({
                     'chunk_id': i,
-                    'file_path': chunk_path,
+                    # file_b64 contains the chunk PDF bytes encoded as base64.
+                    # Workers should prefer this field when present.
+                    'file_b64': chunk_b64,
+                    # Preserve file_path=None to indicate no local temp file was
+                    # created by the chunking service.
+                    'file_path': None,
                     'start_page': start_page,
                     'end_page': end_page - 1,  # Inclusive
                     'page_count': end_page - start_page,
@@ -119,8 +124,11 @@ class ChunkingService:
         """Delete temporary chunk files"""
         for chunk in chunks:
             try:
-                if os.path.exists(chunk['file_path']):
-                    os.remove(chunk['file_path'])
+                # Only attempt filesystem cleanup if a file_path was created.
+                fp = chunk.get('file_path')
+                if fp:
+                    if os.path.exists(fp):
+                        os.remove(fp)
             except Exception as e:
                 # Log but don't fail
                 import logging

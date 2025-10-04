@@ -126,12 +126,23 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
             min_sentence_length=settings.get('min_sentence_length', 2),
         )
         
-        # Extract text from chunk
+        # Extract text from chunk. Prefer in-memory base64 chunk data
+        # (produced by ChunkingService) so workers do not rely on a shared
+        # filesystem. Fallback to chunk_info['file_path'] when provided.
         text = ""
-        with open(chunk_info['file_path'], 'rb') as pdf_file:
+        if chunk_info.get('file_b64'):
+            import io
+            chunk_bytes = base64.b64decode(chunk_info['file_b64'])
+            pdf_file = io.BytesIO(chunk_bytes)
             pdf_reader = PyPDF2.PdfReader(pdf_file)
             for page in pdf_reader.pages:
-                text += page.extract_text() + "\n"
+                text += (page.extract_text() or "") + "\n"
+        else:
+            # Fallback to file path if present
+            with open(chunk_info['file_path'], 'rb') as pdf_file:
+                pdf_reader = PyPDF2.PdfReader(pdf_file)
+                for page in pdf_reader.pages:
+                    text += (page.extract_text() or "") + "\n"
         
         # If no extractable text, fail this chunk early
         if not text.strip():
@@ -154,12 +165,13 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
         prompt = gemini_service.build_prompt()
         result = gemini_service.normalize_text(text, prompt)
         
-        # Cleanup chunk file after processing
+        # Cleanup chunk file after processing only if a filesystem path was used
         try:
-            if os.path.exists(chunk_info['file_path']):
-                os.remove(chunk_info['file_path'])
+            fp = chunk_info.get('file_path')
+            if fp and os.path.exists(fp):
+                os.remove(fp)
         except Exception as e:
-            logger.warning(f"Failed to cleanup chunk file {chunk_info['file_path']}: {e}")
+            logger.warning(f"Failed to cleanup chunk file {chunk_info.get('file_path')}: {e}")
         
         return {
             'chunk_id': chunk_info['chunk_id'],
