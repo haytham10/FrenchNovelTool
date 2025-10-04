@@ -185,8 +185,9 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
     except SoftTimeLimitExceeded:
         # Cleanup chunk file before returning
         try:
-            if os.path.exists(chunk_info['file_path']):
-                os.remove(chunk_info['file_path'])
+            fp = chunk_info.get('file_path')
+            if fp and os.path.exists(fp):
+                os.remove(fp)
         except Exception:
             pass
         
@@ -198,13 +199,48 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
             'end_page': chunk_info['end_page']
         }
     except Exception as e:
-        # Cleanup chunk file before returning
+        # Decide whether to retry on transient errors
+        from flask import current_app
+
+        def _is_transient(err: Exception) -> bool:
+            transient_types = (TimeoutError, ConnectionError)
+            try:
+                import requests  # type: ignore
+                transient_types = transient_types + (requests.exceptions.RequestException,)
+            except Exception:
+                pass
+            # Also check by class name to avoid importing optional libs
+            name = err.__class__.__name__.lower()
+            msg = str(err).lower()
+            retryable_by_name = any(k in name for k in [
+                'timeout', 'temporarilyunavailable', 'serviceunavailable', 'toomanyrequests', 'ratelimit', 'deadline'
+            ])
+            retryable_by_msg = any(k in msg for k in [
+                'timeout', 'temporary', 'try again', 'rate limit', '429', 'unavailable', 'deadline'
+            ])
+            return isinstance(err, transient_types) or retryable_by_name or retryable_by_msg
+
+        max_retries = int(current_app.config.get('CHUNK_TASK_MAX_RETRIES', current_app.config.get('GEMINI_MAX_RETRIES', 3)))
+        base_delay = int(current_app.config.get('CHUNK_TASK_RETRY_DELAY', current_app.config.get('GEMINI_RETRY_DELAY', 1)))
+
+        if _is_transient(e) and self.request.retries < max_retries:
+            # Exponential backoff with jitter-like cap
+            delay = min(base_delay * (2 ** self.request.retries), 60)
+            logger.warning(
+                "Chunk %s transient error, scheduling retry %s/%s in %ss: %s",
+                chunk_info.get('chunk_id'), self.request.retries + 1, max_retries, delay, e
+            )
+            # Do NOT cleanup the file_path if present; we want it available for the retry
+            raise self.retry(exc=e, countdown=delay, max_retries=max_retries)
+
+        # Non-transient or retries exhausted: cleanup and return failed
         try:
-            if os.path.exists(chunk_info['file_path']):
-                os.remove(chunk_info['file_path'])
+            fp = chunk_info.get('file_path')
+            if fp and os.path.exists(fp):
+                os.remove(fp)
         except Exception:
             pass
-        
+
         return {
             'chunk_id': chunk_info['chunk_id'],
             'status': 'failed',
