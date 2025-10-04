@@ -16,6 +16,7 @@ from .services.credit_service import CreditService
 from .schemas import ExportToSheetSchema, UserSettingsSchema
 from .utils.validators import validate_pdf_file
 from .models import User, Job
+from app.tasks import extract_pdf_text_task
 from .constants import JOB_STATUS_PENDING, JOB_STATUS_PROCESSING, ERROR_INSUFFICIENT_CREDITS
 import PyPDF2
 
@@ -93,24 +94,59 @@ def extract_pdf_text():
     
     try:
         temp_file_path = pdf_service.save_to_temp()
-        
-        # Extract text from PDF
-        text = ""
-        with open(temp_file_path, 'rb') as pdf_file:
-            pdf_reader = PyPDF2.PdfReader(pdf_file)
-            for page in pdf_reader.pages:
-                text += page.extract_text() + "\n"
-        
-        # Return first 50000 characters for estimation (safety limit)
-        text = text[:50000]
-        
-        return jsonify({'text': text, 'page_count': len(pdf_reader.pages)}), 200
-        
+
+        # Read file and encode as base64 to send to Celery task
+        with open(temp_file_path, 'rb') as _f:
+            file_bytes = _f.read()
+        file_b64 = base64.b64encode(file_bytes).decode('ascii')
+
+        # Enqueue Celery task
+        try:
+            task = extract_pdf_text_task.apply_async(args=(file_b64, 50000))
+        except Exception as e:
+            # Broker or Celery unavailable — respond with 503 so proxy/gateway
+            # doesn't return a generic 502 and clients can retry.
+            current_app.logger.exception('Failed to enqueue extraction task (broker error)')
+            return jsonify({'error': 'Service temporarily unavailable (broker unreachable)', 'details': str(e)}), 503
+
+        # Return 202 Accepted with task id and a status endpoint
+        status_url = f"/api/v1/extract-pdf-text/status/{task.id}"
+        return jsonify({'status': 'accepted', 'task_id': task.id, 'status_url': status_url}), 202
     except Exception as e:
-        current_app.logger.exception('Failed to extract PDF text')
+        current_app.logger.exception('Failed to enqueue PDF text extraction')
         return jsonify({'error': str(e)}), 500
     finally:
         pdf_service.delete_temp_file()
+
+
+@main_bp.route('/extract-pdf-text/status/<task_id>', methods=['GET'])
+@jwt_required()
+def extract_pdf_text_status(task_id: str):
+    """Poll the status of an extract_pdf_text Celery task."""
+    from celery.result import AsyncResult
+    from app import celery as celery_app
+    try:
+        async_result = AsyncResult(task_id, app=celery_app)
+    except Exception as e:
+        current_app.logger.exception('Failed to fetch task status from broker')
+        return jsonify({'status': 'unavailable', 'error': 'Could not contact task broker', 'details': str(e)}), 503
+
+    if async_result is None:
+        return jsonify({'status': 'unknown'}), 404
+
+    if async_result.state in ('PENDING', 'RECEIVED', 'STARTED'):
+        return jsonify({'status': async_result.state}), 202
+
+    try:
+        res = async_result.get(timeout=1)
+    except Exception as e:
+        current_app.logger.exception('Error retrieving task result')
+        return jsonify({'status': 'failed', 'error': 'Error retrieving task result', 'details': str(e)}), 503
+
+    if isinstance(res, dict) and res.get('status') == 'success':
+        return jsonify({'status': 'success', 'text': res.get('text'), 'page_count': res.get('page_count')}), 200
+    else:
+        return jsonify({'status': 'failed', 'error': res.get('error') if isinstance(res, dict) else str(res)}), 500
 
 @main_bp.route('/process-pdf', methods=['POST'])
 @jwt_required()
