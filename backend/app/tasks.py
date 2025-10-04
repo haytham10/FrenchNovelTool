@@ -172,7 +172,33 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
                 os.remove(fp)
         except Exception as e:
             logger.warning(f"Failed to cleanup chunk file {chunk_info.get('file_path')}: {e}")
-        
+
+        # On successful chunk processing, increment the job's processed_chunks
+        # atomically and emit progress so the frontend progress bar advances.
+        try:
+            job_id = chunk_info.get('job_id')
+            if job_id:
+                db = get_db()
+                Job, _ = get_models()
+                # Use a simple atomic SQL increment to avoid race conditions
+                from sqlalchemy import text
+                db.session.execute(text("UPDATE jobs SET processed_chunks = COALESCE(processed_chunks,0) + 1 WHERE id = :id"), {"id": job_id})
+                # Reload job to compute new progress
+                job = Job.query.get(job_id)
+                if job and job.total_chunks:
+                    start_pct = 15
+                    end_pct = 75
+                    try:
+                        pct = start_pct + int((job.processed_chunks / float(job.total_chunks)) * (end_pct - start_pct))
+                    except Exception:
+                        pct = start_pct
+                    job.progress_percent = min(100, max(0, pct))
+                    job.current_step = f"Processing chunks ({job.processed_chunks}/{job.total_chunks})"
+                    safe_db_commit(db)
+                    emit_progress(job_id)
+        except Exception as e:
+            logger.warning(f"Failed to update job progress for job {chunk_info.get('job_id')}: {e}")
+
         return {
             'chunk_id': chunk_info['chunk_id'],
             'sentences': result['sentences'],
@@ -447,6 +473,9 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
         
         # Split PDF into chunks
         chunks = chunking_service.split_pdf(file_path, chunk_config)
+        # Attach job_id to each chunk so workers can emit per-chunk progress
+        for c in chunks:
+            c['job_id'] = job_id
         logger.info(
             "Job %s: chunking complete strategy=%s chunk_size=%s total_pages=%s num_chunks(expected)=%s num_chunks(actual)=%s",
             job_id,
