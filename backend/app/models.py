@@ -202,6 +202,8 @@ class Job(db.Model):
     
     # Relationships
     ledger_entries = db.relationship('CreditLedger', backref='job', lazy='dynamic')
+    # New: persisted chunk rows for durable retries
+    chunks = db.relationship('JobChunk', backref='job', lazy='dynamic', cascade='all, delete-orphan')
     
     def __repr__(self):
         return f'<Job id={self.id} user_id={self.user_id} status={self.status} file={self.original_filename}>'
@@ -242,3 +244,34 @@ class Job(db.Model):
             'gemini_api_calls': self.gemini_api_calls,
             'gemini_tokens_used': self.gemini_tokens_used
         }
+
+
+class JobChunk(db.Model):
+    """Persisted chunk rows to support durable retries and monitoring"""
+    __tablename__ = 'job_chunks'
+
+    id = db.Column(db.Integer, primary_key=True)
+    job_id = db.Column(db.Integer, db.ForeignKey('jobs.id'), nullable=False, index=True)
+    chunk_index = db.Column(db.Integer, nullable=False, index=True)
+
+    # Storage: either base64-encoded PDF bytes or external URL (future)
+    file_b64 = db.Column(db.Text, nullable=True)
+    file_url = db.Column(db.String(512), nullable=True)
+    file_size_bytes = db.Column(db.Integer, nullable=True)
+
+    start_page = db.Column(db.Integer, nullable=False)
+    end_page = db.Column(db.Integer, nullable=False)
+
+    status = db.Column(db.String(20), nullable=False, default='pending', index=True)
+    attempts = db.Column(db.Integer, nullable=False, default=0)
+    last_error = db.Column(db.Text, nullable=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index('idx_job_chunk_unique', 'job_id', 'chunk_index', unique=True),
+    )
+
+    def __repr__(self):
+        return f'<JobChunk job_id={self.job_id} idx={self.chunk_index} status={self.status} attempts={self.attempts}>'

@@ -68,8 +68,8 @@ def safe_db_commit(db, max_retries=3, retry_delay=1):
 
 def get_models():
     """Get models (deferred import)"""
-    from app.models import Job, User
-    return Job, User
+    from app.models import Job, User, JobChunk
+    return Job, User, JobChunk
 
 
 def get_services():
@@ -115,6 +115,7 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
     try:
         # Get services
         _, GeminiService, _, _ = get_services()
+        Job, User, JobChunk = get_models()
         
         # Initialize services
         gemini_service = GeminiService(
@@ -126,12 +127,26 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
             min_sentence_length=settings.get('min_sentence_length', 2),
         )
         
-        # Extract text from chunk. Prefer in-memory base64 chunk data
-        # (produced by ChunkingService) so workers do not rely on a shared
-        # filesystem. Fallback to chunk_info['file_path'] when provided.
+        # Extract text from persisted JobChunk when available
+        import io
+        db = get_db()
+        jc = None
+        job_chunk_id = chunk_info.get('job_chunk_id')
+        if job_chunk_id:
+            jc = JobChunk.query.get(job_chunk_id)
+            if jc and jc.status == 'pending':
+                jc.status = 'in_progress'
+                jc.attempts = jc.attempts + 1
+                safe_db_commit(db)
+
         text = ""
-        if chunk_info.get('file_b64'):
-            import io
+        if jc and jc.file_b64:
+            chunk_bytes = base64.b64decode(jc.file_b64)
+            pdf_file = io.BytesIO(chunk_bytes)
+            pdf_reader = PyPDF2.PdfReader(pdf_file)
+            for page in pdf_reader.pages:
+                text += (page.extract_text() or "") + "\n"
+        elif chunk_info.get('file_b64'):
             chunk_bytes = base64.b64decode(chunk_info['file_b64'])
             pdf_file = io.BytesIO(chunk_bytes)
             pdf_reader = PyPDF2.PdfReader(pdf_file)
@@ -173,6 +188,14 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
         except Exception as e:
             logger.warning(f"Failed to cleanup chunk file {chunk_info.get('file_path')}: {e}")
         
+        # Update DB row on success
+        try:
+            if jc:
+                jc.status = 'success'
+                safe_db_commit(db)
+        except Exception:
+            pass
+
         return {
             'chunk_id': chunk_info['chunk_id'],
             'sentences': result['sentences'],
@@ -190,6 +213,18 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
         except Exception:
             pass
         
+        # Update DB row when available
+        try:
+            db = get_db()
+            _, _, JobChunk = get_models()
+            jc = JobChunk.query.get(chunk_info.get('job_chunk_id')) if chunk_info.get('job_chunk_id') else None
+            if jc:
+                jc.status = 'failed'
+                jc.last_error = 'Processing timeout exceeded'
+                safe_db_commit(db)
+        except Exception:
+            pass
+
         return {
             'chunk_id': chunk_info['chunk_id'],
             'status': 'failed',
@@ -205,6 +240,18 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
         except Exception:
             pass
         
+        # Update DB row when available
+        try:
+            db = get_db()
+            _, _, JobChunk = get_models()
+            jc = JobChunk.query.get(chunk_info.get('job_chunk_id')) if chunk_info.get('job_chunk_id') else None
+            if jc:
+                jc.status = 'failed'
+                jc.last_error = str(e)[:1000]
+                safe_db_commit(db)
+        except Exception:
+            pass
+
         return {
             'chunk_id': chunk_info['chunk_id'],
             'status': 'failed',
@@ -266,12 +313,44 @@ def finalize_job_results(self, chunk_results, job_id):
         job_id: Job ID to finalize
     """
     db = get_db()
-    Job, User = get_models()
+    Job, User, JobChunk = get_models()
     JOB_STATUS_PROCESSING, JOB_STATUS_COMPLETED, JOB_STATUS_FAILED, _ = get_constants()
     
     try:
         logger.info(f"Job {job_id}: finalizing {len(chunk_results)} chunk results")
-        
+
+        # Check if any failed chunks should be re-dispatched (durable retries)
+        failed_chunk_ids = [r.get('chunk_id') for r in chunk_results if r.get('status') == 'failed']
+        if failed_chunk_ids:
+            job = Job.query.get(job_id)
+            if job is None:
+                raise ValueError(f"Job {job_id} not found")
+            current_round = job.retry_count or 0
+            max_rounds = job.max_retries or 3
+            if current_round < max_rounds:
+                failed_rows = JobChunk.query.filter(
+                    JobChunk.job_id == job_id,
+                    JobChunk.chunk_index.in_(failed_chunk_ids)
+                ).all()
+                redisp_tasks = [
+                    process_chunk.s({
+                        'chunk_id': row.chunk_index,
+                        'job_chunk_id': row.id,
+                        'start_page': row.start_page,
+                        'end_page': row.end_page,
+                    }, job.user_id, job.processing_settings or {})
+                    for row in failed_rows
+                ]
+                if redisp_tasks:
+                    job.retry_count = current_round + 1
+                    safe_db_commit(db)
+                    chord(redisp_tasks)(finalize_job_results.s(job_id=job_id))
+                    logger.info(
+                        "Job %s: re-dispatched %d failed chunks (round %d/%d)",
+                        job_id, len(redisp_tasks), job.retry_count, max_rounds
+                    )
+                    return {'status': 'redispatched', 'failed_chunks': failed_chunk_ids, 'round': job.retry_count}
+
         # Merge chunk results
         all_sentences = merge_chunk_results(chunk_results)
         
@@ -356,7 +435,7 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
     """
     # Get imports
     db = get_db()
-    Job, User = get_models()
+    Job, User, JobChunk = get_models()
     reconstructed_path: Optional[str] = None
     _, _, ChunkingService, _ = get_services()
     JOB_STATUS_PROCESSING, JOB_STATUS_COMPLETED, JOB_STATUS_FAILED, _ = get_constants()
@@ -384,7 +463,7 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
         job.progress_percent = 5
         safe_db_commit(db)
         emit_progress(job_id)
-        
+
         # Calculate chunks
         # Ensure file exists in this container; reconstruct if needed
         if not os.path.exists(file_path):
@@ -408,9 +487,9 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
         job.progress_percent = 10
         safe_db_commit(db)
         emit_progress(job_id)
-        
-        # Split PDF into chunks
-        chunks = chunking_service.split_pdf(file_path, chunk_config)
+
+        # Split PDF into chunks and persist chunk rows
+        chunks = chunking_service.split_pdf(file_path, chunk_config, job_id=job_id)
         logger.info(
             "Job %s: chunking complete strategy=%s chunk_size=%s total_pages=%s num_chunks(expected)=%s num_chunks(actual)=%s",
             job_id,
@@ -561,7 +640,5 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
             # Cleanup reconstructed file and chunks if any
             if reconstructed_path and os.path.exists(reconstructed_path):
                 os.remove(reconstructed_path)
-        except Exception:
-            pass
         except Exception:
             pass

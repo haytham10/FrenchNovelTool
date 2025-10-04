@@ -3,6 +3,8 @@ import os
 import io
 import base64
 from typing import List, Dict
+from app import db
+from app.models import JobChunk
 from PyPDF2 import PdfWriter, PdfReader
 
 
@@ -56,7 +58,7 @@ class ChunkingService:
             'total_pages': page_count,
         }
     
-    def split_pdf(self, pdf_path: str, chunk_config: Dict) -> List[Dict]:
+    def split_pdf(self, pdf_path: str, chunk_config: Dict, *, job_id: int) -> List[Dict]:
         """
         Split PDF into chunks with context overlap.
         
@@ -81,10 +83,10 @@ class ChunkingService:
         chunks = []
         chunk_size = chunk_config['chunk_size']
         total_pages = chunk_config['total_pages']
-        
+
         with open(pdf_path, 'rb') as pdf_file:
             pdf_reader = PdfReader(pdf_file)
-            
+
             for i in range(chunk_config['num_chunks']):
                 # Calculate page range with overlap
                 start_page = max(0, i * chunk_size - (self.OVERLAP_PAGES if i > 0 else 0))
@@ -104,20 +106,32 @@ class ChunkingService:
                 chunk_bytes = buf.getvalue()
                 chunk_b64 = base64.b64encode(chunk_bytes).decode('ascii')
 
+                # Persist chunk row for durable retries
+                jc = JobChunk(
+                    job_id=job_id,
+                    chunk_index=i,
+                    file_b64=chunk_b64,
+                    file_size_bytes=len(chunk_bytes),
+                    start_page=start_page,
+                    end_page=end_page - 1,
+                    status='pending',
+                    attempts=0,
+                )
+                db.session.add(jc)
+                db.session.flush()  # assign id without committing
+
                 chunks.append({
                     'chunk_id': i,
-                    # file_b64 contains the chunk PDF bytes encoded as base64.
-                    # Workers should prefer this field when present.
-                    'file_b64': chunk_b64,
-                    # Preserve file_path=None to indicate no local temp file was
-                    # created by the chunking service.
-                    'file_path': None,
+                    'job_chunk_id': jc.id,
+                    'job_id': job_id,
                     'start_page': start_page,
                     'end_page': end_page - 1,  # Inclusive
                     'page_count': end_page - start_page,
                     'has_overlap': i > 0,  # First chunk has no overlap
                 })
         
+        # Commit all chunk rows in one go
+        db.session.commit()
         return chunks
     
     def cleanup_chunks(self, chunks: List[Dict]):
