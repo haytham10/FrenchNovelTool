@@ -38,16 +38,16 @@ info() {
 # Check 1: Required files exist
 echo "📁 Checking required files..."
 FILES=(
-    "backend/config.py"
-    "backend/app/__init__.py"
-    "backend/app/routes.py"
-    "backend/app/tasks.py"
-    "backend/celery_worker.py"
-    "backend/Dockerfile.railway-worker"
-    "backend/railway-worker-entrypoint.sh"
-    "backend/verify_migrations.py"
-    "backend/fix_jobs_table.sql"
-    "backend/requirements.txt"
+    "./config.py"
+    "./app/__init__.py"
+    "./app/routes.py"
+    "./app/tasks.py"
+    "./celery_worker.py"
+    "./Dockerfile.railway-worker"
+    "./railway-worker-entrypoint.sh"
+    "./verify_migrations.py"
+    "./fix_jobs_table.sql"
+    "./requirements.txt"
 )
 
 for file in "${FILES[@]}"; do
@@ -62,13 +62,13 @@ echo ""
 # Check 2: Python syntax validation
 echo "🐍 Validating Python syntax..."
 PYTHON_FILES=(
-    "backend/config.py"
-    "backend/app/__init__.py"
-    "backend/app/routes.py"
-    "backend/app/tasks.py"
-    "backend/celery_worker.py"
-    "backend/verify_migrations.py"
-    "backend/troubleshoot.py"
+    "./config.py"
+    "./app/__init__.py"
+    "./app/routes.py"
+    "./app/tasks.py"
+    "./celery_worker.py"
+    "./verify_migrations.py"
+    "./troubleshoot.py"
 )
 
 for file in "${PYTHON_FILES[@]}"; do
@@ -83,7 +83,7 @@ echo ""
 # Check 3: Shell script syntax
 echo "📜 Validating shell scripts..."
 SHELL_SCRIPTS=(
-    "backend/railway-worker-entrypoint.sh"
+    "./railway-worker-entrypoint.sh"
 )
 
 for script in "${SHELL_SCRIPTS[@]}"; do
@@ -98,9 +98,9 @@ echo ""
 # Check 4: File permissions
 echo "🔐 Checking file permissions..."
 EXECUTABLE_FILES=(
-    "backend/railway-worker-entrypoint.sh"
-    "backend/verify_migrations.py"
-    "backend/troubleshoot.py"
+    "./railway-worker-entrypoint.sh"
+    "./verify_migrations.py"
+    "./troubleshoot.py"
 )
 
 for file in "${EXECUTABLE_FILES[@]}"; do
@@ -114,7 +114,7 @@ echo ""
 
 # Check 5: Environment variable template
 echo "📝 Checking environment configuration..."
-if [ -f "backend/.env.production.example" ]; then
+if [ -f "./.env.production.example" ]; then
     success "Found .env.production.example"
     
     # Check for required variables in template
@@ -130,7 +130,7 @@ if [ -f "backend/.env.production.example" ]; then
     )
     
     for var in "${REQUIRED_VARS[@]}"; do
-        if grep -q "^$var=" "backend/.env.production.example"; then
+        if grep -q "^$var=" "./.env.production.example"; then
             success "Template has $var"
         else
             warning "Template missing $var"
@@ -144,9 +144,9 @@ echo ""
 # Check 6: Docker files
 echo "🐳 Checking Docker configuration..."
 DOCKER_FILES=(
-    "backend/Dockerfile.web"
-    "backend/Dockerfile.worker"
-    "backend/Dockerfile.railway-worker"
+    "./Dockerfile.web"
+    "./Dockerfile.worker"
+    "./Dockerfile.railway-worker"
 )
 
 for dockerfile in "${DOCKER_FILES[@]}"; do
@@ -170,31 +170,31 @@ echo ""
 
 # Check 7: Railway configuration
 echo "🚂 Checking Railway configuration..."
-if [ -f "backend/railway.json" ]; then
-    success "Found backend/railway.json"
+if [ -f "./railway.json" ]; then
+    success "Found ./railway.json"
     # Validate JSON
-    if python3 -c "import json; json.load(open('backend/railway.json'))" 2>/dev/null; then
+    if python3 -c "import json; json.load(open('./railway.json'))" 2>/dev/null; then
         success "  Valid JSON syntax"
     else
         error "  Invalid JSON in railway.json"
     fi
 else
-    warning "Missing backend/railway.json (optional but recommended)"
+    warning "Missing ./railway.json (optional but recommended)"
 fi
 
-if [ -f "backend/railway.worker.json" ]; then
-    success "Found backend/railway.worker.json"
-    if python3 -c "import json; json.load(open('backend/railway.worker.json'))" 2>/dev/null; then
+if [ -f "./railway.worker.json" ]; then
+    success "Found ./railway.worker.json"
+    if python3 -c "import json; json.load(open('./railway.worker.json'))" 2>/dev/null; then
         success "  Valid JSON syntax"
     fi
 else
-    warning "Missing backend/railway.worker.json (optional)"
+    warning "Missing ./railway.worker.json (optional)"
 fi
 echo ""
 
 # Check 8: Dependencies
 echo "📦 Checking requirements.txt..."
-if [ -f "backend/requirements.txt" ]; then
+if [ -f "./requirements.txt" ]; then
     success "Found requirements.txt"
     
     REQUIRED_PACKAGES=(
@@ -207,7 +207,7 @@ if [ -f "backend/requirements.txt" ]; then
     )
     
     for package in "${REQUIRED_PACKAGES[@]}"; do
-        if grep -qi "^$package" "backend/requirements.txt"; then
+        if grep -qi "^$package" "./requirements.txt"; then
             success "  Has $package"
         else
             error "  Missing $package in requirements.txt"
@@ -220,10 +220,10 @@ echo ""
 
 # Check 9: Database migrations
 echo "🗄️  Checking database migrations..."
-if [ -d "backend/migrations" ]; then
+if [ -d "./migrations" ]; then
     success "Found migrations directory"
     
-    MIGRATION_COUNT=$(find backend/migrations/versions -name "*.py" ! -name "__pycache__" 2>/dev/null | wc -l)
+    MIGRATION_COUNT=$(find ./migrations/versions -name "*.py" ! -name "__pycache__" 2>/dev/null | wc -l)
     if [ "$MIGRATION_COUNT" -gt 0 ]; then
         success "  Found $MIGRATION_COUNT migration files"
     else
