@@ -207,7 +207,7 @@ export default function Home() {
       setUploadProgress(0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobStatus.data?.status, pollingJobId]);
+  }, [jobStatus.data?.status, jobStatus.data?.progress_percent, jobStatus.data?.current_step, pollingJobId]);
 
   const handleCancelPreflight = () => {
     setPreflightModalOpen(false);
