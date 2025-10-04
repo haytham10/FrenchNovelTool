@@ -7,7 +7,6 @@ import { getAccessToken, getRefreshToken, setTokens, clearTokens } from './auth'
 
 // Support both variable names to match existing env files and Vercel config
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
   process.env.NEXT_PUBLIC_API_BASE_URL ||
   'http://localhost:5000/api/v1';
 
@@ -173,7 +172,7 @@ export interface ExportToSheetRequest {
   existingSheetId?: string;
   tabName?: string;
   createNewTab?: boolean;
-  headers?: string[];
+  headers?: { name: string; enabled: boolean; order: number }[];
   columnOrder?: string[];
   sharing?: {
     addCollaborators?: boolean;

@@ -7,6 +7,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager
+from flask_socketio import SocketIO
 from config import Config
 from .utils.error_handlers import register_error_handlers
 from .utils.cors_handlers import setup_cors_handling
@@ -20,6 +21,7 @@ limiter = Limiter(
     key_func=get_remote_address,
     default_limits=[]
 )
+socketio = SocketIO()
 celery = None  # Will be initialized in create_app
 
 def create_app(config_class=Config):
@@ -46,6 +48,14 @@ def create_app(config_class=Config):
     
     if app.config['RATELIMIT_ENABLED']:
         limiter.init_app(app)
+    
+    # Initialize SocketIO
+    socketio.init_app(
+        app,
+        cors_allowed_origins=app.config.get('CORS_ORIGINS', '*'),
+        message_queue=app.config.get('CELERY_BROKER_URL'),
+        async_mode='eventlet'
+    )
     
     # Initialize Celery
     global celery
@@ -76,6 +86,9 @@ def create_app(config_class=Config):
         
         # Set up enhanced CORS handling
         setup_cors_handling(app)
+        
+        # Register SocketIO event handlers
+        from . import socket_events  # Import to register handlers
 
     return app
 

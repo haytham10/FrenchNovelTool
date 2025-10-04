@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import FileUpload from '@/components/FileUpload';
 import ResultsTable from '@/components/ResultsTable';
 import NormalizeControls from '@/components/NormalizeControls';
 import ExportDialog from '@/components/ExportDialog';
 import PreflightModal from '@/components/PreflightModal';
 import { getApiErrorMessage, extractPdfText } from '@/lib/api';
-import { useProcessPdf, useExportToSheet, useEstimateCost, useConfirmJob, useJobStatus } from '@/lib/queries';
+import { useProcessPdf, useExportToSheet, useEstimateCost, useConfirmJob } from '@/lib/queries';
 import { CircularProgress, Button, Typography, Box, Container, Paper, Divider, List, ListItem, ListItemText, LinearProgress } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import UploadStepper from '@/components/UploadStepper';
@@ -19,6 +19,7 @@ import { useProcessingStore } from '@/stores/useProcessingStore';
 import Icon from '@/components/Icon';
 import { Download, BookOpenText, Zap, CheckCircle, Shield, User } from 'lucide-react';
 import { fadeIn, float } from '@/lib/animations';
+import { useJobWebSocket } from '@/lib/useJobWebSocket';
 
 import type { ExportOptions } from '@/components/ExportDialog';
 import type { CostEstimate } from '@/lib/types';
@@ -54,9 +55,62 @@ export default function Home() {
   const estimateMutation = useEstimateCost();
   const confirmJobMutation = useConfirmJob();
 
-  // Poll job status when processing
-  const [pollingJobId, setPollingJobId] = useState<number | null>(null);
-  const jobStatus = useJobStatus(pollingJobId);
+  // WebSocket connection for real-time job progress
+  const [wsJobId, setWsJobId] = useState<number | null>(null);
+  const { connected: wsConnected } = useJobWebSocket({
+    jobId: wsJobId,
+    enabled: !!wsJobId,
+    onProgress: (job) => {
+      // Update loading message with progress
+      if (job.status === 'processing') {
+        const progress = job.progress_percent || 0;
+        const currentStep = job.current_step || 'Processing...';
+        setLoading(true, `${currentStep} (${progress}%)`);
+        setUploadProgress(progress);
+      }
+    },
+    onComplete: async (job) => {
+      // Job completed - extract sentences from chunk_results
+      if (job.chunk_results && Array.isArray(job.chunk_results)) {
+        const allSentences: string[] = [];
+        job.chunk_results.forEach((chunk) => {
+          if (chunk.status === 'success' && chunk.sentences && Array.isArray(chunk.sentences)) {
+            chunk.sentences.forEach((s) => {
+              const sentence = s as { normalized?: string };
+              if (sentence.normalized) {
+                allSentences.push(sentence.normalized);
+              }
+            });
+          }
+        });
+        
+        if (allSentences.length > 0) {
+          setSentences(allSentences);
+          enqueueSnackbar('PDF processed successfully!', { variant: 'success' });
+        }
+      }
+      
+      // Reset state
+      setWsJobId(null);
+      setCurrentFile(null);
+      setCostEstimate(null);
+      setCurrentJobId(null);
+      setLoading(false, '');
+      setUploadProgress(0);
+    },
+    onError: (job) => {
+      const errorMsg = job.error_message || 'Processing failed';
+      enqueueSnackbar(`Processing failed: ${errorMsg}`, { variant: 'error' });
+      
+      // Reset state
+      setWsJobId(null);
+      setCurrentFile(null);
+      setCostEstimate(null);
+      setCurrentJobId(null);
+      setLoading(false, '');
+      setUploadProgress(0);
+    },
+  });
 
   const handleFileUpload = async (files: File[]) => {
     if (!files || files.length === 0) return;
@@ -129,8 +183,8 @@ export default function Home() {
         min_sentence_length: advancedOptions.minSentenceLength,
       });
 
-      // Start polling for job status
-      setPollingJobId(jobId);
+      // Connect to WebSocket for real-time progress updates
+      setWsJobId(jobId);
       setLoading(true, 'Processing PDF in background...');
       
     } catch (error) {
@@ -149,66 +203,6 @@ export default function Home() {
     }
   };
 
-  // Handle job status updates (polling)
-  useEffect(() => {
-    if (!jobStatus.data) return;
-
-    const status = jobStatus.data.status;
-    const progress = jobStatus.data.progress_percent || 0;
-    const currentStep = jobStatus.data.current_step || 'Processing...';
-
-    // Update loading message with progress
-    if (status === 'processing') {
-      setLoading(true, `${currentStep} (${progress}%)`);
-      setUploadProgress(progress);
-    } else if (status === 'completed') {
-      // Fetch the completed job's results from history
-      import('@/lib/api').then(({ getJob }) => {
-        getJob(pollingJobId!).then((job) => {
-          // Job's chunk_results contains the processed sentences
-          if (job.chunk_results && Array.isArray(job.chunk_results)) {
-            const allSentences: string[] = [];
-            job.chunk_results.forEach((chunk) => {
-              if (chunk.status === 'success' && chunk.sentences && Array.isArray(chunk.sentences)) {
-                chunk.sentences.forEach((s) => {
-                  const sentence = s as { normalized?: string };
-                  if (sentence.normalized) {
-                    allSentences.push(sentence.normalized);
-                  }
-                });
-              }
-            });
-            
-            if (allSentences.length > 0) {
-              setSentences(allSentences);
-              enqueueSnackbar('PDF processed successfully!', { variant: 'success' });
-            }
-          }
-          
-          // Reset state
-          setPollingJobId(null);
-          setCurrentFile(null);
-          setCostEstimate(null);
-          setCurrentJobId(null);
-          setLoading(false, '');
-          setUploadProgress(0);
-        });
-      });
-    } else if (status === 'failed') {
-      const errorMsg = jobStatus.data.error_message || 'Processing failed';
-      enqueueSnackbar(`Processing failed: ${errorMsg}`, { variant: 'error' });
-      
-      // Reset state
-      setPollingJobId(null);
-      setCurrentFile(null);
-      setCostEstimate(null);
-      setCurrentJobId(null);
-      setLoading(false, '');
-      setUploadProgress(0);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobStatus.data?.status, jobStatus.data?.progress_percent, jobStatus.data?.current_step, pollingJobId]);
-
   const handleCancelPreflight = () => {
     setPreflightModalOpen(false);
     setCurrentFile(null);
@@ -222,9 +216,6 @@ export default function Home() {
     }
 
     setLoading(true, 'Exporting to Google Sheets...');
-
-    // Open a blank tab immediately to avoid popup blockers
-    const newTab = window.open('about:blank', '_blank');
 
     try {
       const spreadsheetUrl = await exportMutation.mutateAsync({
@@ -240,11 +231,15 @@ export default function Home() {
         sharing: options.sharing,
       });
       setExportDialogOpen(false);
-      if (newTab) {
-        newTab.location.href = spreadsheetUrl;
+      // Open the spreadsheet link after export completes
+      try {
+        window.open(spreadsheetUrl, '_blank', 'noopener,noreferrer');
+      } catch {
+        // If opener blocked, fallback: set location in current window
+        // (avoid silently failing)
+        window.location.href = spreadsheetUrl;
       }
     } catch (error) {
-      if (newTab) newTab.close();
       enqueueSnackbar(
         getApiErrorMessage(error, 'An unexpected error occurred during the export.'),
         { variant: 'error' }
@@ -453,6 +448,35 @@ export default function Home() {
                 >
                   Please wait while we process your file...
                 </Typography>
+                {wsJobId && (
+                  <Box 
+                    sx={{ 
+                      mt: 2,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1,
+                      animation: `${fadeIn} 0.7s ease-out`,
+                      animationFillMode: 'both',
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        bgcolor: wsConnected ? 'success.main' : 'warning.main',
+                        animation: wsConnected ? 'pulse 2s ease-in-out infinite' : 'none',
+                        '@keyframes pulse': {
+                          '0%, 100%': { opacity: 1 },
+                          '50%': { opacity: 0.5 },
+                        },
+                      }}
+                    />
+                    <Typography variant="caption" color="text.secondary">
+                      {wsConnected ? 'Real-time updates active' : 'Connecting...'}
+                    </Typography>
+                  </Box>
+                )}
                 {uploadProgress > 0 && uploadProgress < 100 && (
                   <Box 
                     sx={{ 

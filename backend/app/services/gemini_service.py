@@ -154,7 +154,6 @@ class GeminiService:
                 ]
             ),
         )
-
         response_text = response.text if hasattr(response, 'text') else ''
         current_app.logger.debug('Raw Gemini response: %s', response_text[:1000])
 
@@ -335,18 +334,50 @@ class GeminiService:
         # Compose prompt and content for the model
         contents = [prompt_text, text]
 
-        response = self.client.models.generate_content(
-            model=self.model_name,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                safety_settings=[
-                    types.SafetySetting(category='HARM_CATEGORY_HARASSMENT', threshold='BLOCK_NONE'),
-                    types.SafetySetting(category='HARM_CATEGORY_HATE_SPEECH', threshold='BLOCK_NONE'),
-                    types.SafetySetting(category='HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold='BLOCK_NONE'),
-                    types.SafetySetting(category='HARM_CATEGORY_DANGEROUS_CONTENT', threshold='BLOCK_NONE'),
-                ]
-            ),
-        )
+
+        try:
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    safety_settings=[
+                        types.SafetySetting(category='HARM_CATEGORY_HARASSMENT', threshold='BLOCK_NONE'),
+                        types.SafetySetting(category='HARM_CATEGORY_HATE_SPEECH', threshold='BLOCK_NONE'),
+                        types.SafetySetting(category='HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold='BLOCK_NONE'),
+                        types.SafetySetting(category='HARM_CATEGORY_DANGEROUS_CONTENT', threshold='BLOCK_NONE'),
+                    ]
+                ),
+            )
+        except Exception as e:
+            # Log full diagnostic including model name and suggestion for API key / model access
+            current_app.logger.exception(
+                'Gemini API call failed for model=%s (preference=%s): %s',
+                self.model_name, self.model_preference, str(e)
+            )
+            # If user selected the lightweight 'speed' model, try a safe fallback to balanced once
+            if self.model_preference == 'speed':
+                fallback = self.MODEL_PREFERENCE_MAP.get('balanced')
+                current_app.logger.info('Falling back from %s to %s and retrying Gemini call', self.model_name, fallback)
+                try:
+                    response = self.client.models.generate_content(
+                        model=fallback,
+                        contents=contents,
+                        config=types.GenerateContentConfig(
+                            safety_settings=[
+                                types.SafetySetting(category='HARM_CATEGORY_HARASSMENT', threshold='BLOCK_NONE'),
+                                types.SafetySetting(category='HARM_CATEGORY_HATE_SPEECH', threshold='BLOCK_NONE'),
+                                types.SafetySetting(category='HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold='BLOCK_NONE'),
+                                types.SafetySetting(category='HARM_CATEGORY_DANGEROUS_CONTENT', threshold='BLOCK_NONE'),
+                            ]
+                        ),
+                    )
+                    # Update model_name for diagnostics
+                    self.model_name = fallback
+                except Exception as e2:
+                    current_app.logger.exception('Fallback Gemini call also failed: %s', str(e2))
+                    raise
+            else:
+                raise
 
         response_text = response.text if hasattr(response, 'text') else ''
         cleaned_response = response_text.strip().replace('```json', '').replace('```', '')

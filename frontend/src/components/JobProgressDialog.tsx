@@ -1,5 +1,5 @@
 /**
- * Job Progress Dialog - Shows async PDF processing progress
+ * Job Progress Dialog - Shows async PDF processing progress with real-time WebSocket updates
  */
 import React from 'react';
 import {
@@ -15,9 +15,9 @@ import {
   Chip,
   Stack,
 } from '@mui/material';
-import { CheckCircle, Error as ErrorIcon, Cancel, HourglassEmpty } from '@mui/icons-material';
+import { CheckCircle, Error as ErrorIcon, Cancel, HourglassEmpty, WifiOff } from '@mui/icons-material';
 import { Job, cancelJob } from '@/lib/api';
-import { useJobPolling } from '@/lib/useJobPolling';
+import { useJobWebSocket } from '@/lib/useJobWebSocket';
 
 interface JobProgressDialogProps {
   jobId: number | null;
@@ -36,7 +36,7 @@ export default function JobProgressDialog({
 }: JobProgressDialogProps) {
   const [cancelling, setCancelling] = React.useState(false);
 
-  const { job, loading, error } = useJobPolling({
+  const { job, connected, error } = useJobWebSocket({
     jobId,
     enabled: open && jobId !== null,
     onComplete: (completedJob) => {
@@ -57,7 +57,7 @@ export default function JobProgressDialog({
     try {
       setCancelling(true);
       await cancelJob(jobId);
-      // The polling will detect the cancelled status
+      // The WebSocket will detect the cancelled status
     } catch (err) {
       console.error('Failed to cancel job:', err);
       setCancelling(false);
@@ -111,6 +111,15 @@ export default function JobProgressDialog({
             color={getStatusColor()}
             size="small"
           />
+          {!connected && job && job.status === 'processing' && (
+            <Chip
+              icon={<WifiOff />}
+              label="Reconnecting..."
+              color="warning"
+              size="small"
+              variant="outlined"
+            />
+          )}
         </Stack>
       </DialogTitle>
 
@@ -181,10 +190,10 @@ export default function JobProgressDialog({
           </Stack>
         )}
 
-        {!job && loading && (
+        {!job && !error && (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
             <Typography variant="body2" color="text.secondary">
-              Loading job status...
+              {connected ? 'Waiting for job data...' : 'Connecting...'}
             </Typography>
           </Box>
         )}

@@ -1,5 +1,5 @@
 """Request/Response validation schemas using Marshmallow"""
-from marshmallow import Schema, fields, validate
+from marshmallow import Schema, fields, validate, pre_load
 
 
 class GoogleAuthSchema(Schema):
@@ -54,6 +54,37 @@ class ExportToSheetSchema(Schema):
     columnOrder = fields.List(fields.String(), allow_none=True)
     sharing = fields.Nested(ShareSettingsSchema, allow_none=True)
     sentenceIndices = fields.List(fields.Integer(), allow_none=True)
+
+    @pre_load
+    def _normalize_headers(self, data, **kwargs):
+        """Allow frontend to send headers as simple strings by normalizing
+        them into the expected object form {name, enabled, order} before
+        validation.
+        """
+        try:
+            headers = data.get('headers') if isinstance(data, dict) else None
+            if headers and isinstance(headers, list):
+                new_headers = []
+                for idx, h in enumerate(headers):
+                    # If frontend sent a simple string, convert it
+                    if isinstance(h, str):
+                        new_headers.append({'name': h, 'enabled': True, 'order': idx})
+                    elif isinstance(h, dict):
+                        # Ensure required keys exist with sensible defaults
+                        if 'name' in h:
+                            if 'enabled' not in h:
+                                h['enabled'] = True
+                            if 'order' not in h:
+                                h['order'] = idx
+                            new_headers.append(h)
+                        else:
+                            # Skip malformed header entries (will fail validation later)
+                            new_headers.append(h)
+                data['headers'] = new_headers
+        except Exception:
+            # Don't break validation on unexpected types; let Marshmallow report errors
+            pass
+        return data
 
 
 class UserSettingsSchema(Schema):
