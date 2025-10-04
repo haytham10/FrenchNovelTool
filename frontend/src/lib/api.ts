@@ -274,7 +274,7 @@ export async function getCredits(): Promise<CreditSummary> {
 
 export interface CostEstimateRequest {
   text: string;
-  model_preference: 'balanced' | 'quality' | 'speed' | 'lightning';
+  model_preference: 'balanced' | 'quality' | 'speed';
 }
 
 export interface CostEstimate {

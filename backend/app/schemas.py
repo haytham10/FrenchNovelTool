@@ -95,7 +95,7 @@ class UserSettingsSchema(Schema):
     )
     gemini_model = fields.String(
         load_default='balanced',
-        validate=validate.OneOf(['balanced', 'quality', 'speed', 'lightning'])
+        validate=validate.OneOf(['balanced', 'quality', 'speed'])
     )
     ignore_dialogue = fields.Boolean(load_default=False)
     preserve_formatting = fields.Boolean(load_default=True)
@@ -113,7 +113,7 @@ class ProcessPdfOptionsSchema(Schema):
         allow_none=True
     )
     gemini_model = fields.String(
-        validate=validate.OneOf(['balanced', 'quality', 'speed', 'lightning']),
+        validate=validate.OneOf(['balanced', 'quality', 'speed']),
         allow_none=True
     )
     ignore_dialogue = fields.Boolean(allow_none=True)
@@ -130,7 +130,7 @@ class EstimateRequestSchema(Schema):
     text = fields.String(required=True, validate=validate.Length(min=1))
     model_preference = fields.String(
         required=True,
-        validate=validate.OneOf(['balanced', 'quality', 'speed', 'lightning'])
+        validate=validate.OneOf(['balanced', 'quality', 'speed'])
     )
 
 
@@ -139,7 +139,7 @@ class JobConfirmSchema(Schema):
     estimated_credits = fields.Integer(required=True, validate=validate.Range(min=1))
     model_preference = fields.String(
         required=True,
-        validate=validate.OneOf(['balanced', 'quality', 'speed', 'lightning'])
+        validate=validate.OneOf(['balanced', 'quality', 'speed'])
     )
     processing_settings = fields.Dict(required=False)
 
