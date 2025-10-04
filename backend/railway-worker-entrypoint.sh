@@ -108,7 +108,7 @@ done
 echo "🎯 Starting Celery worker..."
 exec celery -A celery_worker.celery worker \
     --loglevel=info \
-    --concurrency=${CELERY_CONCURRENCY:-2} \
+    --concurrency=${CELERY_CONCURRENCY:-4} \
     --max-tasks-per-child=50 \
     --task-events \
     --time-limit=1800 \
