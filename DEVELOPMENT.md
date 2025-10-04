@@ -52,6 +52,22 @@ This script will:
 - Backend API: http://localhost:5000
 - Redis: localhost:6379
 
+## WebSocket Real-Time Updates
+
+The application uses WebSocket for real-time job progress updates. No additional configuration is needed in development - it's automatically enabled.
+
+**Features:**
+- Instant progress updates (no polling)
+- Automatic reconnection
+- Connection status indicator in UI
+
+**Troubleshooting WebSocket:**
+- Ensure eventlet is installed: `pip install eventlet`
+- Check WebSocket connection in browser DevTools (Network → WS tab)
+- Verify JWT token is being sent with connection
+
+See [docs/WEBSOCKET_IMPLEMENTATION.md](docs/WEBSOCKET_IMPLEMENTATION.md) for detailed documentation.
+
 ## Development Workflow
 
 ### Directory Structure
