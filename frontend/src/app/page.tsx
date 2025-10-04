@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import FileUpload from '@/components/FileUpload';
 import ResultsTable from '@/components/ResultsTable';
 import NormalizeControls from '@/components/NormalizeControls';
@@ -57,7 +57,7 @@ export default function Home() {
 
   // WebSocket connection for real-time job progress
   const [wsJobId, setWsJobId] = useState<number | null>(null);
-  const { job: wsJob, connected: wsConnected } = useJobWebSocket({
+  const { connected: wsConnected } = useJobWebSocket({
     jobId: wsJobId,
     enabled: !!wsJobId,
     onProgress: (job) => {
