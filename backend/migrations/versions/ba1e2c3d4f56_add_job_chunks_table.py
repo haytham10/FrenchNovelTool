@@ -1,7 +1,7 @@
 """add job_chunks table
 
 Revision ID: ba1e2c3d4f56
-Revises: 48fd2dc76953_add_async_processing_fields_to_job_model
+Revises: 48fd2dc76953
 Create Date: 2025-10-04
 """
 from alembic import op
@@ -9,7 +9,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'ba1e2c3d4f56'
-down_revision = '48fd2dc76953_add_async_processing_fields_to_job_model'
+down_revision = '48fd2dc76953'
 branch_labels = None
 depends_on = None
 
