@@ -217,9 +217,6 @@ export default function Home() {
 
     setLoading(true, 'Exporting to Google Sheets...');
 
-    // Open a blank tab immediately to avoid popup blockers
-    const newTab = window.open('about:blank', '_blank');
-
     try {
       const spreadsheetUrl = await exportMutation.mutateAsync({
         sentences,
@@ -234,11 +231,15 @@ export default function Home() {
         sharing: options.sharing,
       });
       setExportDialogOpen(false);
-      if (newTab) {
-        newTab.location.href = spreadsheetUrl;
+      // Open the spreadsheet link after export completes
+      try {
+        window.open(spreadsheetUrl, '_blank', 'noopener,noreferrer');
+      } catch {
+        // If opener blocked, fallback: set location in current window
+        // (avoid silently failing)
+        window.location.href = spreadsheetUrl;
       }
     } catch (error) {
-      if (newTab) newTab.close();
       enqueueSnackbar(
         getApiErrorMessage(error, 'An unexpected error occurred during the export.'),
         { variant: 'error' }

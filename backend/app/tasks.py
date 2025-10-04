@@ -410,6 +410,9 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
             job.status = JOB_STATUS_FAILED
             job.current_step = "Failed"
             job.error_message = "All chunks failed to process. Check API credentials or PDF content."
+            # Add detailed failure reasons to the logs for diagnostics
+            for r in chunk_results:
+                logger.error("Job %s: chunk %s failed with error: %s", job_id, r.get('chunk_id'), r.get('error'))
         else:
             job.status = JOB_STATUS_COMPLETED
             job.current_step = "Completed"
