@@ -3,24 +3,44 @@ import os
 from datetime import datetime
 from typing import Dict, List
 import PyPDF2
-from celery import group, chord
+from celery import group
 from celery.exceptions import SoftTimeLimitExceeded
-from app import db
-from app.models import Job, User
-from app.services.pdf_service import PDFService
-from app.services.gemini_service import GeminiService
-from app.services.chunking_service import ChunkingService
-from app.services.job_service import JobService
-from app.constants import (
-    JOB_STATUS_PROCESSING, JOB_STATUS_COMPLETED, JOB_STATUS_FAILED,
-    MODEL_PREFERENCE_MAP
-)
 
 
 def get_celery():
     """Get celery instance (deferred import to avoid circular dependency)"""
     from app import celery
     return celery
+
+
+def get_db():
+    """Get database instance"""
+    from app import db
+    return db
+
+
+def get_models():
+    """Get models (deferred import)"""
+    from app.models import Job, User
+    return Job, User
+
+
+def get_services():
+    """Get services (deferred import)"""
+    from app.services.pdf_service import PDFService
+    from app.services.gemini_service import GeminiService
+    from app.services.chunking_service import ChunkingService
+    from app.services.job_service import JobService
+    return PDFService, GeminiService, ChunkingService, JobService
+
+
+def get_constants():
+    """Get constants (deferred import)"""
+    from app.constants import (
+        JOB_STATUS_PROCESSING, JOB_STATUS_COMPLETED, JOB_STATUS_FAILED,
+        MODEL_PREFERENCE_MAP
+    )
+    return JOB_STATUS_PROCESSING, JOB_STATUS_COMPLETED, JOB_STATUS_FAILED, MODEL_PREFERENCE_MAP
 
 
 @get_celery().task(bind=True, name='app.tasks.process_chunk')
@@ -46,6 +66,9 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
         }
     """
     try:
+        # Get services
+        _, GeminiService, _, _ = get_services()
+        
         # Initialize services
         gemini_service = GeminiService(
             sentence_length_limit=settings['sentence_length_limit'],
@@ -147,6 +170,12 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
         user_id: User who initiated the job
         settings: Processing settings (model, length limit, etc.)
     """
+    # Get imports
+    db = get_db()
+    Job, User = get_models()
+    _, _, ChunkingService, _ = get_services()
+    JOB_STATUS_PROCESSING, JOB_STATUS_COMPLETED, JOB_STATUS_FAILED, _ = get_constants()
+    
     chunking_service = ChunkingService()
     job = None
     chunks = []
