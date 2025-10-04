@@ -120,6 +120,70 @@ class ChunkingService:
         
         return chunks
     
+    def split_pdf_and_persist(self, pdf_path: str, chunk_config: Dict, job_id: int, db) -> List[int]:
+        """
+        Split PDF into chunks and persist to database.
+        
+        Args:
+            pdf_path: Path to source PDF
+            chunk_config: Output from calculate_chunks()
+            job_id: Job ID to associate chunks with
+            db: SQLAlchemy database instance
+            
+        Returns:
+            List of JobChunk IDs created
+        """
+        from app.models import JobChunk
+        from datetime import datetime
+        
+        chunk_db_ids = []
+        chunk_size = chunk_config['chunk_size']
+        total_pages = chunk_config['total_pages']
+        
+        with open(pdf_path, 'rb') as pdf_file:
+            pdf_reader = PdfReader(pdf_file)
+            
+            for i in range(chunk_config['num_chunks']):
+                # Calculate page range with overlap
+                start_page = max(0, i * chunk_size - (self.OVERLAP_PAGES if i > 0 else 0))
+                end_page = min(total_pages, (i + 1) * chunk_size)
+                
+                # Create chunk PDF in memory
+                pdf_writer = PdfWriter()
+                for page_num in range(start_page, end_page):
+                    pdf_writer.add_page(pdf_reader.pages[page_num])
+                
+                # Encode chunk as base64
+                buf = io.BytesIO()
+                pdf_writer.write(buf)
+                chunk_bytes = buf.getvalue()
+                chunk_b64 = base64.b64encode(chunk_bytes).decode('ascii')
+                
+                # Create JobChunk record in DB
+                chunk = JobChunk(
+                    job_id=job_id,
+                    chunk_id=i,
+                    start_page=start_page,
+                    end_page=end_page - 1,  # Inclusive
+                    page_count=end_page - start_page,
+                    has_overlap=(i > 0),
+                    file_b64=chunk_b64,
+                    file_size_bytes=len(chunk_bytes),
+                    status='pending',
+                    attempts=0,
+                    max_retries=3,
+                    created_at=datetime.utcnow()
+                )
+                
+                db.session.add(chunk)
+                db.session.flush()  # Get chunk ID without committing
+                chunk_db_ids.append(chunk.id)
+        
+        # Commit all chunks at once
+        db.session.commit()
+        
+        return chunk_db_ids
+    
     def cleanup_chunks(self, chunks: List[Dict]):
         """Delete temporary chunk files"""
         for chunk in chunks:
