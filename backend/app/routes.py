@@ -93,18 +93,11 @@ def extract_pdf_text():
     
     try:
         temp_file_path = pdf_service.save_to_temp()
-        
-        # Extract text from PDF
-        text = ""
-        with open(temp_file_path, 'rb') as pdf_file:
-            pdf_reader = PyPDF2.PdfReader(pdf_file)
-            for page in pdf_reader.pages:
-                text += page.extract_text() + "\n"
-        
-        # Return first 50000 characters for estimation (safety limit)
-        text = text[:50000]
-        
-        return jsonify({'text': text, 'page_count': len(pdf_reader.pages)}), 200
+
+        # Extract a snippet using PDFService which prefers pdftotext when available
+        text, page_count = pdf_service.extract_text_snippet(char_limit=50000)
+
+        return jsonify({'text': text, 'page_count': page_count}), 200
         
     except Exception as e:
         current_app.logger.exception('Failed to extract PDF text')
