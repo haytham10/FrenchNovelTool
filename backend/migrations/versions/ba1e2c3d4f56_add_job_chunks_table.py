@@ -16,8 +16,18 @@ depends_on = None
 def upgrade():
     bind = op.get_bind()
     inspector = sa.inspect(bind)
-    # If the table doesn't exist, create it and the indexes
-    if 'job_chunks' not in inspector.get_table_names():
+    # Helper to check index existence using Postgres to_regclass
+    def index_exists(name: str) -> bool:
+        try:
+            return bool(bind.execute(sa.text("SELECT to_regclass(:iname)"), {'iname': f'public.{name}'}).scalar())
+        except Exception:
+            # If the DB doesn't support to_regclass, fall back to inspector
+            return False
+
+    table_exists = 'job_chunks' in inspector.get_table_names()
+
+    # Create table if missing
+    if not table_exists:
         op.create_table(
             'job_chunks',
             sa.Column('id', sa.Integer(), primary_key=True),
@@ -34,19 +44,14 @@ def upgrade():
             sa.Column('created_at', sa.DateTime(), nullable=False),
             sa.Column('updated_at', sa.DateTime(), nullable=True),
         )
+
+    # Ensure indexes exist, create them only if missing
+    if not index_exists('ix_job_chunks_job_id'):
         op.create_index('ix_job_chunks_job_id', 'job_chunks', ['job_id'])
+    if not index_exists('ix_job_chunks_status'):
         op.create_index('ix_job_chunks_status', 'job_chunks', ['status'])
+    if not index_exists('idx_job_chunk_unique'):
         op.create_index('idx_job_chunk_unique', 'job_chunks', ['job_id', 'chunk_index'], unique=True)
-    else:
-        # Table exists (partial migration ran before). Ensure indexes exist.
-        # Use Postgres to_regclass to robustly detect existing indexes even if inspector misses them.
-        get_index = lambda name: bind.execute(sa.text("SELECT to_regclass(:iname)"), {'iname': f'public.{name}'}).scalar()
-        if not get_index('ix_job_chunks_job_id'):
-            op.create_index('ix_job_chunks_job_id', 'job_chunks', ['job_id'])
-        if not get_index('ix_job_chunks_status'):
-            op.create_index('ix_job_chunks_status', 'job_chunks', ['status'])
-        if not get_index('idx_job_chunk_unique'):
-            op.create_index('idx_job_chunk_unique', 'job_chunks', ['job_id', 'chunk_index'], unique=True)
 
 
 def downgrade():
