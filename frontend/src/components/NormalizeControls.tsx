@@ -18,7 +18,7 @@ export interface AdvancedNormalizationOptions {
   preserveQuotes?: boolean;
   fixHyphenations?: boolean;
   minSentenceLength?: number;
-  geminiModel?: 'balanced' | 'quality' | 'speed';
+  geminiModel?: 'balanced' | 'quality' | 'speed' | 'lightning';
 }
 
 const PRESETS = [
@@ -31,6 +31,7 @@ const GEMINI_MODELS = [
   { value: 'balanced', label: 'Balanced', description: 'Best balance of speed and quality' },
   { value: 'quality', label: 'Quality', description: 'Highest quality, slower processing' },
   { value: 'speed', label: 'Speed', description: 'Fastest processing, good quality' },
+  { value: 'lightning', label: 'Lightning', description: 'Preview: extremely fast/lightweight flash model' },
 ];
 
 export default function NormalizeControls({
@@ -195,7 +196,7 @@ export default function NormalizeControls({
               }}
             >
               {GEMINI_MODELS.map((model) => (
-                <MenuItem key={model.value} value={model.value}>
+                <MenuItem key={model.value} value={model.value} disabled={model.value === 'quality'}>
                   <Box>
                     <Typography variant="body1" fontWeight={600}>{model.label}</Typography>
                     <Typography variant="caption" color="text.secondary">{model.description}</Typography>
@@ -204,6 +205,11 @@ export default function NormalizeControls({
               ))}
             </Select>
           </FormControl>
+          <Box sx={{ mt: 1 }}>
+            <Typography variant="caption" sx={{ color: 'warning.main', fontWeight: 600 }}>
+              Quality mode: disabled. My wallet: crying.
+            </Typography>
+          </Box>
         </Box>
       )}
 

@@ -16,6 +16,7 @@ class GeminiService:
         'balanced': 'gemini-2.5-flash',
         'quality': 'gemini-2.5-pro',
         'speed': 'gemini-2.5-flash-lite',
+        'lightning': 'gemini-2.5-flash-lite-preview-09-2025',
     }
 
     DIALOGUE_BOUNDARIES = ('"', "'", '«', '»', '“', '”')

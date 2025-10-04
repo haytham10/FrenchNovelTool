@@ -50,7 +50,6 @@ export default function PreflightModal({
   const getModelLabel = (preference: string) => {
     const labels: Record<string, string> = {
       balanced: 'Balanced',
-      quality: 'Quality',
       speed: 'Speed',
     };
     return labels[preference] || preference;
@@ -59,7 +58,6 @@ export default function PreflightModal({
   const getModelDescription = (preference: string) => {
     const descriptions: Record<string, string> = {
       balanced: 'Best balance of speed and quality',
-      quality: 'Highest quality, slower processing',
       speed: 'Fastest processing, good quality',
     };
     return descriptions[preference] || '';
@@ -121,6 +119,11 @@ export default function PreflightModal({
                 <Typography variant="caption" color="text.secondary">
                   {getModelDescription(estimate.model_preference)}
                 </Typography>
+                {estimate.model_preference === 'quality' && (
+                  <Typography variant="caption" sx={{ color: 'warning.main', fontWeight: 600, display: 'block', mt: 0.5 }}>
+                    Quality model detected — MY WALLET IS ALREADY DRY :( (uses gemini-2.5-pro, expensive)
+                  </Typography>
+                )}
               </Box>
             </Box>
 

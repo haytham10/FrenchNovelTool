@@ -131,7 +131,7 @@ export default function FileUpload({ onFileUpload, disabled = false, variant = '
               bgcolor: 'action.hover',
             }}>
               <Typography variant="caption" color="text.secondary" fontWeight={500}>
-                ✓ Multiple files supported
+                ✓ Large files supported
               </Typography>
               <Divider orientation="vertical" flexItem sx={{ bgcolor: 'divider' }} />
               <Typography variant="caption" color="text.secondary" fontWeight={500}>
