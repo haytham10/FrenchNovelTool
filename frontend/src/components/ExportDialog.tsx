@@ -77,10 +77,20 @@ export default function ExportDialog({
   const [collaboratorEmails, setCollaboratorEmails] = useState('');
   const [publicLink, setPublicLink] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
 
   const handleFolderSelect = (folderId: string, folderName: string) => {
     setSelectedFolderId(folderId);
     setSelectedFolderName(folderName);
+    setIsPickerOpen(false);
+  };
+
+  const handlePickerOpen = () => {
+    setIsPickerOpen(true);
+  };
+
+  const handlePickerCancel = () => {
+    setIsPickerOpen(false);
   };
 
   const handleClearFolder = () => {
@@ -116,12 +126,17 @@ export default function ExportDialog({
 
   return (
     <Dialog 
-      open={open} 
+      open={open && !isPickerOpen} 
       onClose={onClose} 
       maxWidth="md" 
       fullWidth
       aria-labelledby="export-dialog-title"
       aria-describedby="export-dialog-description"
+      slotProps={{
+        backdrop: {
+          sx: { opacity: isPickerOpen ? 0 : undefined }
+        }
+      }}
     >
       <DialogTitle id="export-dialog-title">
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -236,6 +251,8 @@ export default function ExportDialog({
           onFolderSelect={handleFolderSelect}
           selectedFolderName={selectedFolderName}
           onClearSelection={handleClearFolder}
+          onPickerOpen={handlePickerOpen}
+          onPickerCancel={handlePickerCancel}
         />
 
         <Divider sx={{ my: 3 }} />

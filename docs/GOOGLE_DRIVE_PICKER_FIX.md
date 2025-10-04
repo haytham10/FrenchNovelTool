@@ -87,6 +87,38 @@ const loadGapi = () => {
 ✅ Folder selection works as expected
 ```
 
+**Common Issues After Fix:**
+
+### Error: "Google Picker API is unavailable"
+
+**Cause:** Environment variables not set correctly or Picker API not fully loaded
+
+**Solution:**
+1. Check `frontend/.env.local` has both variables:
+   ```bash
+   NEXT_PUBLIC_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+   NEXT_PUBLIC_GOOGLE_API_KEY=your-api-key
+   ```
+
+2. Restart Next.js dev server:
+   ```bash
+   cd frontend
+   npm run dev
+   ```
+
+3. Hard refresh browser (Ctrl+Shift+R or Cmd+Shift+R)
+
+4. Check browser console for detailed error logs:
+   ```
+   [DriveFolderPicker] Picker API not available: {gapiExists: true, pickerExists: false}
+   ```
+
+5. If `pickerExists: false`, wait a few seconds and try again (API still loading)
+
+6. Enable Google Picker API in Google Cloud Console:
+   - Go to https://console.cloud.google.com/apis/library/picker.googleapis.com
+   - Click "Enable" for your project
+
 ---
 
 ## 📝 Files Changed
