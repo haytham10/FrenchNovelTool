@@ -45,7 +45,7 @@ export interface ExportOptions {
   existingSheetId?: string;
   tabName?: string;
   createNewTab?: boolean;
-  headers: string[];
+  headers: { name: string; enabled: boolean; order: number }[];
   columnOrder: string[];
   sharing: {
     addCollaborators: boolean;
@@ -99,6 +99,9 @@ export default function ExportDialog({
   };
 
   const handleExport = () => {
+    // Map simple string headers used in the UI into the object shape expected by the backend
+    const normalizedHeaders = headers.map((h, idx) => ({ name: h, enabled: true, order: idx }));
+
     const options: ExportOptions = {
       sheetName,
       folderId: selectedFolderId,
@@ -107,7 +110,7 @@ export default function ExportDialog({
       existingSheetId: mode === 'append' ? existingSheetId : undefined,
       tabName: mode === 'append' ? tabName : undefined,
       createNewTab: mode === 'append' ? createNewTab : undefined,
-      headers,
+      headers: normalizedHeaders,
       columnOrder,
       sharing: {
         addCollaborators,

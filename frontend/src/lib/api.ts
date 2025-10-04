@@ -172,7 +172,7 @@ export interface ExportToSheetRequest {
   existingSheetId?: string;
   tabName?: string;
   createNewTab?: boolean;
-  headers?: string[];
+  headers?: { name: string; enabled: boolean; order: number }[];
   columnOrder?: string[];
   sharing?: {
     addCollaborators?: boolean;
