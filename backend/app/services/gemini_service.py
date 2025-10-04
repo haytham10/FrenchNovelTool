@@ -1,7 +1,7 @@
 import json
 import pathlib
 import re
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from flask import current_app
 from google import genai
@@ -315,3 +315,58 @@ class GeminiService:
         if stripped.endswith((':', '—')):
             return True
         return False
+
+    # Public helper for processing already-extracted text (non-PDF)
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        retry=retry_if_exception_type((ConnectionError, TimeoutError))
+    )
+    def normalize_text(self, text: str, prompt: Optional[str] = None) -> Dict[str, Any]:
+        """Normalize and split raw text into sentences using Gemini, then post-process.
+
+        Returns a dict with 'sentences' as a list of {normalized, original}.
+        """
+        if not text or not text.strip():
+            return {"sentences": [], "tokens": 0}
+
+        prompt_text = self.build_prompt(prompt)
+
+        # Compose prompt and content for the model
+        contents = [prompt_text, text]
+
+        response = self.client.models.generate_content(
+            model=self.model_name,
+            contents=contents,
+            config=types.GenerateContentConfig(
+                safety_settings=[
+                    types.SafetySetting(category='HARM_CATEGORY_HARASSMENT', threshold='BLOCK_NONE'),
+                    types.SafetySetting(category='HARM_CATEGORY_HATE_SPEECH', threshold='BLOCK_NONE'),
+                    types.SafetySetting(category='HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold='BLOCK_NONE'),
+                    types.SafetySetting(category='HARM_CATEGORY_DANGEROUS_CONTENT', threshold='BLOCK_NONE'),
+                ]
+            ),
+        )
+
+        response_text = response.text if hasattr(response, 'text') else ''
+        cleaned_response = response_text.strip().replace('```json', '').replace('```', '')
+
+        if not cleaned_response:
+            current_app.logger.error('Received empty response from Gemini API for normalize_text.')
+            raise ValueError('Gemini returned an empty response.')
+
+        try:
+            data = json.loads(cleaned_response)
+        except json.JSONDecodeError:
+            current_app.logger.warning('normalize_text: JSON parsing failed, attempting recovery...')
+            data = self._recover_json(cleaned_response)
+
+        sentences = self._extract_sentence_list(data)
+        processed = self._post_process_sentences(sentences)
+
+        sentence_dicts = [
+            {"normalized": s, "original": s}
+            for s in processed
+        ]
+
+        return {"sentences": sentence_dicts, "tokens": 0}

@@ -286,8 +286,27 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
                 process_chunk.s(chunk, user_id, settings)
                 for chunk in chunks
             ])
-            results = job_group.apply_async()
-            chunk_results = results.get()  # Wait for all chunks to complete
+            async_result = job_group.apply_async()
+            # Avoid calling .get() inside task; iterate results safely
+            chunk_results = []
+            try:
+                for res in async_result.iterate():  # yields each result as it arrives
+                    chunk_results.append(res)
+                    # Update progress incrementally
+                    job = Job.query.get(job_id)
+                    job.processed_chunks = len(chunk_results)
+                    if job.total_chunks:
+                        # scale from 15 -> 75 during processing
+                        pct = 15 + int((len(chunk_results) / job.total_chunks) * 60)
+                        job.progress_percent = max(job.progress_percent or 15, pct)
+                        job.current_step = f"Processed {len(chunk_results)}/{job.total_chunks} chunks"
+                    safe_db_commit(db)
+            except Exception:
+                # Fallback: try to join non-blocking
+                try:
+                    chunk_results = async_result.join(timeout=0)
+                except Exception:
+                    pass
         
         # Update progress as chunks complete
         job = Job.query.get(job_id)
