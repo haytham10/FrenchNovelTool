@@ -54,9 +54,9 @@ interface PickerBuilder {
   build: () => { setVisible: (visible: boolean) => void };
 }
 
-const DISCOVERY_DOCS = ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'];
-const CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID; // You'll need to set this in your .env.local
-const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_API_KEY; // You'll need to set this in your .env.local
+// Note: Discovery docs are loaded automatically by the Picker API, no need to pre-fetch
+const CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 
 export default function DriveFolderPicker({ onFolderSelect, selectedFolderName, onClearSelection }: DriveFolderPickerProps) {
@@ -115,18 +115,9 @@ export default function DriveFolderPicker({ onFolderSelect, selectedFolderName, 
         enqueueSnackbar('Google API client library failed to load.', { variant: 'error' });
         return;
       }
-      gapiInstance.load('client:picker', () => {
-        gapiInstance.client.init({
-          apiKey: API_KEY,
-          discoveryDocs: DISCOVERY_DOCS,
-        }).then(() => {
-          setGapiLoaded(true);
-        }).catch((error: unknown) => {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error while initialising Google API client.';
-          console.error('[DriveFolderPicker] Error loading GAPI client:', errorMessage);
-          // Don't show error to user unless they try to use the picker
-          // enqueueSnackbar(`Error loading GAPI client: ${errorMessage}`, { variant: 'error' });
-        });
+      // Load picker library only - it handles discovery internally
+      gapiInstance.load('picker', () => {
+        setGapiLoaded(true);
       });
     };
 
