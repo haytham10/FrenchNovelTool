@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import FileUpload from '@/components/FileUpload';
 import ResultsTable from '@/components/ResultsTable';
 import NormalizeControls from '@/components/NormalizeControls';
 import ExportDialog from '@/components/ExportDialog';
 import PreflightModal from '@/components/PreflightModal';
 import { getApiErrorMessage, extractPdfText } from '@/lib/api';
-import { useProcessPdf, useExportToSheet, useEstimateCost, useConfirmJob } from '@/lib/queries';
+import { useProcessPdf, useExportToSheet, useEstimateCost, useConfirmJob, useJobStatus } from '@/lib/queries';
 import { CircularProgress, Button, Typography, Box, Container, Paper, Divider, List, ListItem, ListItemText, LinearProgress } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import UploadStepper from '@/components/UploadStepper';
@@ -53,6 +53,10 @@ export default function Home() {
   const exportMutation = useExportToSheet();
   const estimateMutation = useEstimateCost();
   const confirmJobMutation = useConfirmJob();
+
+  // Poll job status when processing
+  const [pollingJobId, setPollingJobId] = useState<number | null>(null);
+  const jobStatus = useJobStatus(pollingJobId);
 
   const handleFileUpload = async (files: File[]) => {
     if (!files || files.length === 0) return;
@@ -109,28 +113,26 @@ export default function Home() {
       setCurrentJobId(jobId);
       setPreflightModalOpen(false);
 
-      // Now process the PDF with the job_id
-      setLoading(true, `Processing ${currentFile.name}...`);
+      // Now process the PDF asynchronously with the job_id
+      setLoading(true, `Uploading ${currentFile.name}...`);
       setSentences([]);
       setUploadProgress(0);
 
-      const processedSentences = await processPdfMutation.mutateAsync({
-        file: currentFile,
-        options: {
-          jobId: jobId,
-          onUploadProgress: (progress) => {
-            setUploadProgress(progress);
-          },
-        },
+      await processPdfMutation.mutateAsync({
+        job_id: jobId,
+        pdf_file: currentFile,
+        sentence_length_limit: sentenceLength,
+        gemini_model: advancedOptions.geminiModel,
+        ignore_dialogue: advancedOptions.ignoreDialogues,
+        preserve_formatting: advancedOptions.preserveQuotes,
+        fix_hyphenation: advancedOptions.fixHyphenations,
+        min_sentence_length: advancedOptions.minSentenceLength,
       });
 
-      setSentences(processedSentences);
-      enqueueSnackbar('PDF processed successfully!', { variant: 'success' });
+      // Start polling for job status
+      setPollingJobId(jobId);
+      setLoading(true, 'Processing PDF in background...');
       
-      // Reset state
-      setCurrentFile(null);
-      setCostEstimate(null);
-      setCurrentJobId(null);
     } catch (error) {
       enqueueSnackbar(
         getApiErrorMessage(error, 'Failed to process PDF'),
@@ -141,11 +143,71 @@ export default function Home() {
       if (currentJobId) {
         enqueueSnackbar('Credits have been refunded', { variant: 'info' });
       }
-    } finally {
+      
       setLoading(false, '');
       setUploadProgress(0);
     }
   };
+
+  // Handle job status updates (polling)
+  useEffect(() => {
+    if (!jobStatus.data) return;
+
+    const status = jobStatus.data.status;
+    const progress = jobStatus.data.progress_percent || 0;
+    const currentStep = jobStatus.data.current_step || 'Processing...';
+
+    // Update loading message with progress
+    if (status === 'processing') {
+      setLoading(true, `${currentStep} (${progress}%)`);
+      setUploadProgress(progress);
+    } else if (status === 'completed') {
+      // Fetch the completed job's results from history
+      import('@/lib/api').then(({ getJob }) => {
+        getJob(pollingJobId!).then((job) => {
+          // Job's chunk_results contains the processed sentences
+          if (job.chunk_results && Array.isArray(job.chunk_results)) {
+            const allSentences: string[] = [];
+            job.chunk_results.forEach((chunk) => {
+              if (chunk.status === 'success' && chunk.sentences && Array.isArray(chunk.sentences)) {
+                chunk.sentences.forEach((s) => {
+                  const sentence = s as { normalized?: string };
+                  if (sentence.normalized) {
+                    allSentences.push(sentence.normalized);
+                  }
+                });
+              }
+            });
+            
+            if (allSentences.length > 0) {
+              setSentences(allSentences);
+              enqueueSnackbar('PDF processed successfully!', { variant: 'success' });
+            }
+          }
+          
+          // Reset state
+          setPollingJobId(null);
+          setCurrentFile(null);
+          setCostEstimate(null);
+          setCurrentJobId(null);
+          setLoading(false, '');
+          setUploadProgress(0);
+        });
+      });
+    } else if (status === 'failed') {
+      const errorMsg = jobStatus.data.error_message || 'Processing failed';
+      enqueueSnackbar(`Processing failed: ${errorMsg}`, { variant: 'error' });
+      
+      // Reset state
+      setPollingJobId(null);
+      setCurrentFile(null);
+      setCostEstimate(null);
+      setCurrentJobId(null);
+      setLoading(false, '');
+      setUploadProgress(0);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobStatus.data?.status, pollingJobId]);
 
   const handleCancelPreflight = () => {
     setPreflightModalOpen(false);

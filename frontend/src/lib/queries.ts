@@ -6,7 +6,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSnackbar } from 'notistack';
 import {
-  processPdf,
+  processPdfAsync,
   exportToSheet,
   getProcessingHistory,
   getUserSettings,
@@ -19,7 +19,8 @@ import {
   finalizeJob,
   getJob,
   getApiErrorMessage,
-  type ProcessPdfOptions,
+  type ProcessPdfAsyncRequest,
+  type Job,
   type ExportToSheetRequest,
   type UserSettings,
   type CostEstimateRequest,
@@ -113,19 +114,38 @@ export function useProcessPdf() {
   const { enqueueSnackbar } = useSnackbar();
 
   return useMutation({
-    mutationFn: ({ file, options }: { file: File; options?: ProcessPdfOptions }) =>
-      processPdf(file, options),
+    mutationFn: (request: ProcessPdfAsyncRequest) => processPdfAsync(request),
     
-    onSuccess: () => {
-      // Invalidate history since we just processed a new file
+    onSuccess: (data) => {
+      enqueueSnackbar(`Processing started (Job ID: ${data.job_id})`, { variant: 'info' });
+      // Invalidate history since we just started a new job
       queryClient.invalidateQueries({ queryKey: queryKeys.history });
     },
     
     onError: (error) => {
       enqueueSnackbar(
-        getApiErrorMessage(error, 'Failed to process PDF'),
+        getApiErrorMessage(error, 'Failed to start PDF processing'),
         { variant: 'error' }
       );
+    },
+  });
+}
+
+/**
+ * Job Status Polling
+ */
+export function useJobStatus(jobId: number | null, options?: { enabled?: boolean; refetchInterval?: number }) {
+  return useQuery({
+    queryKey: ['job-status', jobId],
+    queryFn: () => getJob(jobId!),
+    enabled: !!jobId && (options?.enabled ?? true),
+    refetchInterval: (query) => {
+      const data = query.state.data as Job | undefined;
+      // Stop polling when job is completed, failed, or cancelled
+      if (data?.status === 'completed' || data?.status === 'failed' || data?.status === 'cancelled') {
+        return false;
+      }
+      return options?.refetchInterval ?? 2000; // Poll every 2 seconds by default
     },
   });
 }
