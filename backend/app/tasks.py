@@ -90,36 +90,6 @@ def get_constants():
     return JOB_STATUS_PROCESSING, JOB_STATUS_COMPLETED, JOB_STATUS_FAILED, MODEL_PREFERENCE_MAP
 
 
-@get_celery().task(bind=True, name='app.tasks.extract_pdf_text')
-def extract_pdf_text_task(self, file_b64: str, char_limit: int = 50000) -> Dict:
-    """Celery task to extract text snippet from a PDF encoded as base64.
-
-    Returns a dict with keys: status ('success'|'failed'), text, page_count or error.
-    """
-    try:
-        import io
-        import base64 as _base64
-        import PyPDF2 as _PyPDF2
-
-        pdf_bytes = _base64.b64decode(file_b64)
-        pdf_file = io.BytesIO(pdf_bytes)
-        reader = _PyPDF2.PdfReader(pdf_file)
-
-        text = ""
-        for page in reader.pages:
-            try:
-                page_text = page.extract_text() or ""
-            except Exception:
-                page_text = ""
-            text += page_text + "\n"
-            if len(text) >= char_limit:
-                break
-
-        return {'status': 'success', 'text': text[:char_limit], 'page_count': len(reader.pages)}
-    except Exception as e:
-        return {'status': 'failed', 'error': str(e)}
-
-
 @get_celery().task(bind=True, name='app.tasks.process_chunk')
 def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
     """
