@@ -1,5 +1,22 @@
 # Async PDF Processing Deployment Plan
 
+> **⚠️ IMPORTANT UPDATE**: This document has been superseded by comprehensive Railway deployment guides.
+>
+> **Please use these instead:**
+> - **Full Guide**: [docs/Deployment/RAILWAY_DEPLOYMENT.md](../Deployment/RAILWAY_DEPLOYMENT.md)
+> - **Quick Checklist**: [docs/Deployment/RAILWAY_QUICK_CHECKLIST.md](../Deployment/RAILWAY_QUICK_CHECKLIST.md)
+> - **Fixes Summary**: [DEPLOYMENT_FIXES_README.md](../../DEPLOYMENT_FIXES_README.md)
+>
+> The guides above include all the fixes from this document plus:
+> - ✅ Database connection pooling for Supabase
+> - ✅ Redis SSL/TLS support
+> - ✅ Enhanced health checks
+> - ✅ Production error handling
+> - ✅ Migration verification tools
+> - ✅ Troubleshooting scripts
+
+---
+
 ## Problem Statement
 Railway enforces a **30-second hard HTTP timeout** that cannot be overridden, causing all PDF processing requests to fail with worker timeouts. The async processing infrastructure was implemented in PR #40 but has not been deployed.
 
