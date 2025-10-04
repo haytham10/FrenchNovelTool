@@ -243,8 +243,19 @@ class GeminiService:
     def _post_process_sentences(self, sentences: List[str]) -> List[str]:
         """Apply manual splitting, merging, and normalisation rules to sentences."""
         processed: List[str] = []
-        for raw_sentence in sentences:
-            text = self._normalise_sentence(raw_sentence)
+        for idx, raw_sentence in enumerate(sentences):
+            # Defensive: skip None inputs and log for diagnostics
+            if raw_sentence is None:
+                current_app.logger.warning('Skipping None sentence at index %s during post-processing', idx)
+                continue
+
+            # Normalize with guard
+            try:
+                text = self._normalise_sentence(raw_sentence)
+            except Exception as e:
+                current_app.logger.exception('Error normalising sentence at index %s: %s; raw=%r', idx, e, raw_sentence)
+                continue
+
             if not text:
                 continue
 
@@ -252,11 +263,21 @@ class GeminiService:
                 processed.append(text)
                 continue
 
-            chunks = self._split_sentence(text)
+            try:
+                chunks = self._split_sentence(text)
+            except Exception as e:
+                current_app.logger.exception('Error splitting sentence at index %s: %s; text=%r', idx, e, text)
+                chunks = [text]
+
             original_unsplit = len(chunks) == 1 and chunks[0] == text
 
             for chunk in chunks:
-                chunk = chunk.strip()
+                try:
+                    chunk = (chunk or '').strip()
+                except Exception:
+                    # If chunk is unexpectedly non-string, coerce and continue
+                    chunk = str(chunk).strip() if chunk is not None else ''
+
                 if not chunk:
                     continue
 
@@ -265,10 +286,12 @@ class GeminiService:
                 else:
                     processed.append(chunk)
 
-        return [sentence.strip() for sentence in processed if sentence.strip()]
+        return [sentence.strip() for sentence in processed if sentence and sentence.strip()]
 
     def _split_sentence(self, sentence: str) -> List[str]:
         """Split sentences at natural boundaries while respecting word limits."""
+        # Defensive: coerce to string so None or other types don't crash
+        sentence = '' if sentence is None else str(sentence)
         words = sentence.split()
         if len(words) <= self.sentence_length_limit:
             return [sentence]
@@ -298,7 +321,9 @@ class GeminiService:
 
     def _normalise_sentence(self, sentence: str) -> str:
         """Normalise whitespace and optional hyphenation fixes."""
-        text = sentence.replace('\n', ' ').strip()
+        if sentence is None:
+            return ''
+        text = str(sentence).replace('\n', ' ').strip()
         if self.fix_hyphenation:
             text = re.sub(r'(\w)-\s+(\w)', r'\1\2', text)
         text = re.sub(r'\s+', ' ', text)
@@ -308,7 +333,9 @@ class GeminiService:
 
     def _looks_like_dialogue(self, sentence: str) -> bool:
         """Determine whether the sentence is likely dialogue."""
-        stripped = sentence.strip()
+        if sentence is None:
+            return False
+        stripped = str(sentence).strip()
         if any(stripped.startswith(ch) for ch in self.DIALOGUE_BOUNDARIES):
             return True
         if stripped.endswith((':', '—')):

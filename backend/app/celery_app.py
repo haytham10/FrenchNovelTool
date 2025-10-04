@@ -37,6 +37,11 @@ def make_celery(app: Flask) -> Celery:
         worker_max_tasks_per_child=50,  # Prevent memory leaks
         task_acks_late=True,  # Acknowledge after task completion
         task_reject_on_worker_lost=True,  # Re-queue if worker crashes
+        # Retain existing startup retry behavior for broker connections.
+        # Celery 6.0+ changes how connection retries on startup are handled;
+        # setting this to True preserves the previous behavior and silences
+        # the deprecation warning about broker_connection_retry.
+        broker_connection_retry_on_startup=True,
     )
     
     # Make Celery tasks work with Flask app context

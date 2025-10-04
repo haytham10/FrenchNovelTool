@@ -7,7 +7,7 @@ from typing import Optional
 import base64
 import tempfile
 import PyPDF2
-from celery import group
+from celery import group, chord
 from celery.exceptions import SoftTimeLimitExceeded
 
 logger = logging.getLogger(__name__)
@@ -31,17 +31,6 @@ def emit_progress(job_id: int):
         emit_job_progress(job_id)
     except Exception as e:
         logger.warning(f"Failed to emit WebSocket progress for job {job_id}: {e}")
-
-def get_celery():
-    """Get celery instance (deferred import to avoid circular dependency)"""
-    from app import celery
-    return celery
-
-
-def get_db():
-    """Get database instance with connection retry logic"""
-    from app import db
-    return db
 
 
 def safe_db_commit(db, max_retries=3, retry_delay=1):
@@ -137,15 +126,33 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
             min_sentence_length=settings.get('min_sentence_length', 2),
         )
         
-        # Extract text from chunk
+        # Extract text from chunk. Prefer in-memory base64 chunk data
+        # (produced by ChunkingService) so workers do not rely on a shared
+        # filesystem. Fallback to chunk_info['file_path'] when provided.
         text = ""
-        with open(chunk_info['file_path'], 'rb') as pdf_file:
+        if chunk_info.get('file_b64'):
+            import io
+            chunk_bytes = base64.b64decode(chunk_info['file_b64'])
+            pdf_file = io.BytesIO(chunk_bytes)
             pdf_reader = PyPDF2.PdfReader(pdf_file)
             for page in pdf_reader.pages:
-                text += page.extract_text() + "\n"
+                text += (page.extract_text() or "") + "\n"
+        else:
+            # Fallback to file path if present
+            with open(chunk_info['file_path'], 'rb') as pdf_file:
+                pdf_reader = PyPDF2.PdfReader(pdf_file)
+                for page in pdf_reader.pages:
+                    text += (page.extract_text() or "") + "\n"
         
         # If no extractable text, fail this chunk early
         if not text.strip():
+            # Cleanup chunk file before returning
+            try:
+                if os.path.exists(chunk_info['file_path']):
+                    os.remove(chunk_info['file_path'])
+            except Exception:
+                pass
+            
             return {
                 'chunk_id': chunk_info['chunk_id'],
                 'status': 'failed',
@@ -158,6 +165,14 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
         prompt = gemini_service.build_prompt()
         result = gemini_service.normalize_text(text, prompt)
         
+        # Cleanup chunk file after processing only if a filesystem path was used
+        try:
+            fp = chunk_info.get('file_path')
+            if fp and os.path.exists(fp):
+                os.remove(fp)
+        except Exception as e:
+            logger.warning(f"Failed to cleanup chunk file {chunk_info.get('file_path')}: {e}")
+        
         return {
             'chunk_id': chunk_info['chunk_id'],
             'sentences': result['sentences'],
@@ -168,6 +183,14 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
         }
         
     except SoftTimeLimitExceeded:
+        # Cleanup chunk file before returning
+        try:
+            fp = chunk_info.get('file_path')
+            if fp and os.path.exists(fp):
+                os.remove(fp)
+        except Exception:
+            pass
+        
         return {
             'chunk_id': chunk_info['chunk_id'],
             'status': 'failed',
@@ -176,6 +199,48 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
             'end_page': chunk_info['end_page']
         }
     except Exception as e:
+        # Decide whether to retry on transient errors
+        from flask import current_app
+
+        def _is_transient(err: Exception) -> bool:
+            transient_types = (TimeoutError, ConnectionError)
+            try:
+                import requests  # type: ignore
+                transient_types = transient_types + (requests.exceptions.RequestException,)
+            except Exception:
+                pass
+            # Also check by class name to avoid importing optional libs
+            name = err.__class__.__name__.lower()
+            msg = str(err).lower()
+            retryable_by_name = any(k in name for k in [
+                'timeout', 'temporarilyunavailable', 'serviceunavailable', 'toomanyrequests', 'ratelimit', 'deadline'
+            ])
+            retryable_by_msg = any(k in msg for k in [
+                'timeout', 'temporary', 'try again', 'rate limit', '429', 'unavailable', 'deadline'
+            ])
+            return isinstance(err, transient_types) or retryable_by_name or retryable_by_msg
+
+        max_retries = int(current_app.config.get('CHUNK_TASK_MAX_RETRIES', current_app.config.get('GEMINI_MAX_RETRIES', 3)))
+        base_delay = int(current_app.config.get('CHUNK_TASK_RETRY_DELAY', current_app.config.get('GEMINI_RETRY_DELAY', 1)))
+
+        if _is_transient(e) and self.request.retries < max_retries:
+            # Exponential backoff with jitter-like cap
+            delay = min(base_delay * (2 ** self.request.retries), 60)
+            logger.warning(
+                "Chunk %s transient error, scheduling retry %s/%s in %ss: %s",
+                chunk_info.get('chunk_id'), self.request.retries + 1, max_retries, delay, e
+            )
+            # Do NOT cleanup the file_path if present; we want it available for the retry
+            raise self.retry(exc=e, countdown=delay, max_retries=max_retries)
+
+        # Non-transient or retries exhausted: cleanup and return failed
+        try:
+            fp = chunk_info.get('file_path')
+            if fp and os.path.exists(fp):
+                os.remove(fp)
+        except Exception:
+            pass
+
         return {
             'chunk_id': chunk_info['chunk_id'],
             'status': 'failed',
@@ -225,6 +290,93 @@ def merge_chunk_results(chunk_results: List[Dict]) -> List[Dict]:
                     seen_sentences.add(sentence_key)
     
     return all_sentences
+
+
+@get_celery().task(bind=True, name='app.tasks.finalize_job_results')
+def finalize_job_results(self, chunk_results, job_id):
+    """
+    Finalize job after all chunks complete (chord callback).
+    
+    Args:
+        chunk_results: List of results from all process_chunk tasks
+        job_id: Job ID to finalize
+    """
+    db = get_db()
+    Job, User = get_models()
+    JOB_STATUS_PROCESSING, JOB_STATUS_COMPLETED, JOB_STATUS_FAILED, _ = get_constants()
+    
+    try:
+        logger.info(f"Job {job_id}: finalizing {len(chunk_results)} chunk results")
+        
+        # Merge chunk results
+        all_sentences = merge_chunk_results(chunk_results)
+        
+        # Calculate metrics
+        total_tokens = sum(r.get('tokens', 0) for r in chunk_results if r.get('status') == 'success')
+        failed_chunks = [r['chunk_id'] for r in chunk_results if r.get('status') == 'failed']
+        success_count = len([r for r in chunk_results if r.get('status') == 'success'])
+        
+        # Update job with results
+        job = Job.query.get(job_id)
+        if not job:
+            raise ValueError(f"Job {job_id} not found")
+        
+        if success_count == 0:
+            job.status = JOB_STATUS_FAILED
+            job.current_step = "Failed"
+            job.error_message = "All chunks failed to process. Check API credentials or PDF content."
+            # Add detailed failure reasons to the logs for diagnostics
+            for r in chunk_results:
+                logger.error("Job %s: chunk %s failed with error: %s", job_id, r.get('chunk_id'), r.get('error'))
+        else:
+            job.status = JOB_STATUS_COMPLETED
+            job.current_step = "Completed"
+        
+        job.progress_percent = 100
+        job.processed_chunks = len(chunk_results)
+        job.actual_tokens = total_tokens
+        job.gemini_tokens_used = total_tokens
+        job.gemini_api_calls = success_count
+        job.completed_at = datetime.utcnow()
+        job.chunk_results = chunk_results
+        job.failed_chunks = failed_chunks if failed_chunks else None
+        
+        # Calculate processing time
+        if job.started_at:
+            processing_time = (job.completed_at - job.started_at).total_seconds()
+            job.processing_time_seconds = int(processing_time)
+        
+        safe_db_commit(db)
+        
+        # Emit final WebSocket update
+        emit_progress(job_id)
+        
+        logger.info(f"Job {job_id}: finalized status={job.status} sentences={len(all_sentences)}")
+        
+        return {
+            'status': 'success',
+            'sentences': all_sentences,
+            'total_tokens': total_tokens,
+            'chunks_processed': len(chunk_results),
+            'failed_chunks': failed_chunks
+        }
+        
+    except Exception as e:
+        logger.error(f"Job {job_id}: finalization failed: {e}")
+        
+        # Mark job as failed
+        try:
+            job = Job.query.get(job_id)
+            if job:
+                job.status = JOB_STATUS_FAILED
+                job.error_message = f"Finalization error: {str(e)[:512]}"
+                job.completed_at = datetime.utcnow()
+                safe_db_commit(db)
+                emit_progress(job_id)
+        except Exception:
+            pass
+        
+        raise
 
 
 @get_celery().task(bind=True, name='app.tasks.process_pdf_async')
@@ -335,56 +487,40 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
             logger.info("Job %s: processing single chunk %s", job_id, chunks[0].get('file_path'))
             result = process_chunk.run(chunks[0], user_id, settings)
             chunk_results = [result]
+            
+            # Update progress as chunks complete
+            job = Job.query.get(job_id)
+            job.processed_chunks = len(chunk_results)
+            job.progress_percent = 75
+            job.current_step = "Merging results"
+            safe_db_commit(db)
+            emit_progress(job_id)
         else:
-            # Sequential processing to avoid nested Celery blocking inside a task
-            chunk_results = []
-            total = len(chunks)
-            for idx, chunk in enumerate(chunks, start=1):
-                try:
-                    logger.info("Job %s: processing chunk %d/%d path=%s", job_id, idx, total, chunk.get('file_path'))
-                    # Update job state to indicate this chunk has started processing so
-                    # frontend shows "Processing chunk X/Y" immediately instead of
-                    # waiting until the chunk completes.
-                    try:
-                        job = Job.query.get(job_id)
-                        if job:
-                            job.current_step = f"Processing chunk {idx}/{total}"
-                            # Don't change processed_chunks here (only increment after success)
-                            safe_db_commit(db)
-                            emit_progress(job_id)
-                    except Exception:
-                        logger.debug("Failed to emit start-of-chunk progress for job %s", job_id)
-
-                    result = process_chunk.run(chunk, user_id, settings)
-                except Exception as _exc:
-                    result = {
-                        'chunk_id': chunk.get('chunk_id', idx-1),
-                        'status': 'failed',
-                        'error': str(_exc),
-                        'start_page': chunk.get('start_page'),
-                        'end_page': chunk.get('end_page')
-                    }
-
-                chunk_results.append(result)
-                logger.info("Job %s: chunk %d status=%s", job_id, idx, result.get('status'))
-
-                # Update progress incrementally (15% -> 75%)
-                job = Job.query.get(job_id)
-                job.processed_chunks = idx
-                if job.total_chunks:
-                    pct = 15 + int((idx / job.total_chunks) * 60)
-                    job.progress_percent = max(job.progress_percent or 15, pct)
-                    job.current_step = f"Processed {idx}/{job.total_chunks} chunks"
-                safe_db_commit(db)
-                emit_progress(job_id)
+            # Multiple chunks - use chord for parallel processing
+            logger.info(f"Job {job_id}: dispatching {len(chunks)} chunks for parallel processing")
+            
+            # Create a chord: group of chunk tasks + callback to finalize
+            chunk_tasks = [
+                process_chunk.s(chunk, user_id, settings)
+                for chunk in chunks
+            ]
+            
+            # Use chord to process all chunks in parallel, then call finalize_job_results
+            callback = finalize_job_results.s(job_id=job_id)
+            chord_result = chord(chunk_tasks)(callback)
+            
+            logger.info(f"Job {job_id}: dispatched {len(chunks)} chunks in parallel, chord_id={chord_result.id}")
+            
+            # Return early; finalize_job_results will complete the job
+            return {
+                'status': 'dispatched',
+                'message': f'{len(chunks)} chunks processing in parallel',
+                'job_id': job_id,
+                'chord_id': str(chord_result.id)
+            }
         
-        # Update progress as chunks complete
-        job = Job.query.get(job_id)
-        job.processed_chunks = len(chunk_results)
-        job.progress_percent = 75
-        job.current_step = "Merging results"
-        safe_db_commit(db)
-        emit_progress(job_id)
+        # For single-chunk jobs only: merge and finalize inline
+        # (Multi-chunk jobs return early above; finalize_job_results handles completion)
         
         # Merge chunk results
         if not chunk_results:
