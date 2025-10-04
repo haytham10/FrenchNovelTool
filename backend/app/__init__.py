@@ -11,6 +11,7 @@ from config import Config
 from .utils.error_handlers import register_error_handlers
 from .utils.cors_handlers import setup_cors_handling
 from flask_sqlalchemy import SQLAlchemy
+from .celery_app import make_celery
 
 db = SQLAlchemy()
 migrate = Migrate()
@@ -19,6 +20,7 @@ limiter = Limiter(
     key_func=get_remote_address,
     default_limits=[]
 )
+celery = None  # Will be initialized in create_app
 
 def create_app(config_class=Config):
     app = Flask(__name__)
@@ -44,6 +46,10 @@ def create_app(config_class=Config):
     
     if app.config['RATELIMIT_ENABLED']:
         limiter.init_app(app)
+    
+    # Initialize Celery
+    global celery
+    celery = make_celery(app)
     
     # Configure logging
     configure_logging(app)

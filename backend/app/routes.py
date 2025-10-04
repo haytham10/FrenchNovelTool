@@ -1,5 +1,6 @@
 """API routes for the French Novel Tool"""
 import json
+from datetime import datetime
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from marshmallow import ValidationError
@@ -553,4 +554,198 @@ def duplicate_history_entry(entry_id):
         
     except Exception as e:
         current_app.logger.exception(f'User {user.email} failed to duplicate entry {entry_id}')
+        return jsonify({'error': str(e)}), 500
+
+
+@main_bp.route('/jobs/<int:job_id>', methods=['GET'])
+@jwt_required()
+def get_job_status(job_id):
+    """Get job status and progress"""
+    user_id = int(get_jwt_identity())
+    job = Job.query.get_or_404(job_id)
+    
+    if job.user_id != user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    # Get Celery task state if available
+    task_state = None
+    if job.celery_task_id and job.status == JOB_STATUS_PROCESSING:
+        from app import celery
+        task = celery.AsyncResult(job.celery_task_id)
+        task_state = {
+            'state': task.state,
+            'info': task.info if task.info else {}
+        }
+    
+    response = job.to_dict()
+    if task_state:
+        response['task_state'] = task_state
+    
+    return jsonify(response), 200
+
+
+@main_bp.route('/jobs/<int:job_id>/cancel', methods=['POST'])
+@jwt_required()
+def cancel_job(job_id):
+    """Cancel a running job"""
+    user_id = int(get_jwt_identity())
+    job = Job.query.get_or_404(job_id)
+    
+    if job.user_id != user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    if job.status not in [JOB_STATUS_PENDING, JOB_STATUS_PROCESSING]:
+        return jsonify({'error': f'Cannot cancel job with status {job.status}'}), 400
+    
+    # Mark job as cancelled
+    job.is_cancelled = True
+    job.cancelled_at = datetime.utcnow()
+    job.cancelled_by = user_id
+    job.status = 'cancelled'
+    db.session.commit()
+    
+    # Try to revoke Celery task if it exists
+    if job.celery_task_id:
+        from app import celery
+        celery.control.revoke(job.celery_task_id, terminate=True)
+    
+    # Refund credits if any were reserved
+    if job.estimated_credits > 0:
+        CreditService.refund_credits(
+            user_id=user_id,
+            job_id=job.id,
+            amount=job.estimated_credits,
+            description='Refund for cancelled job'
+        )
+    
+    return jsonify({
+        'message': 'Job cancelled successfully',
+        'job_id': job.id,
+        'status': job.status
+    }), 200
+
+
+@main_bp.route('/process-pdf-async', methods=['POST'])
+@jwt_required()
+@limiter.limit("10 per hour")
+def process_pdf_async_endpoint():
+    """
+    Start asynchronous PDF processing with chunking support.
+    Returns job_id immediately for progress tracking.
+    """
+    from app.tasks import process_pdf_async
+    
+    user_id = int(get_jwt_identity())
+    user = User.query.get(user_id)
+    
+    if not user or not user.is_active:
+        return jsonify({'error': 'User not found or inactive'}), 401
+    
+    # Check if job_id is provided (credit flow)
+    job_id = request.form.get('job_id')
+    
+    if not job_id:
+        return jsonify({'error': 'job_id is required for async processing'}), 400
+    
+    if 'pdf_file' not in request.files:
+        return jsonify({'error': 'No PDF file provided'}), 400
+
+    file = request.files['pdf_file']
+    original_filename = file.filename
+    
+    # Validate file
+    try:
+        validate_pdf_file(file)
+    except ValidationError as e:
+        return jsonify({'error': str(e)}), 400
+
+    pdf_service = PDFService(file)
+    
+    try:
+        temp_file_path = pdf_service.save_to_temp()
+        
+        # Verify job
+        job = Job.query.get(int(job_id))
+        if not job or job.user_id != user_id:
+            return jsonify({'error': 'Job not found or unauthorized'}), 404
+        
+        if job.status != JOB_STATUS_PENDING:
+            return jsonify({'error': f'Job is in {job.status} status, cannot process'}), 400
+        
+        # Get settings from request
+        settings = user_settings_service.get_user_settings(user_id)
+        form_data = request.form
+
+        def _coerce_bool(value, default):
+            if value is None:
+                return default
+            if isinstance(value, bool):
+                return value
+            return str(value).strip().lower() in {'1', 'true', 'yes', 'on'}
+
+        def _coerce_int(value, default):
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return default
+
+        sentence_length_limit = _coerce_int(
+            form_data.get('sentence_length_limit'),
+            settings.get('sentence_length_limit', 8)
+        )
+        gemini_model = (form_data.get('gemini_model') or settings.get('gemini_model', 'balanced')).lower()
+        if gemini_model not in {'balanced', 'quality', 'speed'}:
+            gemini_model = 'balanced'
+        ignore_dialogue = _coerce_bool(
+            form_data.get('ignore_dialogue'),
+            settings.get('ignore_dialogue', False)
+        )
+        preserve_formatting = _coerce_bool(
+            form_data.get('preserve_formatting'),
+            settings.get('preserve_formatting', True)
+        )
+        fix_hyphenation = _coerce_bool(
+            form_data.get('fix_hyphenation'),
+            settings.get('fix_hyphenation', True)
+        )
+        min_sentence_length = max(
+            1,
+            _coerce_int(
+                form_data.get('min_sentence_length'),
+                settings.get('min_sentence_length', 2)
+            )
+        )
+        min_sentence_length = min(min_sentence_length, sentence_length_limit)
+
+        processing_settings = {
+            'sentence_length_limit': sentence_length_limit,
+            'gemini_model': gemini_model,
+            'ignore_dialogue': ignore_dialogue,
+            'preserve_formatting': preserve_formatting,
+            'fix_hyphenation': fix_hyphenation,
+            'min_sentence_length': min_sentence_length,
+        }
+        
+        # Enqueue async task
+        task = process_pdf_async.apply_async(
+            args=[job.id, temp_file_path, user_id, processing_settings],
+            task_id=f'job_{job.id}_{datetime.utcnow().timestamp()}'
+        )
+        
+        # Update job with task ID
+        job.celery_task_id = task.id
+        job.processing_settings = processing_settings
+        db.session.commit()
+        
+        current_app.logger.info(f'User {user.email} started async processing for job {job.id}')
+        
+        return jsonify({
+            'job_id': job.id,
+            'task_id': task.id,
+            'status': 'pending',
+            'message': 'PDF processing started'
+        }), 202  # HTTP 202 Accepted
+        
+    except Exception as e:
+        current_app.logger.exception(f'Failed to start async processing for user {user.email}')
         return jsonify({'error': str(e)}), 500
