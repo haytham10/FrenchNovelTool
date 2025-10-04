@@ -79,7 +79,6 @@ class AuthService:
                     'https://www.googleapis.com/auth/userinfo.profile',
                     'https://www.googleapis.com/auth/spreadsheets',
                     'https://www.googleapis.com/auth/drive.file',
-                    'https://www.googleapis.com/auth/drive.readonly'
                 ],
                 redirect_uri='postmessage'  # For popup flow
             )
@@ -92,7 +91,6 @@ class AuthService:
             required_scopes = {
                 'https://www.googleapis.com/auth/spreadsheets',
                 'https://www.googleapis.com/auth/drive.file',
-                'https://www.googleapis.com/auth/drive.readonly',
             }
             granted_scopes = set(credentials.scopes or [])
             missing = required_scopes - granted_scopes
