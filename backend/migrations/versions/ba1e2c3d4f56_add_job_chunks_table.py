@@ -39,12 +39,13 @@ def upgrade():
         op.create_index('idx_job_chunk_unique', 'job_chunks', ['job_id', 'chunk_index'], unique=True)
     else:
         # Table exists (partial migration ran before). Ensure indexes exist.
-        existing_indexes = {idx['name'] for idx in inspector.get_indexes('job_chunks')}
-        if 'ix_job_chunks_job_id' not in existing_indexes:
+        # Use Postgres to_regclass to robustly detect existing indexes even if inspector misses them.
+        get_index = lambda name: bind.execute(sa.text("SELECT to_regclass(:iname)"), {'iname': f'public.{name}'}).scalar()
+        if not get_index('ix_job_chunks_job_id'):
             op.create_index('ix_job_chunks_job_id', 'job_chunks', ['job_id'])
-        if 'ix_job_chunks_status' not in existing_indexes:
+        if not get_index('ix_job_chunks_status'):
             op.create_index('ix_job_chunks_status', 'job_chunks', ['status'])
-        if 'idx_job_chunk_unique' not in existing_indexes:
+        if not get_index('idx_job_chunk_unique'):
             op.create_index('idx_job_chunk_unique', 'job_chunks', ['job_id', 'chunk_index'], unique=True)
 
 
@@ -52,11 +53,12 @@ def downgrade():
     bind = op.get_bind()
     inspector = sa.inspect(bind)
     if 'job_chunks' in inspector.get_table_names():
-        existing_indexes = {idx['name'] for idx in inspector.get_indexes('job_chunks')}
-        if 'idx_job_chunk_unique' in existing_indexes:
+        # Use to_regclass to check index existence before dropping.
+        get_index = lambda name: bind.execute(sa.text("SELECT to_regclass(:iname)"), {'iname': f'public.{name}'}).scalar()
+        if get_index('idx_job_chunk_unique'):
             op.drop_index('idx_job_chunk_unique', table_name='job_chunks')
-        if 'ix_job_chunks_status' in existing_indexes:
+        if get_index('ix_job_chunks_status'):
             op.drop_index('ix_job_chunks_status', table_name='job_chunks')
-        if 'ix_job_chunks_job_id' in existing_indexes:
+        if get_index('ix_job_chunks_job_id'):
             op.drop_index('ix_job_chunks_job_id', table_name='job_chunks')
         op.drop_table('job_chunks')
