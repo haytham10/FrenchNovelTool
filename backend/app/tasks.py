@@ -342,6 +342,19 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
             for idx, chunk in enumerate(chunks, start=1):
                 try:
                     logger.info("Job %s: processing chunk %d/%d path=%s", job_id, idx, total, chunk.get('file_path'))
+                    # Update job state to indicate this chunk has started processing so
+                    # frontend shows "Processing chunk X/Y" immediately instead of
+                    # waiting until the chunk completes.
+                    try:
+                        job = Job.query.get(job_id)
+                        if job:
+                            job.current_step = f"Processing chunk {idx}/{total}"
+                            # Don't change processed_chunks here (only increment after success)
+                            safe_db_commit(db)
+                            emit_progress(job_id)
+                    except Exception:
+                        logger.debug("Failed to emit start-of-chunk progress for job %s", job_id)
+
                     result = process_chunk.run(chunk, user_id, settings)
                 except Exception as _exc:
                     result = {
