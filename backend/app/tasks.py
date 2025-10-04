@@ -17,9 +17,42 @@ def get_celery():
 
 
 def get_db():
-    """Get database instance"""
+    """Get database instance with connection retry logic"""
     from app import db
     return db
+
+
+def safe_db_commit(db, max_retries=3, retry_delay=1):
+    """
+    Safely commit database changes with retry logic for cloud databases.
+    
+    Handles transient network errors common with Supabase/Railway deployments.
+    
+    Args:
+        db: SQLAlchemy database instance
+        max_retries: Maximum number of commit attempts
+        retry_delay: Delay between retries in seconds
+        
+    Returns:
+        bool: True if commit succeeded, False otherwise
+    """
+    import time
+    from sqlalchemy.exc import OperationalError, DBAPIError
+    
+    for attempt in range(max_retries):
+        try:
+            db.session.commit()
+            return True
+        except (OperationalError, DBAPIError) as e:
+            db.session.rollback()
+            if attempt < max_retries - 1:
+                # Transient error - retry
+                time.sleep(retry_delay * (attempt + 1))  # Exponential backoff
+                continue
+            else:
+                # Max retries exceeded
+                raise
+    return False
 
 
 def get_models():
@@ -194,14 +227,14 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
         if job.is_cancelled:
             job.status = JOB_STATUS_FAILED
             job.error_message = "Job cancelled by user"
-            db.session.commit()
+            safe_db_commit(db)
             return {'status': 'cancelled'}
         
         job.status = JOB_STATUS_PROCESSING
         job.started_at = datetime.utcnow()
         job.current_step = "Analyzing PDF"
         job.progress_percent = 5
-        db.session.commit()
+        safe_db_commit(db)
         
         # Calculate chunks
         # Ensure file exists in this container; reconstruct if needed
@@ -224,7 +257,7 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
         job.total_chunks = chunk_config['num_chunks']
         job.current_step = f"Splitting into {chunk_config['num_chunks']} chunks"
         job.progress_percent = 10
-        db.session.commit()
+        safe_db_commit(db)
         
         # Split PDF into chunks
         chunks = chunking_service.split_pdf(file_path, chunk_config)
@@ -235,12 +268,12 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
             chunking_service.cleanup_chunks(chunks)
             job.status = JOB_STATUS_FAILED
             job.error_message = "Job cancelled by user"
-            db.session.commit()
+            safe_db_commit(db)
             return {'status': 'cancelled'}
         
         job.current_step = "Processing chunks"
         job.progress_percent = 15
-        db.session.commit()
+        safe_db_commit(db)
         
         # Process chunks in parallel if multiple chunks
         if len(chunks) == 1:
@@ -261,7 +294,7 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
         job.processed_chunks = len(chunk_results)
         job.progress_percent = 75
         job.current_step = "Merging results"
-        db.session.commit()
+        safe_db_commit(db)
         
         # Merge chunk results
         all_sentences = merge_chunk_results(chunk_results)
@@ -287,7 +320,7 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
             processing_time = (job.completed_at - job.started_at).total_seconds()
             job.processing_time_seconds = int(processing_time)
         
-        db.session.commit()
+        safe_db_commit(db)
         
         return {
             'status': 'success',
@@ -303,7 +336,7 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
             job.status = JOB_STATUS_FAILED
             job.error_message = str(e)[:512]
             job.completed_at = datetime.utcnow()
-            db.session.commit()
+            safe_db_commit(db)
         raise
         
     finally:

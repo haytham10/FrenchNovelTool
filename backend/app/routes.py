@@ -32,11 +32,39 @@ settings_schema = UserSettingsSchema()
 def health_check():
     """Health check endpoint for monitoring and load balancers"""
     from app.constants import API_VERSION, API_SERVICE_NAME
-    return jsonify({
+    import redis
+    import os
+    
+    health = {
         'status': 'healthy',
         'service': API_SERVICE_NAME,
-        'version': API_VERSION
-    }), 200
+        'version': API_VERSION,
+        'checks': {}
+    }
+    
+    # Check database connection
+    try:
+        db.session.execute(db.text('SELECT 1'))
+        health['checks']['database'] = 'ok'
+    except Exception as e:
+        health['checks']['database'] = f'error: {str(e)[:100]}'
+        health['status'] = 'unhealthy'
+    
+    # Check Redis connection (if configured)
+    redis_url = os.getenv('REDIS_URL')
+    if redis_url and redis_url != 'memory://':
+        try:
+            r = redis.from_url(redis_url, socket_connect_timeout=5, socket_timeout=5)
+            r.ping()
+            health['checks']['redis'] = 'ok'
+        except Exception as e:
+            health['checks']['redis'] = f'error: {str(e)[:100]}'
+            health['status'] = 'unhealthy'
+    else:
+        health['checks']['redis'] = 'not configured (using memory)'
+    
+    status_code = 200 if health['status'] == 'healthy' else 503
+    return jsonify(health), status_code
 
 
 @main_bp.route('/extract-pdf-text', methods=['POST'])

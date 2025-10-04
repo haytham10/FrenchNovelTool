@@ -92,11 +92,39 @@ class Config:
     SQLALCHEMY_DATABASE_URI = database_url
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
+    # Database Connection Pool Configuration (critical for Supabase + Railway deployment)
+    # These settings ensure stable connections with cloud-managed Postgres
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        'pool_size': int(os.getenv('DB_POOL_SIZE', '10')),           # Max connections per container
+        'pool_pre_ping': True,                                        # Test connections before use
+        'pool_recycle': int(os.getenv('DB_POOL_RECYCLE', '3600')),  # Recycle connections every hour
+        'max_overflow': int(os.getenv('DB_MAX_OVERFLOW', '5')),      # Allow burst connections
+        'connect_args': {
+            'connect_timeout': int(os.getenv('DB_CONNECT_TIMEOUT', '10')),  # Connection timeout
+            'options': '-c statement_timeout=30000'  # 30s query timeout to prevent hanging
+        }
+    }
+    
     # Logging
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
     LOG_FILE = os.getenv('LOG_FILE', os.path.join(basedir, 'logs', 'app.log'))
     
     # Celery Configuration
-    CELERY_BROKER_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
-    CELERY_RESULT_BACKEND = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+    # Support both standard Redis and Redis with SSL (Railway/Upstash)
+    redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+    
+    # Parse Redis URL and add SSL if needed for production
+    if redis_url.startswith('rediss://') or (redis_url.startswith('redis://') and os.getenv('REDIS_TLS', 'false').lower() == 'true'):
+        # Already using rediss:// or TLS requested
+        if not redis_url.startswith('rediss://'):
+            redis_url = redis_url.replace('redis://', 'rediss://', 1)
+        # Add SSL cert verification settings
+        redis_broker_url = redis_url + '?ssl_cert_reqs=none' if '?' not in redis_url else redis_url + '&ssl_cert_reqs=none'
+        redis_backend_url = redis_url + '?ssl_cert_reqs=none' if '?' not in redis_url else redis_url + '&ssl_cert_reqs=none'
+    else:
+        redis_broker_url = redis_url
+        redis_backend_url = redis_url
+    
+    CELERY_BROKER_URL = redis_broker_url
+    CELERY_RESULT_BACKEND = redis_backend_url
     CELERY_TASK_IGNORE_RESULT = False  # We need results for progress tracking
