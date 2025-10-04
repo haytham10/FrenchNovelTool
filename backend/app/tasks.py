@@ -324,7 +324,7 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
             safe_db_commit(db)
             return {'status': 'cancelled'}
         
-        job.current_step = "Processing chunks"
+        job.current_step = "Processing "
         job.progress_percent = 15
         safe_db_commit(db)
         emit_progress(job_id)

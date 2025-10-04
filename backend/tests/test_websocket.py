@@ -43,13 +43,13 @@ def mock_job():
     job.user_id = 123
     job.status = 'processing'
     job.progress_percent = 50
-    job.current_step = 'Processing chunks'
+    job.current_step = 'Processing '
     job.to_dict.return_value = {
         'id': 1,
         'user_id': 123,
         'status': 'processing',
         'progress_percent': 50,
-        'current_step': 'Processing chunks'
+        'current_step': 'Processing '
     }
     return job
 
