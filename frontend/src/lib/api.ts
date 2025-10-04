@@ -5,10 +5,21 @@
 import axios, { AxiosError } from 'axios';
 import { getAccessToken, getRefreshToken, setTokens, clearTokens } from './auth';
 
-// Support both variable names to match existing env files and Vercel config
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ||
-  'http://localhost:5000/api/v1';
+const _rawApiBase = (() => {
+  const explicitBase = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const legacyUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (explicitBase) return explicitBase;
+  if (legacyUrl) {
+    return legacyUrl.replace(/\/+$/,'') + '/api/v1';
+  }
+  return 'http://localhost:5000/api/v1';
+})();
+const API_BASE_URL = (() => {
+  if (/^https?:\/\//i.test(_rawApiBase)) return _rawApiBase;
+  // If no scheme provided, default to https in production and http in dev
+  const scheme = process.env.NODE_ENV === 'production' ? 'https://' : 'http://';
+  return `${scheme}${_rawApiBase}`;
+})();
 
 // Create axios instance with default config
 const api = axios.create({
