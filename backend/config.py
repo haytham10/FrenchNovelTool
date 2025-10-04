@@ -67,10 +67,14 @@ class Config:
     
     # Google APIs
     CLIENT_SECRETS_FILE = os.getenv('CLIENT_SECRETS_FILE', os.path.join(basedir, 'client_secret.json'))
-    SCOPES = os.getenv(
-        'GOOGLE_SCOPES',
-        'https://www.googleapis.com/auth/spreadsheets,https://www.googleapis.com/auth/drive.file'
-    ).split(',')
+    SCOPES = [
+        "https://www.googleapis.com/auth/drive.readonly",
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/userinfo.profile",
+        "openid",
+        "https://www.googleapis.com/auth/drive.file"
+    ]
     TOKEN_FILE = os.getenv('TOKEN_FILE', os.path.join(basedir, 'token.json'))
     
     # Database
