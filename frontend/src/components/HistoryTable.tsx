@@ -15,6 +15,7 @@ import { CheckCircle, XCircle, Loader2, RefreshCw, Copy, Eye, Filter, Send, Cale
 import ExportDialog from './ExportDialog';
 import JobCreditDisplay from './JobCreditDisplay';
 import { useRouter } from 'next/navigation';
+import HistoryDetailDialog from './HistoryDetailDialog';
 
 type Order = 'asc' | 'desc';
 type StatusFilter = 'all' | 'success' | 'failed' | 'processing';
@@ -49,6 +50,8 @@ export default function HistoryTable() {
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [detailsDrawerOpen, setDetailsDrawerOpen] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<HistoryEntry | null>(null);
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  const [detailEntryId, setDetailEntryId] = useState<number | null>(null);
   const [dateRangeStart, setDateRangeStart] = useState<string>('');
   const [dateRangeEnd, setDateRangeEnd] = useState<string>('');
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
@@ -134,8 +137,8 @@ export default function HistoryTable() {
   };
 
   const handleViewDetails = (entry: HistoryEntry) => {
-    setSelectedEntry(entry);
-    setDetailsDrawerOpen(true);
+    setDetailEntryId(entry.id);
+    setDetailDialogOpen(true);
   };
 
   const handleSendToSheets = (entry: HistoryEntry) => {
@@ -720,6 +723,16 @@ export default function HistoryTable() {
           defaultSheetName={`${entryToExport.original_filename.replace('.pdf', '')} - Retry`}
         />
       )}
+
+      {/* History Detail Dialog */}
+      <HistoryDetailDialog
+        entryId={detailEntryId}
+        open={detailDialogOpen}
+        onClose={() => {
+          setDetailDialogOpen(false);
+          setDetailEntryId(null);
+        }}
+      />
     </Box>
   );
 }

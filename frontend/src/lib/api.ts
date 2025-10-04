@@ -86,6 +86,7 @@ export interface LoginResponse {
 
 export interface ProcessingHistory {
   id: number;
+  job_id?: number;
   timestamp: string;
   original_filename: string;
   processed_sentences_count: number;
@@ -94,10 +95,36 @@ export interface ProcessingHistory {
   error_code?: string;
   failed_step?: 'upload' | 'extract' | 'analyze' | 'normalize' | 'export';
   settings?: {
-    sentence_length?: number;
+    sentence_length_limit?: number;
     gemini_model?: string;
     advanced_options?: Record<string, unknown>;
   };
+  exported_to_sheets?: boolean;
+  export_sheet_url?: string;
+}
+
+export interface HistoryDetail extends ProcessingHistory {
+  sentences: Array<{ normalized: string; original: string }>;
+  chunk_ids: number[];
+  chunks: ChunkDetail[];
+}
+
+export interface ChunkDetail {
+  id: number;
+  job_id: number;
+  chunk_id: number;
+  start_page: number;
+  end_page: number;
+  page_count: number;
+  has_overlap: boolean;
+  status: 'pending' | 'processing' | 'success' | 'failed' | 'retry_scheduled';
+  attempts: number;
+  max_retries: number;
+  last_error?: string;
+  last_error_code?: string;
+  processed_at?: string;
+  created_at: string;
+  updated_at?: string;
 }
 
 export interface UserSettings {
@@ -211,6 +238,35 @@ export async function getProcessingHistory(): Promise<ProcessingHistory[]> {
 export const fetchHistory = getProcessingHistory;
 
 /**
+ * Get detailed history entry with sentences and chunk information
+ */
+export async function getHistoryDetail(entryId: number): Promise<HistoryDetail> {
+  const response = await api.get(`/history/${entryId}`);
+  return response.data;
+}
+
+/**
+ * Get chunk details for a history entry
+ */
+export async function getHistoryChunks(entryId: number): Promise<{ chunks: ChunkDetail[] }> {
+  const response = await api.get(`/history/${entryId}/chunks`);
+  return response.data;
+}
+
+/**
+ * Export history entry to Google Sheets
+ */
+export interface ExportHistoryRequest {
+  sheetName?: string;
+  folderId?: string | null;
+}
+
+export async function exportHistoryToSheets(entryId: number, data?: ExportHistoryRequest): Promise<{ spreadsheet_url: string }> {
+  const response = await api.post(`/history/${entryId}/export`, data || {});
+  return response.data;
+}
+
+/**
  * Retry a failed history entry
  */
 export async function retryHistoryEntry(entryId: number): Promise<{ message: string; entry_id: number; settings: Record<string, unknown> }> {
@@ -224,15 +280,6 @@ export async function retryHistoryEntry(entryId: number): Promise<{ message: str
 export async function duplicateHistoryEntry(entryId: number): Promise<{ message: string; settings: Record<string, unknown>; original_filename: string }> {
   const response = await api.post(`/history/${entryId}/duplicate`);
   return response.data;
-}
-
-/**
- * Export history entry to Google Sheets
- */
-export async function exportHistoryToSheet(entryId: number, data: ExportToSheetRequest): Promise<string> {
-  const response = await api.post('/export-to-sheet', data);
-  // Update history entry with spreadsheet URL
-  return response.data.spreadsheet_url;
 }
 
 /**
