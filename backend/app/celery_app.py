@@ -17,6 +17,7 @@ def make_celery(app: Flask) -> Celery:
         app.import_name,
         backend=app.config['CELERY_RESULT_BACKEND'],
         broker=app.config['CELERY_BROKER_URL'],
+        include=['app.tasks'],  # Ensure task modules are registered
     )
     
     # Update Celery config from Flask config

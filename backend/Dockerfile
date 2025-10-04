@@ -2,13 +2,15 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY requirements.txt ./
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy application code
 COPY . .
 
-CMD ["celery", "-A", "app.celery", "worker", "--loglevel=info", "--concurrency=2"]
+# Expose Flower default port
+EXPOSE 5555
+
+# Run Flower monitoring UI
+CMD ["celery", "-A", "app.celery", "flower", "--port=5555"]

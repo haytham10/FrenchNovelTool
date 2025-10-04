@@ -2,6 +2,9 @@
 import os
 from datetime import datetime
 from typing import Dict, List
+from typing import Optional
+import base64
+import tempfile
 import PyPDF2
 from celery import group
 from celery.exceptions import SoftTimeLimitExceeded
@@ -160,7 +163,7 @@ def merge_chunk_results(chunk_results: List[Dict]) -> List[Dict]:
 
 
 @get_celery().task(bind=True, name='app.tasks.process_pdf_async')
-def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings: dict):
+def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings: dict, file_b64: Optional[str] = None):
     """
     Process PDF asynchronously with chunking and progress tracking.
     
@@ -173,6 +176,7 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
     # Get imports
     db = get_db()
     Job, User = get_models()
+    reconstructed_path: Optional[str] = None
     _, _, ChunkingService, _ = get_services()
     JOB_STATUS_PROCESSING, JOB_STATUS_COMPLETED, JOB_STATUS_FAILED, _ = get_constants()
     
@@ -199,6 +203,17 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
         job.progress_percent = 5
         db.session.commit()
         
+        # Calculate chunks
+        # Ensure file exists in this container; reconstruct if needed
+        if not os.path.exists(file_path):
+            if not file_b64:
+                raise FileNotFoundError(f"File not found and no file_b64 provided: {file_path}")
+            fd, reconstructed_path = tempfile.mkstemp(suffix='.pdf')
+            os.close(fd)
+            with open(reconstructed_path, 'wb') as _wf:
+                _wf.write(base64.b64decode(file_b64))
+            file_path = reconstructed_path
+
         # Calculate chunks
         with open(file_path, 'rb') as f:
             page_count = len(PyPDF2.PdfReader(f).pages)
@@ -300,5 +315,10 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
         try:
             if os.path.exists(file_path):
                 os.remove(file_path)
+            # Cleanup reconstructed file and chunks if any
+            if reconstructed_path and os.path.exists(reconstructed_path):
+                os.remove(reconstructed_path)
+        except Exception:
+            pass
         except Exception:
             pass

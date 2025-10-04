@@ -1,5 +1,6 @@
 """API routes for the French Novel Tool"""
 import json
+import base64
 from datetime import datetime
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
@@ -726,9 +727,14 @@ def process_pdf_async_endpoint():
             'min_sentence_length': min_sentence_length,
         }
         
-        # Enqueue async task
+        # Read file and send to worker as base64 so the worker can recreate a temp file
+        with open(temp_file_path, 'rb') as _f:
+            _file_b64 = base64.b64encode(_f.read()).decode('ascii')
+
+        # Enqueue async task (pass file path for same-container runs and file_b64 for cross-container)
         task = process_pdf_async.apply_async(
             args=[job.id, temp_file_path, user_id, processing_settings],
+            kwargs={'file_b64': _file_b64},
             task_id=f'job_{job.id}_{datetime.utcnow().timestamp()}'
         )
         
@@ -737,6 +743,12 @@ def process_pdf_async_endpoint():
         job.processing_settings = processing_settings
         db.session.commit()
         
+        # Cleanup temp file on the API container (worker will reconstruct if needed)
+        try:
+            pdf_service.delete_temp_file()
+        except Exception:
+            pass
+
         current_app.logger.info(f'User {user.email} started async processing for job {job.id}')
         
         return jsonify({
