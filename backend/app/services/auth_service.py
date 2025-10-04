@@ -87,6 +87,25 @@ class AuthService:
             # Exchange code for tokens
             flow.fetch_token(code=code)
             credentials = flow.credentials
+
+            # Ensure required scopes were actually granted by the user
+            required_scopes = {
+                'https://www.googleapis.com/auth/spreadsheets',
+                'https://www.googleapis.com/auth/drive.file',
+                'https://www.googleapis.com/auth/drive.readonly',
+            }
+            granted_scopes = set(credentials.scopes or [])
+            missing = required_scopes - granted_scopes
+            if missing:
+                current_app.logger.warning(
+                    'OAuth scopes missing after code exchange: %s (granted=%s)',
+                    ', '.join(sorted(missing)), ', '.join(sorted(granted_scopes))
+                )
+                # Inform the client to re-initiate consent with the full scopes
+                raise ValueError(
+                    'Insufficient permissions: additional Google Drive access is required. '
+                    'Please sign in again and accept Drive permissions (drive.readonly and drive.file).'
+                )
             
             # Get user info from ID token
             idinfo = id_token.verify_oauth2_token(
