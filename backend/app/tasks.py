@@ -32,17 +32,6 @@ def emit_progress(job_id: int):
     except Exception as e:
         logger.warning(f"Failed to emit WebSocket progress for job {job_id}: {e}")
 
-def get_celery():
-    """Get celery instance (deferred import to avoid circular dependency)"""
-    from app import celery
-    return celery
-
-
-def get_db():
-    """Get database instance with connection retry logic"""
-    from app import db
-    return db
-
 
 def safe_db_commit(db, max_retries=3, retry_delay=1):
     """
