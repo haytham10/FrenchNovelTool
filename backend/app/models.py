@@ -23,7 +23,8 @@ class User(db.Model):
     history = db.relationship('History', backref='user', lazy='dynamic', cascade='all, delete-orphan')
     settings = db.relationship('UserSettings', backref='user', uselist=False, cascade='all, delete-orphan')
     credit_ledger = db.relationship('CreditLedger', backref='user', lazy='dynamic', cascade='all, delete-orphan')
-    jobs = db.relationship('Job', backref='user', lazy='dynamic', cascade='all, delete-orphan')
+    jobs = db.relationship('Job', backref='user', lazy='dynamic', cascade='all, delete-orphan', foreign_keys='Job.user_id')
+    cancelled_jobs = db.relationship('Job', backref='canceller', lazy='dynamic', foreign_keys='Job.cancelled_by')
     
     def __repr__(self):
         return f'<User {self.email}>'
