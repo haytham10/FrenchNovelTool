@@ -1,4 +1,5 @@
 """Celery tasks for asynchronous PDF processing"""
+import logging
 import os
 from datetime import datetime
 from typing import Dict, List
@@ -9,6 +10,7 @@ import PyPDF2
 from celery import group
 from celery.exceptions import SoftTimeLimitExceeded
 
+logger = logging.getLogger(__name__)
 
 def get_celery():
     """Get celery instance (deferred import to avoid circular dependency)"""
@@ -122,6 +124,16 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
             for page in pdf_reader.pages:
                 text += page.extract_text() + "\n"
         
+        # If no extractable text, fail this chunk early
+        if not text.strip():
+            return {
+                'chunk_id': chunk_info['chunk_id'],
+                'status': 'failed',
+                'error': 'No extractable text in PDF chunk (may be scanned/images only).',
+                'start_page': chunk_info['start_page'],
+                'end_page': chunk_info['end_page']
+            }
+
         # Process with Gemini
         prompt = gemini_service.build_prompt()
         result = gemini_service.normalize_text(text, prompt)
@@ -261,6 +273,25 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
         
         # Split PDF into chunks
         chunks = chunking_service.split_pdf(file_path, chunk_config)
+        logger.info(
+            "Job %s: chunking complete strategy=%s chunk_size=%s total_pages=%s num_chunks(expected)=%s num_chunks(actual)=%s",
+            job_id,
+            chunk_config.get('strategy'),
+            chunk_config.get('chunk_size'),
+            chunk_config.get('total_pages'),
+            chunk_config.get('num_chunks'),
+            len(chunks),
+        )
+
+        if not chunks:
+            job = Job.query.get(job_id)
+            job.status = JOB_STATUS_FAILED
+            job.current_step = "Failed: No chunks produced"
+            job.error_message = "Chunking produced zero chunks for a non-empty PDF."
+            job.completed_at = datetime.utcnow()
+            safe_db_commit(db)
+            logger.error("Job %s: split_pdf returned zero chunks", job_id)
+            return {'status': 'failed', 'error': 'No chunks produced'}
         
         # Check for cancellation again
         job = Job.query.get(job_id)
@@ -277,36 +308,38 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
         
         # Process chunks in parallel if multiple chunks
         if len(chunks) == 1:
-            # Single chunk - process directly
-            result = process_chunk(chunks[0], user_id, settings)
+            # Single chunk - process directly (call underlying function)
+            logger.info("Job %s: processing single chunk %s", job_id, chunks[0].get('file_path'))
+            result = process_chunk.run(chunks[0], user_id, settings)
             chunk_results = [result]
         else:
-            # Multiple chunks - process in parallel using Celery group
-            job_group = group([
-                process_chunk.s(chunk, user_id, settings)
-                for chunk in chunks
-            ])
-            async_result = job_group.apply_async()
-            # Avoid calling .get() inside task; iterate results safely
+            # Sequential processing to avoid nested Celery blocking inside a task
             chunk_results = []
-            try:
-                for res in async_result.iterate():  # yields each result as it arrives
-                    chunk_results.append(res)
-                    # Update progress incrementally
-                    job = Job.query.get(job_id)
-                    job.processed_chunks = len(chunk_results)
-                    if job.total_chunks:
-                        # scale from 15 -> 75 during processing
-                        pct = 15 + int((len(chunk_results) / job.total_chunks) * 60)
-                        job.progress_percent = max(job.progress_percent or 15, pct)
-                        job.current_step = f"Processed {len(chunk_results)}/{job.total_chunks} chunks"
-                    safe_db_commit(db)
-            except Exception:
-                # Fallback: try to join non-blocking
+            total = len(chunks)
+            for idx, chunk in enumerate(chunks, start=1):
                 try:
-                    chunk_results = async_result.join(timeout=0)
-                except Exception:
-                    pass
+                    logger.info("Job %s: processing chunk %d/%d path=%s", job_id, idx, total, chunk.get('file_path'))
+                    result = process_chunk.run(chunk, user_id, settings)
+                except Exception as _exc:
+                    result = {
+                        'chunk_id': chunk.get('chunk_id', idx-1),
+                        'status': 'failed',
+                        'error': str(_exc),
+                        'start_page': chunk.get('start_page'),
+                        'end_page': chunk.get('end_page')
+                    }
+
+                chunk_results.append(result)
+                logger.info("Job %s: chunk %d status=%s", job_id, idx, result.get('status'))
+
+                # Update progress incrementally (15% -> 75%)
+                job = Job.query.get(job_id)
+                job.processed_chunks = idx
+                if job.total_chunks:
+                    pct = 15 + int((idx / job.total_chunks) * 60)
+                    job.progress_percent = max(job.progress_percent or 15, pct)
+                    job.current_step = f"Processed {idx}/{job.total_chunks} chunks"
+                safe_db_commit(db)
         
         # Update progress as chunks complete
         job = Job.query.get(job_id)
@@ -316,6 +349,15 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
         safe_db_commit(db)
         
         # Merge chunk results
+        if not chunk_results:
+            logger.error("Job %s: no chunk results produced; marking job as failed", job_id)
+            job = Job.query.get(job_id)
+            job.status = JOB_STATUS_FAILED
+            job.error_message = "No chunks processed. See worker logs for details."
+            job.completed_at = datetime.utcnow()
+            job.progress_percent = 100
+            safe_db_commit(db)
+            return {'status': 'failed', 'error': 'No chunks processed'}
         all_sentences = merge_chunk_results(chunk_results)
         
         # Calculate metrics
@@ -324,12 +366,18 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
         
         # Update job with results
         job = Job.query.get(job_id)
-        job.status = JOB_STATUS_COMPLETED
+        success_count = len([r for r in chunk_results if r.get('status') == 'success'])
+        if success_count == 0:
+            job.status = JOB_STATUS_FAILED
+            job.current_step = "Failed"
+            job.error_message = "All chunks failed to process. Check API credentials or PDF content."
+        else:
+            job.status = JOB_STATUS_COMPLETED
+            job.current_step = "Completed"
         job.progress_percent = 100
-        job.current_step = "Completed"
         job.actual_tokens = total_tokens
         job.gemini_tokens_used = total_tokens
-        job.gemini_api_calls = len(chunk_results)
+        job.gemini_api_calls = success_count
         job.completed_at = datetime.utcnow()
         job.chunk_results = chunk_results
         job.failed_chunks = failed_chunks if failed_chunks else None
