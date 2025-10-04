@@ -346,6 +346,32 @@ export interface Job {
   completed_at?: string;
   error_message?: string;
   error_code?: string;
+  // Async processing fields
+  celery_task_id?: string;
+  progress_percent?: number;
+  current_step?: string;
+  total_chunks?: number;
+  processed_chunks?: number;
+  chunk_results?: Array<{
+    chunk_id: number;
+    sentences?: unknown[];
+    tokens?: number;
+    status: 'success' | 'failed';
+    error?: string;
+  }>;
+  failed_chunks?: number[];
+  retry_count?: number;
+  max_retries?: number;
+  is_cancelled?: boolean;
+  cancelled_at?: string;
+  cancelled_by?: number;
+  processing_time_seconds?: number;
+  gemini_api_calls?: number;
+  gemini_tokens_used?: number;
+  task_state?: {
+    state: string;
+    info: Record<string, unknown>;
+  };
 }
 
 export async function getJob(jobId: number): Promise<Job> {
@@ -356,6 +382,73 @@ export async function getJob(jobId: number): Promise<Job> {
 export async function getJobs(params?: { limit?: number; status?: string }): Promise<Job[]> {
   const response = await api.get('/jobs', { params });
   return response.data || [];
+}
+
+/**
+ * Start async PDF processing
+ */
+export interface ProcessPdfAsyncRequest {
+  job_id: number;
+  pdf_file: File;
+  sentence_length_limit?: number;
+  gemini_model?: string;
+  ignore_dialogue?: boolean;
+  preserve_formatting?: boolean;
+  fix_hyphenation?: boolean;
+  min_sentence_length?: number;
+}
+
+export interface ProcessPdfAsyncResponse {
+  job_id: number;
+  task_id: string;
+  status: string;
+  message: string;
+}
+
+export async function processPdfAsync(request: ProcessPdfAsyncRequest): Promise<ProcessPdfAsyncResponse> {
+  const formData = new FormData();
+  formData.append('pdf_file', request.pdf_file);
+  formData.append('job_id', request.job_id.toString());
+  
+  if (request.sentence_length_limit !== undefined) {
+    formData.append('sentence_length_limit', request.sentence_length_limit.toString());
+  }
+  if (request.gemini_model) {
+    formData.append('gemini_model', request.gemini_model);
+  }
+  if (request.ignore_dialogue !== undefined) {
+    formData.append('ignore_dialogue', request.ignore_dialogue.toString());
+  }
+  if (request.preserve_formatting !== undefined) {
+    formData.append('preserve_formatting', request.preserve_formatting.toString());
+  }
+  if (request.fix_hyphenation !== undefined) {
+    formData.append('fix_hyphenation', request.fix_hyphenation.toString());
+  }
+  if (request.min_sentence_length !== undefined) {
+    formData.append('min_sentence_length', request.min_sentence_length.toString());
+  }
+  
+  const response = await api.post('/process-pdf-async', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  return response.data;
+}
+
+/**
+ * Cancel a running job
+ */
+export interface CancelJobResponse {
+  message: string;
+  job_id: number;
+  status: string;
+}
+
+export async function cancelJob(jobId: number): Promise<CancelJobResponse> {
+  const response = await api.post(`/jobs/${jobId}/cancel`);
+  return response.data;
 }
 
 export interface CreditLedgerEntry {

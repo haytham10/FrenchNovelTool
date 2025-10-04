@@ -176,6 +176,29 @@ class Job(db.Model):
     error_message = db.Column(db.String(512), nullable=True)
     error_code = db.Column(db.String(50), nullable=True)
     
+    # Async processing fields
+    celery_task_id = db.Column(db.String(155), nullable=True, index=True)  # Celery task ID for tracking
+    progress_percent = db.Column(db.Integer, default=0)  # 0-100
+    current_step = db.Column(db.String(100), nullable=True)  # "Chunking PDF", "Processing chunk 5/10"
+    total_chunks = db.Column(db.Integer, nullable=True)
+    processed_chunks = db.Column(db.Integer, default=0)
+    
+    # Resource management
+    chunk_results = db.Column(db.JSON, nullable=True)  # [{chunk_id: 1, sentences: [...], status: 'done'}]
+    failed_chunks = db.Column(db.JSON, nullable=True)  # [2, 7] - chunk IDs that failed
+    retry_count = db.Column(db.Integer, default=0)
+    max_retries = db.Column(db.Integer, default=3)
+    
+    # Cancellation support
+    is_cancelled = db.Column(db.Boolean, default=False)
+    cancelled_at = db.Column(db.DateTime, nullable=True)
+    cancelled_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    
+    # Performance metrics
+    processing_time_seconds = db.Column(db.Integer, nullable=True)
+    gemini_api_calls = db.Column(db.Integer, default=0)
+    gemini_tokens_used = db.Column(db.Integer, default=0)
+    
     # Relationships
     ledger_entries = db.relationship('CreditLedger', backref='job', lazy='dynamic')
     
@@ -201,5 +224,20 @@ class Job(db.Model):
             'started_at': self.started_at.isoformat() + 'Z' if self.started_at else None,
             'completed_at': self.completed_at.isoformat() + 'Z' if self.completed_at else None,
             'error_message': self.error_message,
-            'error_code': self.error_code
+            'error_code': self.error_code,
+            'celery_task_id': self.celery_task_id,
+            'progress_percent': self.progress_percent,
+            'current_step': self.current_step,
+            'total_chunks': self.total_chunks,
+            'processed_chunks': self.processed_chunks,
+            'chunk_results': self.chunk_results,
+            'failed_chunks': self.failed_chunks,
+            'retry_count': self.retry_count,
+            'max_retries': self.max_retries,
+            'is_cancelled': self.is_cancelled,
+            'cancelled_at': self.cancelled_at.isoformat() + 'Z' if self.cancelled_at else None,
+            'cancelled_by': self.cancelled_by,
+            'processing_time_seconds': self.processing_time_seconds,
+            'gemini_api_calls': self.gemini_api_calls,
+            'gemini_tokens_used': self.gemini_tokens_used
         }
