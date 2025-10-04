@@ -57,6 +57,12 @@ class History(db.Model):
     error_code = db.Column(db.String(50))   # 'QUOTA_EXCEEDED', 'INVALID_PDF', etc.
     error_details = db.Column(db.JSON)      # Additional error context
     processing_settings = db.Column(db.JSON)  # Store all settings for duplicate/retry
+    
+    # Chunk persistence integration fields
+    sentences = db.Column(db.JSON, nullable=True)  # Array of {normalized: str, original: str}
+    exported_to_sheets = db.Column(db.Boolean, default=False, nullable=False)
+    export_sheet_url = db.Column(db.String(256), nullable=True)  # URL if exported separately from spreadsheet_url
+    chunk_ids = db.Column(db.JSON, nullable=True)  # Array of JobChunk IDs for drill-down
 
     def __repr__(self):
         return f'<History {self.original_filename} - {self.timestamp}>'
@@ -73,8 +79,17 @@ class History(db.Model):
             'failed_step': self.failed_step,
             'error_code': self.error_code,
             'error_details': self.error_details,
-            'settings': self.processing_settings
+            'settings': self.processing_settings,
+            'exported_to_sheets': self.exported_to_sheets,
+            'export_sheet_url': self.export_sheet_url
         }
+    
+    def to_dict_with_sentences(self):
+        """Extended dict with sentences for detail view"""
+        base_dict = self.to_dict()
+        base_dict['sentences'] = self.sentences or []
+        base_dict['chunk_ids'] = self.chunk_ids or []
+        return base_dict
 
 
 class UserSettings(db.Model):

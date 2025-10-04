@@ -9,6 +9,9 @@ import {
   processPdfAsync,
   exportToSheet,
   getProcessingHistory,
+  getHistoryDetail,
+  getHistoryChunks,
+  exportHistoryToSheets,
   getUserSettings,
   updateUserSettings,
   retryHistoryEntry,
@@ -22,6 +25,7 @@ import {
   type ProcessPdfAsyncRequest,
   type Job,
   type ExportToSheetRequest,
+  type ExportHistoryRequest,
   type UserSettings,
   type CostEstimateRequest,
   type JobConfirmRequest,
@@ -33,6 +37,8 @@ import {
  */
 export const queryKeys = {
   history: ['history'] as const,
+  historyDetail: (id: number) => ['history', id] as const,
+  historyChunks: (id: number) => ['history', id, 'chunks'] as const,
   settings: ['settings'] as const,
   credits: ['credits'] as const,
   jobs: ['jobs'] as const,
@@ -46,6 +52,49 @@ export function useHistory() {
     queryKey: queryKeys.history,
     queryFn: getProcessingHistory,
     staleTime: 1000 * 60 * 5, // 5 minutes
+  });
+}
+
+export function useHistoryDetail(entryId: number | null) {
+  return useQuery({
+    queryKey: entryId ? queryKeys.historyDetail(entryId) : ['history', 'null'],
+    queryFn: () => entryId ? getHistoryDetail(entryId) : Promise.resolve(null),
+    enabled: !!entryId,
+    staleTime: 1000 * 60 * 5, // 5 minutes
+  });
+}
+
+export function useHistoryChunks(entryId: number | null) {
+  return useQuery({
+    queryKey: entryId ? queryKeys.historyChunks(entryId) : ['history', 'null', 'chunks'],
+    queryFn: () => entryId ? getHistoryChunks(entryId) : Promise.resolve({ chunks: [] }),
+    enabled: !!entryId,
+    staleTime: 1000 * 60 * 5, // 5 minutes
+  });
+}
+
+export function useExportHistoryToSheets() {
+  const queryClient = useQueryClient();
+  const { enqueueSnackbar } = useSnackbar();
+
+  return useMutation({
+    mutationFn: ({ entryId, data }: { entryId: number; data?: ExportHistoryRequest }) =>
+      exportHistoryToSheets(entryId, data),
+    
+    onSuccess: (result, variables) => {
+      // Invalidate history queries to refresh exported status
+      queryClient.invalidateQueries({ queryKey: queryKeys.history });
+      queryClient.invalidateQueries({ queryKey: queryKeys.historyDetail(variables.entryId) });
+      
+      enqueueSnackbar('Successfully exported to Google Sheets!', { variant: 'success' });
+    },
+    
+    onError: (error) => {
+      enqueueSnackbar(
+        getApiErrorMessage(error, 'Failed to export to Google Sheets'),
+        { variant: 'error' }
+      );
+    },
   });
 }
 
