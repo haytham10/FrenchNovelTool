@@ -62,6 +62,9 @@ class GeminiService:
         self.min_sentence_length = min_sentence_length
         self.max_retries = current_app.config['GEMINI_MAX_RETRIES']
         self.retry_delay = current_app.config['GEMINI_RETRY_DELAY']
+        # Allow operator to disable local segmentation fallback via config.
+        # Default: True to preserve existing behaviour unless explicitly changed.
+        self.allow_local_fallback = current_app.config.get('GEMINI_ALLOW_LOCAL_FALLBACK', True)
 
     def build_prompt(self, base_prompt: Optional[str] = None) -> str:
         """Build the advanced Gemini prompt for French literary processing."""
@@ -663,7 +666,16 @@ class GeminiService:
                 except Exception:
                     continue
         
-        # Step 5: Absolute last resort - local fallback
+        # Step 5: Absolute last resort - local fallback (can be disabled by config)
+        if not self.allow_local_fallback:
+            # If local fallback is disabled, raise an explicit error so the
+            # caller/task can decide whether to retry or fail the chunk. This
+            # prevents silent degradation to conservative segmentation.
+            current_app.logger.warning(
+                'All Gemini retry strategies exhausted and local fallback is disabled by configuration.'
+            )
+            raise GeminiAPIError('All Gemini retry strategies exhausted; local fallback disabled.')
+
         current_app.logger.warning(
             'All Gemini retry strategies exhausted; using local fallback as last resort'
         )
