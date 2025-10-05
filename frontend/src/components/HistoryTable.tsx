@@ -5,20 +5,20 @@ import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper
 import { styled } from '@mui/material/styles';
 import { useSnackbar } from 'notistack';
 import Link from 'next/link';
-import { useHistory, useRetryHistoryEntry, useDuplicateHistoryEntry, useExportToSheet } from '@/lib/queries';
+import { useHistory, useRetryHistoryEntry, useExportToSheet } from '@/lib/queries';
 import type { HistoryEntry } from '@/lib/types';
 import { getHistoryStatus } from '@/lib/types';
 import { useDebounce } from '@/lib/hooks';
 import Icon from './Icon';
 import IconButton from './IconButton';
-import { CheckCircle, XCircle, Loader2, RefreshCw, Copy, Eye, Filter, Send, Calendar } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, RefreshCw, Eye, Filter, Send, Calendar } from 'lucide-react';
 import ExportDialog from './ExportDialog';
 import JobCreditDisplay from './JobCreditDisplay';
 import { useRouter } from 'next/navigation';
 import HistoryDetailDialog from './HistoryDetailDialog';
 
 type Order = 'asc' | 'desc';
-type StatusFilter = 'all' | 'success' | 'failed' | 'processing';
+type StatusFilter = 'all' | 'complete' | 'exported' | 'failed' | 'processing';
 
 const StyledTableCell = styled(TableCell)(({ theme }) => ({
   [`&.MuiTableCell-head`]: {
@@ -63,7 +63,6 @@ export default function HistoryTable() {
   // Use React Query for data fetching
   const { data: history = [], isLoading: loading, error, refetch } = useHistory();
   const retryMutation = useRetryHistoryEntry();
-  const duplicateMutation = useDuplicateHistoryEntry();
   const exportMutation = useExportToSheet();
 
   const handleRequestSort = (
@@ -178,21 +177,7 @@ export default function HistoryTable() {
     }
   };
 
-  const handleDuplicate = async (entry: HistoryEntry) => {
-    try {
-      const result = await duplicateMutation.mutateAsync(entry.id);
-      enqueueSnackbar(result.message, { variant: 'info' });
-      
-      // Navigate to home with settings
-      if (result.settings) {
-        // Store settings in localStorage for the home page to use
-        localStorage.setItem('duplicateSettings', JSON.stringify(result.settings));
-        router.push('/');
-      }
-    } catch {
-      // Error handled by mutation
-    }
-  };
+  // Duplicate functionality removed from UI; keep code removed to avoid unused imports
 
   if (loading) {
     return (
@@ -283,10 +268,10 @@ export default function HistoryTable() {
               size="small"
             />
             <Chip
-              label="Success"
-              onClick={() => setStatusFilter('success')}
-              color={statusFilter === 'success' ? 'success' : 'default'}
-              variant={statusFilter === 'success' ? 'filled' : 'outlined'}
+              label="Complete"
+              onClick={() => setStatusFilter('complete')}
+              color={statusFilter === 'complete' ? 'success' : 'default'}
+              variant={statusFilter === 'complete' ? 'filled' : 'outlined'}
               icon={<Icon icon={CheckCircle} fontSize="small" />}
               size="small"
             />
@@ -304,6 +289,14 @@ export default function HistoryTable() {
               color={statusFilter === 'processing' ? 'primary' : 'default'}
               variant={statusFilter === 'processing' ? 'filled' : 'outlined'}
               icon={<Icon icon={Loader2} fontSize="small" />}
+              size="small"
+            />
+            <Chip
+              label="Exported"
+              onClick={() => setStatusFilter('exported')}
+              color={statusFilter === 'exported' ? 'secondary' : 'default'}
+              variant={statusFilter === 'exported' ? 'filled' : 'outlined'}
+              icon={<Icon icon={Send} fontSize="small" />}
               size="small"
             />
           </Stack>
@@ -383,17 +376,17 @@ export default function HistoryTable() {
                   <StyledTableCell>
                     <Chip 
                       icon={
-                        status === 'success' ? <Icon icon={CheckCircle} fontSize="small" /> :
+                        status === 'complete' ? <Icon icon={CheckCircle} fontSize="small" /> :
                         status === 'failed' ? <Icon icon={XCircle} fontSize="small" /> :
+                        status === 'exported' ? <Icon icon={Send} fontSize="small" /> :
                         <Icon icon={Loader2} fontSize="small" />
                       }
-                      label={status}
+                      label={status === 'complete' ? 'Complete' : status === 'exported' ? 'Exported' : status}
                       size="small"
-                      className={status === 'success' ? 'status-success' : status === 'processing' ? 'status-processing' : ''}
                       sx={{ 
                         fontWeight: 600,
                         textTransform: 'capitalize',
-                        ...(status === 'success' && {
+                        ...(status === 'complete' && {
                           bgcolor: 'success.main',
                           color: 'success.contrastText',
                           '& .MuiChip-icon': { color: 'success.contrastText' }
@@ -410,6 +403,11 @@ export default function HistoryTable() {
                             color: 'primary.contrastText',
                             animation: 'spin 1s linear infinite'
                           }
+                        }),
+                        ...(status === 'exported' && {
+                          bgcolor: 'secondary.main',
+                          color: 'secondary.contrastText',
+                          '& .MuiChip-icon': { color: 'secondary.contrastText' }
                         }),
                       }}
                     />
@@ -489,7 +487,7 @@ export default function HistoryTable() {
                           <Icon icon={Eye} fontSize="small" />
                         </IconButton>
                       </Tooltip>
-                      {!entry.spreadsheet_url && status === 'success' && (
+                      {!entry.spreadsheet_url && status === 'complete' && (
                         <Tooltip title="Send to Google Sheets">
                           <IconButton 
                             size="small"
@@ -514,18 +512,7 @@ export default function HistoryTable() {
                           </IconButton>
                         </Tooltip>
                       )}
-                      {entry.settings && (
-                        <Tooltip title="Duplicate with same settings">
-                          <IconButton 
-                            size="small"
-                            onClick={() => handleDuplicate(entry)}
-                            aria-label="Duplicate run"
-                            disabled={duplicateMutation.isPending}
-                          >
-                            <Icon icon={Copy} fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      )}
+                      {/* Duplicate action removed from inline actions to reduce UI clutter. */}
                     </Box>
                   </StyledTableCell>
                 </StyledTableRow>
@@ -570,11 +557,13 @@ export default function HistoryTable() {
                 Status
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                {getHistoryStatus(selectedEntry) === 'success' && <Icon icon={CheckCircle} color="success" />}
+                {getHistoryStatus(selectedEntry) === 'complete' && <Icon icon={CheckCircle} color="success" />}
+                {getHistoryStatus(selectedEntry) === 'exported' && <Icon icon={Send} color="secondary" />}
                 {getHistoryStatus(selectedEntry) === 'failed' && <Icon icon={XCircle} color="error" />}
                 {getHistoryStatus(selectedEntry) === 'processing' && <Icon icon={Loader2} color="primary" />}
                 <Typography variant="body1" sx={{ 
-                  color: getHistoryStatus(selectedEntry) === 'success' ? 'success.main' : 
+                  color: getHistoryStatus(selectedEntry) === 'complete' ? 'success.main' : 
+                         getHistoryStatus(selectedEntry) === 'exported' ? 'secondary.main' : 
                          getHistoryStatus(selectedEntry) === 'failed' ? 'error.main' : 'primary.main',
                   fontWeight: 600,
                   textTransform: 'capitalize'
@@ -664,7 +653,7 @@ export default function HistoryTable() {
             <Divider sx={{ my: 2 }} />
             
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-              {!selectedEntry.spreadsheet_url && getHistoryStatus(selectedEntry) === 'success' && (
+              {!selectedEntry.spreadsheet_url && getHistoryStatus(selectedEntry) === 'complete' && (
                 <Button
                   variant="contained"
                   startIcon={<Icon icon={Send} />}
@@ -686,19 +675,7 @@ export default function HistoryTable() {
                   Retry
                 </Button>
               )}
-              {selectedEntry.settings && (
-                <Button
-                  variant="outlined"
-                  startIcon={<Icon icon={Copy} />}
-                  onClick={() => {
-                    handleDuplicate(selectedEntry);
-                    setDetailsDrawerOpen(false);
-                  }}
-                  disabled={duplicateMutation.isPending}
-                >
-                  Duplicate
-                </Button>
-              )}
+              {/* Duplicate action is available inline in the table row; removed duplicate button here */}
               <Button
                 variant="text"
                 onClick={() => setDetailsDrawerOpen(false)}
