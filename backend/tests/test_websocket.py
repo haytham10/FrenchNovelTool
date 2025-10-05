@@ -72,19 +72,22 @@ def test_emit_job_progress_helper():
         emit_job_progress(999)  # Non-existent job
 
 
-@patch('app.socket_events.decode_token')
-def test_websocket_connect_requires_token(mock_decode, app):
+def test_websocket_connect_requires_token(app):
     """Test that WebSocket connection requires JWT authentication"""
     from app.socket_events import handle_connect
-    
-    # Test with no token
-    result = handle_connect(None)
-    assert result is False
-    
-    # Test with valid token
-    mock_decode.return_value = {'sub': '123'}
-    result = handle_connect({'token': 'valid_token'})
-    assert result is True
+
+    # Patch decode_token and disconnect locally so the test doesn't need a request context
+    with patch('app.socket_events.decode_token') as mock_decode, patch('app.socket_events.disconnect') as mock_disconnect:
+        # Test with no token provided in auth dict
+        result = handle_connect({})
+        assert result is False
+        mock_disconnect.assert_called_once()
+
+    # Now test with a valid token
+    with patch('app.socket_events.decode_token') as mock_decode, patch('app.socket_events.disconnect') as mock_disconnect:
+        mock_decode.return_value = {'sub': '123'}
+        result = handle_connect({'token': 'valid_token'})
+        assert result is True
 
 
 def test_emit_progress_in_tasks():
