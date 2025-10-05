@@ -15,6 +15,7 @@ import {
   duplicateHistoryEntry,
   getCredits,
   estimateCost,
+  estimatePdfCost,
   confirmJob,
   finalizeJob,
   getJob,
@@ -24,6 +25,7 @@ import {
   type ExportToSheetRequest,
   type UserSettings,
   type CostEstimateRequest,
+  type EstimatePdfRequest,
   type JobConfirmRequest,
   type JobFinalizeRequest,
 } from './api';
@@ -246,6 +248,12 @@ export function useJob(jobId: number | null | undefined) {
 export function useEstimateCost() {
   return useMutation({
     mutationFn: (request: CostEstimateRequest) => estimateCost(request),
+  });
+}
+
+export function useEstimatePdfCost() {
+  return useMutation({
+    mutationFn: (request: EstimatePdfRequest) => estimatePdfCost(request),
   });
 }
 

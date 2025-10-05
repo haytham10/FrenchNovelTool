@@ -148,6 +148,41 @@ export async function extractPdfText(file: File): Promise<{ text: string; page_c
   return response.data;
 }
 
+export interface EstimatePdfRequest {
+  file: File;
+  model_preference?: 'balanced' | 'quality' | 'speed';
+}
+
+export interface EstimatePdfResponse {
+  page_count: number;
+  file_size: number;
+  image_count: number;
+  estimated_tokens: number;
+  estimated_credits: number;
+  model: string;
+  model_preference: string;
+  pricing_rate: number;
+  capped: boolean;
+  warning?: string;
+}
+
+export async function estimatePdfCost(request: EstimatePdfRequest): Promise<EstimatePdfResponse> {
+  const formData = new FormData();
+  formData.append('pdf_file', request.file);
+  
+  if (request.model_preference) {
+    formData.append('model_preference', request.model_preference);
+  }
+  
+  const response = await api.post('/estimate-pdf', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  
+  return response.data;
+}
+
 export async function processPdf(file: File, options?: ProcessPdfOptions): Promise<string[]> {
   const formData = new FormData();
   formData.append('pdf_file', file);
