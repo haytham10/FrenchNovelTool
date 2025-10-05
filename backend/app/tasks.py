@@ -201,7 +201,67 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
 
         # Process with Gemini
         prompt = gemini_service.build_prompt()
-        result = gemini_service.normalize_text(text, prompt)
+
+        # Diagnostic: log chunk metadata and a short sample of text before calling Gemini
+        try:
+            text_sample = (text[:500] + '...') if text and len(text) > 500 else text
+        except Exception:
+            text_sample = None
+        logger.info(
+            "Processing chunk %s (job %s) pages=%s-%s page_count=%s text_len=%s sample=%s",
+            chunk_info.get('chunk_id'), chunk_info.get('job_id'), chunk_info.get('start_page'),
+            chunk_info.get('end_page'), chunk_info.get('page_count'), (len(text) if text else 0),
+            (text_sample[:300] if isinstance(text_sample, str) else None)
+        )
+        try:
+            result = gemini_service.normalize_text(text, prompt)
+        except Exception as exc:
+            # Import GeminiAPIError type if available to add richer diagnostics
+            try:
+                from app.services.gemini_service import GeminiAPIError
+            except Exception:
+                GeminiAPIError = None
+
+            # Log diagnostics: attach a short sample of text and any raw response
+            sample = (text[:1000] + '...') if text and len(text) > 1000 else text
+            if GeminiAPIError and isinstance(exc, GeminiAPIError):
+                logger.error(
+                    "GeminiAPIError processing chunk %s (job %s): %s; raw_response=%s; text_sample=%s",
+                    chunk_info.get('chunk_id'), chunk_info.get('job_id'), str(exc),
+                    (str(getattr(exc, 'raw_response', ''))[:1000] if getattr(exc, 'raw_response', None) else ''),
+                    sample
+                )
+                # Persist into chunk DB record if present
+                if chunk_db_record:
+                    try:
+                        chunk_db_record.status = 'failed'
+                        chunk_db_record.last_error = str(exc)[:1000]
+                        chunk_db_record.last_error_code = 'GEMINI_API_ERROR'
+                        chunk_db_record.updated_at = datetime.utcnow()
+                        safe_db_commit(db)
+                    except Exception:
+                        logger.warning('Failed to persist Gemini error for chunk %s', chunk_info.get('chunk_id'))
+                # Attempt a local fallback segmentation instead of failing the chunk
+                try:
+                    logger.info('Attempting local fallback segmentation for chunk %s (job %s)', chunk_info.get('chunk_id'), chunk_info.get('job_id'))
+                    result = gemini_service.local_normalize_text(text)
+                    # Attach a flag so the caller/UI can indicate fallback was used
+                    result['_fallback'] = 'gemini_local_fallback'
+                    # Persist a short diagnostic to DB so UI shows fallback occurred
+                    if chunk_db_record:
+                        try:
+                            chunk_db_record.last_error = 'Gemini API failed; local fallback used.'
+                            chunk_db_record.last_error_code = 'GEMINI_LOCAL_FALLBACK'
+                            chunk_db_record.updated_at = datetime.utcnow()
+                            safe_db_commit(db)
+                        except Exception:
+                            logger.warning('Failed to persist fallback marker for chunk %s', chunk_info.get('chunk_id'))
+                except Exception:
+                    logger.exception('Local fallback also failed for chunk %s', chunk_info.get('chunk_id'))
+                    raise
+            else:
+                logger.exception('Unexpected error processing chunk %s: %s', chunk_info.get('chunk_id'), exc)
+                raise
         
         # Cleanup chunk file after processing only if a filesystem path was used
         try:
