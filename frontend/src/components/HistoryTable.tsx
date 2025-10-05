@@ -13,7 +13,6 @@ import Icon from './Icon';
 import IconButton from './IconButton';
 import { CheckCircle, XCircle, Loader2, RefreshCw, Eye, Filter, Send, Calendar, Copy, ExternalLink, RotateCw } from 'lucide-react';
 import ExportDialog from './ExportDialog';
-import JobCreditDisplay from './JobCreditDisplay';
 import { useRouter } from 'next/navigation';
 import HistoryDetailDialog from './HistoryDetailDialog';
 
@@ -728,8 +727,8 @@ export default function HistoryTable() {
                   <StyledTableCell>{entry.original_filename}</StyledTableCell>
                   <StyledTableCell>{entry.processed_sentences_count}</StyledTableCell>
                   <StyledTableCell>
-                    {(entry as HistoryEntry).job_id ? (
-                      <JobCreditDisplay jobId={(entry as HistoryEntry).job_id!} />
+                    {entry.job_id ? (
+                      <Typography variant="body2">{entry.job_id}</Typography>
                     ) : (
                       <Typography variant="caption" color="text.secondary">
                         N/A
