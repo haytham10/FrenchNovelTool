@@ -24,8 +24,30 @@ def app_context():
 
 @pytest.fixture
 def mock_pdf_file():
-    # Create a dummy PDF file in memory
-    pdf_content = b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj 3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R/Contents 4 0 R>>endobj 4 0 obj<</Length 11>>stream\nBT/F1 12 Tf 72 720 Td(Hello World)ET\nendstream\nendobj\nxref\n0 5\n0000000000 65535 f\n0000000009 00000 n\n0000000059 00000 n\n0000000111 00000 n\n0000000200 00000 n\ntrailer<</Size 5/Root 1 0 R>>startxref 220\n%%EOF"
+    # Create a properly formatted dummy PDF file in memory
+    pdf_content = b"""%PDF-1.4
+1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj
+2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj
+3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R/Contents 4 0 R>>endobj
+4 0 obj<</Length 44>>stream
+BT
+/F1 12 Tf
+72 720 Td
+(Hello World) Tj
+ET
+endstream
+endobj
+xref
+0 5
+0000000000 65535 f 
+0000000009 00000 n 
+0000000052 00000 n 
+0000000101 00000 n 
+0000000181 00000 n 
+trailer<</Size 5/Root 1 0 R>>
+startxref
+273
+%%EOF"""
     return FileStorage(BytesIO(pdf_content), filename='test.pdf', content_type='application/pdf')
 
 def test_pdf_service_save_and_delete_temp_file(mock_pdf_file):
@@ -34,6 +56,65 @@ def test_pdf_service_save_and_delete_temp_file(mock_pdf_file):
     assert os.path.exists(temp_path)
     pdf_service.delete_temp_file()
     assert not os.path.exists(temp_path)
+
+
+def test_pdf_service_get_page_count(mock_pdf_file):
+    """Test metadata-only page count extraction"""
+    pdf_service = PDFService(mock_pdf_file)
+    
+    metadata = pdf_service.get_page_count()
+    
+    assert 'page_count' in metadata
+    assert 'file_size' in metadata
+    assert 'image_count' in metadata
+    assert metadata['page_count'] == 1  # Mock PDF has 1 page
+    assert metadata['file_size'] > 0
+    assert isinstance(metadata['image_count'], int)
+
+
+def test_pdf_service_get_page_count_with_stream():
+    """Test get_page_count with a file stream"""
+    from io import BytesIO
+    
+    # Create a minimal valid PDF with 2 pages
+    pdf_content = b"""%PDF-1.4
+1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj
+2 0 obj<</Type/Pages/Count 2/Kids[3 0 R 4 0 R]>>endobj
+3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R>>endobj
+4 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R>>endobj
+xref
+0 5
+0000000000 65535 f 
+0000000009 00000 n 
+0000000052 00000 n 
+0000000110 00000 n 
+0000000170 00000 n 
+trailer<</Size 5/Root 1 0 R>>
+startxref
+230
+%%EOF"""
+    
+    stream = BytesIO(pdf_content)
+    pdf_service = PDFService(None)  # No file in constructor
+    
+    metadata = pdf_service.get_page_count(file_stream=stream)
+    
+    assert metadata['page_count'] == 2
+    assert metadata['file_size'] > 0
+
+
+def test_pdf_service_get_page_count_corrupted_pdf():
+    """Test get_page_count with corrupted PDF"""
+    from io import BytesIO
+    
+    # Create invalid PDF content
+    invalid_content = b"Not a valid PDF file"
+    stream = BytesIO(invalid_content)
+    
+    pdf_service = PDFService(None)
+    
+    with pytest.raises(RuntimeError, match="Invalid or corrupted PDF"):
+        pdf_service.get_page_count(file_stream=stream)
 
 
 @patch('app.services.gemini_service.genai.Client')

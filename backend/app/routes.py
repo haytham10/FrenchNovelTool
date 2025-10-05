@@ -13,10 +13,18 @@ from .services.history_service import HistoryService
 from .services.user_settings_service import UserSettingsService
 from .services.job_service import JobService
 from .services.credit_service import CreditService
-from .schemas import ExportToSheetSchema, UserSettingsSchema
+from .schemas import ExportToSheetSchema, UserSettingsSchema, EstimatePdfSchema, EstimatePdfResponseSchema
 from .utils.validators import validate_pdf_file
 from .models import User, Job
-from .constants import JOB_STATUS_PENDING, JOB_STATUS_PROCESSING, ERROR_INSUFFICIENT_CREDITS
+from .constants import (
+    JOB_STATUS_PENDING, 
+    JOB_STATUS_PROCESSING, 
+    ERROR_INSUFFICIENT_CREDITS,
+    MAX_PAGES_FOR_ESTIMATE,
+    PAGES_TO_TOKENS_HEURISTIC,
+    ESTIMATE_IMAGE_WEIGHT,
+    HTTP_UNPROCESSABLE_ENTITY
+)
 import PyPDF2
 
 main_bp = Blueprint('main', __name__)
@@ -26,6 +34,8 @@ user_settings_service = UserSettingsService()
 # Initialize schemas
 export_schema = ExportToSheetSchema()
 settings_schema = UserSettingsSchema()
+estimate_pdf_schema = EstimatePdfSchema()
+estimate_pdf_response_schema = EstimatePdfResponseSchema()
 
 
 @main_bp.route('/health', methods=['GET'])
@@ -104,6 +114,106 @@ def extract_pdf_text():
         return jsonify({'error': str(e)}), 500
     finally:
         pdf_service.delete_temp_file()
+
+
+@main_bp.route('/estimate-pdf', methods=['POST'])
+@jwt_required()
+@limiter.limit("30 per minute")
+def estimate_pdf():
+    """
+    Fast metadata-only PDF cost estimation (requires authentication).
+    
+    Returns page count, file size, and estimated cost without full text extraction.
+    This endpoint is optimized for speed and minimal resource usage.
+    """
+    user_id = int(get_jwt_identity())
+    user = User.query.get(user_id)
+    
+    if not user or not user.is_active:
+        return jsonify({'error': 'User not found or inactive'}), 401
+    
+    # Validate file upload
+    if 'pdf_file' not in request.files:
+        return jsonify({'error': 'No PDF file provided'}), 400
+
+    file = request.files['pdf_file']
+    
+    # Validate PDF file
+    try:
+        validate_pdf_file(file)
+    except ValidationError as e:
+        return jsonify({'error': str(e)}), 400
+    
+    # Get optional model preference from form data
+    model_preference = request.form.get('model_preference', 'balanced')
+    
+    # Validate model preference
+    try:
+        data = estimate_pdf_schema.load({'model_preference': model_preference})
+        model_preference = data['model_preference']
+    except ValidationError as e:
+        return jsonify({'error': str(e.messages)}), 400
+    
+    pdf_service = PDFService(file)
+    
+    try:
+        # Get metadata without full text extraction (fast operation)
+        metadata = pdf_service.get_page_count()
+        page_count = metadata['page_count']
+        file_size = metadata['file_size']
+        image_count = metadata.get('image_count', 0)
+        
+        # Check if page count exceeds cap
+        capped = page_count > MAX_PAGES_FOR_ESTIMATE
+        warning = None
+        
+        if capped:
+            warning = f'Page count ({page_count}) exceeds maximum for estimation ({MAX_PAGES_FOR_ESTIMATE}). Estimate may be less accurate.'
+            # Cap the page count for estimation purposes
+            page_count_for_calc = MAX_PAGES_FOR_ESTIMATE
+        else:
+            page_count_for_calc = page_count
+        
+        # Estimate tokens using heuristic: pages * avg tokens per page + images * weight
+        estimated_tokens = (page_count_for_calc * PAGES_TO_TOKENS_HEURISTIC) + (image_count * ESTIMATE_IMAGE_WEIGHT)
+        
+        # Get model name and pricing
+        model_name = JobService.get_model_name(model_preference)
+        pricing_rate = JobService.get_pricing_rate(model_name)
+        
+        # Calculate estimated credits
+        estimated_credits = JobService.calculate_credits(estimated_tokens, model_name)
+        
+        # Build response
+        response_data = {
+            'page_count': page_count,
+            'file_size': file_size,
+            'image_count': image_count,
+            'estimated_tokens': estimated_tokens,
+            'estimated_credits': estimated_credits,
+            'model': model_name,
+            'model_preference': model_preference,
+            'pricing_rate': pricing_rate,
+            'capped': capped,
+            'warning': warning
+        }
+        
+        # Validate response
+        validated_response = estimate_pdf_response_schema.dump(response_data)
+        
+        return jsonify(validated_response), 200
+        
+    except RuntimeError as e:
+        # PDF is invalid or corrupted
+        current_app.logger.warning(f'Invalid PDF in estimate-pdf: {e}')
+        return jsonify({
+            'error': 'Invalid or corrupted PDF file',
+            'details': str(e)
+        }), HTTP_UNPROCESSABLE_ENTITY
+    except Exception as e:
+        current_app.logger.exception('Failed to estimate PDF cost')
+        return jsonify({'error': f'Failed to estimate PDF: {str(e)}'}), 500
+
 
 @main_bp.route('/process-pdf', methods=['POST'])
 @jwt_required()
