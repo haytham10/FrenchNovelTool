@@ -9,9 +9,6 @@ from google.genai import types
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 
-class GeminiService:
-    """Service wrapper around Gemini PDF processing with advanced post-processing."""
-
 class GeminiAPIError(Exception):
     """Raised when Gemini returns an empty, malformed or unparseable response.
 
@@ -22,6 +19,10 @@ class GeminiAPIError(Exception):
     def __init__(self, message: str, raw_response: str | None = None):
         super().__init__(message)
         self.raw_response = raw_response
+
+
+class GeminiService:
+    """Service wrapper around Gemini PDF processing with advanced post-processing."""
 
     MODEL_PREFERENCE_MAP = {
         'balanced': 'gemini-2.5-flash',
@@ -35,7 +36,7 @@ class GeminiAPIError(Exception):
         self,
         sentence_length_limit: int = 8,
         *,
-    model_preference: str = 'speed',
+        model_preference: str = 'speed',
         ignore_dialogue: bool = False,
         preserve_formatting: bool = True,
         fix_hyphenation: bool = True,
