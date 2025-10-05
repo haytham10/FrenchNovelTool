@@ -537,6 +537,53 @@ def finalize_job_results(self, chunk_results, job_id):
             processing_time = (job.completed_at - job.started_at).total_seconds()
             job.processing_time_seconds = int(processing_time)
         
+        # Create History entry for completed/partial jobs with results
+        if success_count > 0:
+            try:
+                from app.models import History
+                
+                # Format sentences for History storage
+                formatted_sentences = []
+                for sentence in all_sentences:
+                    if isinstance(sentence, dict):
+                        formatted_sentences.append({
+                            'normalized': sentence.get('normalized', ''),
+                            'original': sentence.get('original', sentence.get('normalized', ''))
+                        })
+                    else:
+                        formatted_sentences.append({
+                            'normalized': str(sentence),
+                            'original': str(sentence)
+                        })
+                
+                # Collect chunk IDs for drill-down
+                chunk_ids = [chunk.id for chunk in db_chunks] if db_chunks else []
+                
+                # Create history entry
+                history_entry = History(
+                    user_id=job.user_id,
+                    job_id=job.id,
+                    original_filename=job.original_filename,
+                    processed_sentences_count=len(all_sentences),
+                    sentences=formatted_sentences,
+                    processing_settings=job.processing_settings,
+                    exported_to_sheets=False,
+                    spreadsheet_url=None,
+                    export_sheet_url=None,
+                    chunk_ids=chunk_ids
+                )
+                db.session.add(history_entry)
+                db.session.flush()  # Get history.id
+                
+                # Link job to history
+                job.history_id = history_entry.id
+                safe_db_commit(db)
+                
+                logger.info(f"Job {job_id}: created history entry {history_entry.id} with {len(all_sentences)} sentences and {len(chunk_ids)} chunks")
+            except Exception as hist_err:
+                logger.error(f"Job {job_id}: failed to create history entry: {hist_err}")
+                # Don't fail the job if history creation fails
+        
         safe_db_commit(db)
         
         # Emit final WebSocket update

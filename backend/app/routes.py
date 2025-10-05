@@ -448,6 +448,125 @@ def get_history():
         return jsonify({'error': str(e)}), 500
 
 
+@main_bp.route('/history/<int:entry_id>', methods=['GET'])
+@jwt_required()
+def get_history_detail(entry_id):
+    """Get detailed history entry with sentences and chunk breakdown"""
+    try:
+        user_id = int(get_jwt_identity())
+        user = User.query.get(user_id)
+        
+        if not user or not user.is_active:
+            return jsonify({'error': 'User not found or inactive'}), 401
+        
+        # Get entry with full details
+        entry_detail = history_service.get_entry_with_details(entry_id, user_id)
+        
+        if not entry_detail:
+            return jsonify({'error': 'History entry not found'}), 404
+        
+        return jsonify(entry_detail)
+        
+    except Exception as e:
+        current_app.logger.exception(f'Failed to get history detail for entry {entry_id}')
+        return jsonify({'error': str(e)}), 500
+
+
+@main_bp.route('/history/<int:entry_id>/chunks', methods=['GET'])
+@jwt_required()
+def get_history_chunks(entry_id):
+    """Get chunk-level details for a history entry"""
+    try:
+        user_id = int(get_jwt_identity())
+        user = User.query.get(user_id)
+        
+        if not user or not user.is_active:
+            return jsonify({'error': 'User not found or inactive'}), 401
+        
+        chunks = history_service.get_chunk_details(entry_id, user_id)
+        
+        return jsonify({'chunks': chunks})
+        
+    except Exception as e:
+        current_app.logger.exception(f'Failed to get chunks for history entry {entry_id}')
+        return jsonify({'error': str(e)}), 500
+
+
+@main_bp.route('/history/<int:entry_id>/export', methods=['POST'])
+@jwt_required()
+@limiter.limit("5 per hour")
+def export_history_to_sheets(entry_id):
+    """Export historical job results to Google Sheets"""
+    try:
+        user_id = int(get_jwt_identity())
+        user = User.query.get(user_id)
+        
+        if not user or not user.is_active:
+            return jsonify({'error': 'User not found or inactive'}), 401
+        
+        # Get history entry with sentences
+        entry = history_service.get_entry_by_id(entry_id, user_id)
+        if not entry:
+            return jsonify({'error': 'History entry not found'}), 404
+        
+        if not entry.sentences:
+            return jsonify({'error': 'No sentences available for this history entry'}), 400
+        
+        # Check if user has authorized Google Sheets access
+        if not user.google_access_token:
+            return jsonify({
+                'error': 'Google Sheets access not authorized. Please log out and log in again to grant permissions.'
+            }), 403
+        
+        # Get user's Google credentials
+        from app.services.auth_service import AuthService
+        auth_service = AuthService()
+        
+        try:
+            creds = auth_service.get_user_credentials(user)
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 403
+        
+        # Get export parameters from request
+        data = request.json or {}
+        sheet_name = data.get('sheetName', f"{entry.original_filename} - Export")
+        folder_id = data.get('folderId')
+        
+        # Export to Google Sheets
+        # `entry.sentences` may be a list of dicts like {'normalized': str, 'original': str}
+        # Google Sheets API expects scalar values per cell, so convert each sentence
+        # to a display string (prefer 'normalized' then 'original').
+        prepared_sentences = []
+        for s in entry.sentences:
+            if isinstance(s, dict):
+                # choose normalized if present, otherwise original, else stringify
+                text = s.get('normalized') or s.get('original') or str(s)
+            else:
+                text = str(s)
+            prepared_sentences.append(text)
+
+        sheets_service = GoogleSheetsService()
+        spreadsheet_url = sheets_service.export_to_sheet(
+            creds=creds,
+            sentences=prepared_sentences,
+            sheet_name=sheet_name,
+            folder_id=folder_id
+        )
+        
+        # Mark history as exported
+        history_service.mark_exported(entry_id, user_id, spreadsheet_url)
+        
+        current_app.logger.info(f'User {user.email} exported history entry {entry_id} to Google Sheets')
+        return jsonify({
+            'message': 'Export successful',
+            'spreadsheet_url': spreadsheet_url
+        })
+        
+    except Exception as e:
+        current_app.logger.exception(f'Failed to export history entry {entry_id}')
+        return jsonify({'error': str(e)}), 500
+
+
 @main_bp.route('/history/<int:entry_id>', methods=['DELETE'])
 @jwt_required()
 def delete_history_entry(entry_id):

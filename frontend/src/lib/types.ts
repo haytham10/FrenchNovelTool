@@ -27,12 +27,15 @@ export interface HistoryEntry {
 }
 
 // Derived status type
-export type HistoryStatus = 'success' | 'failed' | 'processing';
+export type HistoryStatus = 'complete' | 'exported' | 'failed' | 'processing';
 
 // Helper to get status from history entry
 export function getHistoryStatus(entry: HistoryEntry): HistoryStatus {
+  // Priority: failed > exported > complete > processing
   if (entry.error_message) return 'failed';
-  if (entry.spreadsheet_url) return 'success';
+  if (entry.spreadsheet_url) return 'exported';
+  // If there is no spreadsheet but the entry has processed sentences, mark as complete
+  if (typeof entry.processed_sentences_count === 'number' && entry.processed_sentences_count > 0) return 'complete';
   return 'processing';
 }
 

@@ -355,6 +355,177 @@ Retrieve processing history entries.
 
 ---
 
+### Get History Detail
+
+Retrieve detailed history entry with sentences and chunk information.
+
+**Endpoint:** `GET /history/{entry_id}`
+
+**Authentication:** Required (JWT Bearer token)
+
+**Path Parameters:**
+- `entry_id` (integer, required): ID of the history entry
+
+**Response:**
+```json
+{
+  "id": 1,
+  "job_id": 42,
+  "timestamp": "2025-10-02T14:30:00.000Z",
+  "original_filename": "novel_chapter_1.pdf",
+  "processed_sentences_count": 142,
+  "spreadsheet_url": "https://docs.google.com/spreadsheets/d/SPREADSHEET_ID",
+  "exported_to_sheets": true,
+  "export_sheet_url": "https://docs.google.com/spreadsheets/d/SPREADSHEET_ID",
+  "sentences": [
+    {
+      "normalized": "This is the first sentence.",
+      "original": "This is the first sentence."
+    },
+    {
+      "normalized": "This is the second sentence.",
+      "original": "This is the second sentence."
+    }
+  ],
+  "chunk_ids": [123, 124, 125],
+  "chunks": [
+    {
+      "id": 123,
+      "job_id": 42,
+      "chunk_id": 0,
+      "start_page": 0,
+      "end_page": 4,
+      "page_count": 5,
+      "has_overlap": false,
+      "status": "success",
+      "attempts": 1,
+      "max_retries": 3,
+      "processed_at": "2025-10-02T14:28:00.000Z",
+      "created_at": "2025-10-02T14:25:00.000Z",
+      "updated_at": "2025-10-02T14:28:00.000Z"
+    }
+  ],
+  "settings": {
+    "sentence_length_limit": 12,
+    "gemini_model": "balanced"
+  }
+}
+```
+
+**Status Codes:**
+- `200 OK`: History detail retrieved successfully
+- `401 Unauthorized`: Authentication required
+- `404 Not Found`: History entry not found
+- `500 Internal Server Error`: Database error
+
+---
+
+### Get History Chunks
+
+Retrieve chunk-level processing details for a history entry.
+
+**Endpoint:** `GET /history/{entry_id}/chunks`
+
+**Authentication:** Required (JWT Bearer token)
+
+**Path Parameters:**
+- `entry_id` (integer, required): ID of the history entry
+
+**Response:**
+```json
+{
+  "chunks": [
+    {
+      "id": 123,
+      "job_id": 42,
+      "chunk_id": 0,
+      "start_page": 0,
+      "end_page": 4,
+      "page_count": 5,
+      "has_overlap": false,
+      "status": "success",
+      "attempts": 1,
+      "max_retries": 3,
+      "last_error": null,
+      "last_error_code": null,
+      "processed_at": "2025-10-02T14:28:00.000Z",
+      "created_at": "2025-10-02T14:25:00.000Z",
+      "updated_at": "2025-10-02T14:28:00.000Z"
+    },
+    {
+      "id": 124,
+      "job_id": 42,
+      "chunk_id": 1,
+      "start_page": 4,
+      "end_page": 8,
+      "page_count": 5,
+      "has_overlap": true,
+      "status": "failed",
+      "attempts": 3,
+      "max_retries": 3,
+      "last_error": "API rate limit exceeded",
+      "last_error_code": "RATE_LIMIT",
+      "processed_at": null,
+      "created_at": "2025-10-02T14:25:00.000Z",
+      "updated_at": "2025-10-02T14:29:00.000Z"
+    }
+  ]
+}
+```
+
+**Status Codes:**
+- `200 OK`: Chunks retrieved successfully
+- `401 Unauthorized`: Authentication required
+- `404 Not Found`: History entry not found
+- `500 Internal Server Error`: Database error
+
+---
+
+### Export History to Sheets
+
+Export a historical job's results to Google Sheets.
+
+**Endpoint:** `POST /history/{entry_id}/export`
+
+**Authentication:** Required (JWT Bearer token)
+
+**Rate Limit:** 5 requests per hour
+
+**Path Parameters:**
+- `entry_id` (integer, required): ID of the history entry
+
+**Request:**
+- Content-Type: `application/json`
+- Body (optional):
+```json
+{
+  "sheetName": "Novel Chapter 1 - Export",
+  "folderId": "GOOGLE_DRIVE_FOLDER_ID"
+}
+```
+
+**Parameters:**
+- `sheetName` (string, optional): Name for the new Google Sheet
+- `folderId` (string, optional): Google Drive folder ID to create the sheet in
+
+**Response:**
+```json
+{
+  "message": "Export successful",
+  "spreadsheet_url": "https://docs.google.com/spreadsheets/d/SPREADSHEET_ID"
+}
+```
+
+**Status Codes:**
+- `200 OK`: Export successful
+- `400 Bad Request`: No sentences available for this history entry
+- `401 Unauthorized`: Authentication required
+- `403 Forbidden`: Google Sheets access not authorized
+- `404 Not Found`: History entry not found
+- `500 Internal Server Error`: Export failed
+
+---
+
 ### Get Settings
 
 Retrieve current user settings.
