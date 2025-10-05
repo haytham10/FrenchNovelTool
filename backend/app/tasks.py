@@ -202,16 +202,11 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
         # Process with Gemini
         prompt = gemini_service.build_prompt()
 
-        # Diagnostic: log chunk metadata and a short sample of text before calling Gemini
-        try:
-            text_sample = (text[:500] + '...') if text and len(text) > 500 else text
-        except Exception:
-            text_sample = None
+        # Log basic chunk metadata before calling Gemini (avoid large text dumps)
         logger.info(
-            "Processing chunk %s (job %s) pages=%s-%s page_count=%s text_len=%s sample=%s",
+            "Processing chunk %s (job %s) pages=%s-%s page_count=%s text_len=%s",
             chunk_info.get('chunk_id'), chunk_info.get('job_id'), chunk_info.get('start_page'),
             chunk_info.get('end_page'), chunk_info.get('page_count'), (len(text) if text else 0),
-            (text_sample[:300] if isinstance(text_sample, str) else None)
         )
         try:
             result = gemini_service.normalize_text(text, prompt)
@@ -222,14 +217,12 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
             except Exception:
                 GeminiAPIError = None
 
-            # Log diagnostics: attach a short sample of text and any raw response
-            sample = (text[:1000] + '...') if text and len(text) > 1000 else text
+            # Log diagnostics: keep raw_response truncated to avoid huge logs
             if GeminiAPIError and isinstance(exc, GeminiAPIError):
-                logger.error(
-                    "GeminiAPIError processing chunk %s (job %s): %s; raw_response=%s; text_sample=%s",
-                    chunk_info.get('chunk_id'), chunk_info.get('job_id'), str(exc),
-                    (str(getattr(exc, 'raw_response', ''))[:1000] if getattr(exc, 'raw_response', None) else ''),
-                    sample
+                raw_snip = (str(getattr(exc, 'raw_response', ''))[:300] + '...') if getattr(exc, 'raw_response', None) and len(str(getattr(exc, 'raw_response', ''))) > 300 else getattr(exc, 'raw_response', '')
+                logger.warning(
+                    "GeminiAPIError processing chunk %s (job %s): %s; raw_response_snip=%s",
+                    chunk_info.get('chunk_id'), chunk_info.get('job_id'), str(exc), raw_snip
                 )
                 # Persist into chunk DB record if present
                 if chunk_db_record:
