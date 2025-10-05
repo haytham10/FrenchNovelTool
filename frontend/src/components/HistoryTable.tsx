@@ -64,6 +64,15 @@ const StyledTableRow = styled(TableRow)(({ theme }) => ({
   },
 }));
 
+// Timestamp-specific cell: allow enough space and prevent truncation for dates
+const TimestampCell = styled(StyledTableCell)(() => ({
+  minWidth: 160,
+  maxWidth: 240,
+  whiteSpace: 'nowrap',
+  overflow: 'visible',
+  textOverflow: 'clip',
+}));
+
 // Add keyframes for spinning animation
 const globalStyles = `
   @keyframes spin {
@@ -596,7 +605,7 @@ export default function HistoryTable() {
           <TableHead>
             <TableRow>
               <StyledTableCell>Status</StyledTableCell>
-              <StyledTableCell>
+              <TimestampCell>
                 <TableSortLabel
                   active={orderBy === 'timestamp'}
                   direction={orderBy === 'timestamp' ? order : 'asc'}
@@ -605,7 +614,7 @@ export default function HistoryTable() {
                 >
                   Timestamp
                 </TableSortLabel>
-              </StyledTableCell>
+              </TimestampCell>
               <StyledTableCell>
                 <TableSortLabel
                   active={orderBy === 'original_filename'}
@@ -715,7 +724,7 @@ export default function HistoryTable() {
                       }}
                     />
                   </StyledTableCell>
-                  <StyledTableCell>{new Date(entry.timestamp).toLocaleString()}</StyledTableCell>
+                  <TimestampCell>{new Date(entry.timestamp).toLocaleString()}</TimestampCell>
                   <StyledTableCell>{entry.original_filename}</StyledTableCell>
                   <StyledTableCell>{entry.processed_sentences_count}</StyledTableCell>
                   <StyledTableCell>
