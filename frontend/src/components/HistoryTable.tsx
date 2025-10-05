@@ -49,7 +49,7 @@ export default function HistoryTable() {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [detailsDrawerOpen, setDetailsDrawerOpen] = useState(false);
-  const [selectedEntry, setSelectedEntry] = useState<HistoryEntry | null>(null);
+  const [selectedEntry] = useState<HistoryEntry | null>(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [detailEntryId, setDetailEntryId] = useState<number | null>(null);
   const [dateRangeStart, setDateRangeStart] = useState<string>('');

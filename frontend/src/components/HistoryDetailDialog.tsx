@@ -30,7 +30,7 @@ import {
   Paper,
   Divider,
 } from '@mui/material';
-import { Close, FileDownload, OpenInNew, ChevronDown, CheckCircle, XCircle, Clock, RefreshCw } from 'lucide-react';
+import { X, Download, ExternalLink, ChevronDown, CheckCircle, XCircle, Clock, RefreshCw } from 'lucide-react';
 import { useHistoryDetail, useHistoryChunks, useExportHistoryToSheets } from '@/lib/queries';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -105,7 +105,7 @@ export default function HistoryDetailDialog({
         <Stack direction="row" alignItems="center" justifyContent="space-between">
           <Typography variant="h6">Processing History Detail</Typography>
           <IconButton onClick={onClose} size="small">
-            <Close />
+            <X />
           </IconButton>
         </Stack>
       </DialogTitle>
@@ -275,7 +275,7 @@ export default function HistoryDetailDialog({
                                 <Chip
                                   label={chunk.status}
                                   size="small"
-                                  color={getChunkStatusColor(chunk.status) as any}
+                                  color={getChunkStatusColor(chunk.status)}
                                 />
                               </Stack>
                             </TableCell>
@@ -335,20 +335,20 @@ export default function HistoryDetailDialog({
         <Stack direction="row" spacing={2} width="100%" justifyContent="space-between">
           <Box>
             {entry?.export_sheet_url || entry?.spreadsheet_url ? (
-              <Button
-                startIcon={<OpenInNew />}
-                onClick={handleOpenSheet}
-                variant="outlined"
-              >
-                Open Sheet
-              </Button>
-            ) : null}
+                          <Button
+                            startIcon={<ExternalLink />}
+                            onClick={handleOpenSheet}
+                            variant="outlined"
+                          >
+                            Open Sheet
+                          </Button>
+                        ) : null}
           </Box>
           <Stack direction="row" spacing={1}>
             <Button onClick={onClose}>Close</Button>
             {entry && entry.sentences && entry.sentences.length > 0 && (
               <Button
-                startIcon={exportMutation.isPending ? <CircularProgress size={16} /> : <FileDownload />}
+                startIcon={exportMutation.isPending ? <CircularProgress size={16} /> : <Download />}
                 onClick={handleExport}
                 variant="contained"
                 disabled={exportMutation.isPending}
