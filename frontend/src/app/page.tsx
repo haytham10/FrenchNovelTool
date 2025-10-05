@@ -6,8 +6,8 @@ import ResultsTable from '@/components/ResultsTable';
 import NormalizeControls from '@/components/NormalizeControls';
 import ExportDialog from '@/components/ExportDialog';
 import PreflightModal from '@/components/PreflightModal';
-import { getApiErrorMessage, extractPdfText } from '@/lib/api';
-import { useProcessPdf, useExportToSheet, useEstimateCost, useConfirmJob } from '@/lib/queries';
+import { getApiErrorMessage } from '@/lib/api';
+import { useProcessPdf, useExportToSheet, useEstimatePdfCost, useConfirmJob } from '@/lib/queries';
 import { CircularProgress, Button, Typography, Box, Container, Paper, Divider, List, ListItem, ListItemText, LinearProgress } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import UploadStepper from '@/components/UploadStepper';
@@ -52,7 +52,7 @@ export default function Home() {
   // Use React Query for API calls
   const processPdfMutation = useProcessPdf();
   const exportMutation = useExportToSheet();
-  const estimateMutation = useEstimateCost();
+  const estimatePdfMutation = useEstimatePdfCost();
   const confirmJobMutation = useConfirmJob();
 
   // WebSocket connection for real-time job progress
@@ -122,14 +122,24 @@ export default function Home() {
     setPreflightModalOpen(true);
 
     try {
-      // Extract text from PDF
-      const { text } = await extractPdfText(file);
-      
-      // Get cost estimate
-      const estimate = await estimateMutation.mutateAsync({
-        text,
+      // Fast metadata-only PDF estimation (no text extraction)
+      const pdfEstimate = await estimatePdfMutation.mutateAsync({
+        file,
         model_preference: advancedOptions.geminiModel || 'balanced',
       });
+      
+      // Convert to CostEstimate format expected by PreflightModal
+      const estimate: CostEstimate = {
+        model: pdfEstimate.model,
+        model_preference: pdfEstimate.model_preference,
+        estimated_tokens: pdfEstimate.estimated_tokens,
+        estimated_credits: pdfEstimate.estimated_credits,
+        pricing_rate: pdfEstimate.pricing_rate,
+        pricing_version: 'v1.0',
+        estimation_method: 'heuristic',
+        current_balance: 0, // Will be fetched separately if needed
+        allowed: true,
+      };
       
       setCostEstimate(estimate);
     } catch (error) {
