@@ -533,10 +533,22 @@ def export_history_to_sheets(entry_id):
         folder_id = data.get('folderId')
         
         # Export to Google Sheets
+        # `entry.sentences` may be a list of dicts like {'normalized': str, 'original': str}
+        # Google Sheets API expects scalar values per cell, so convert each sentence
+        # to a display string (prefer 'normalized' then 'original').
+        prepared_sentences = []
+        for s in entry.sentences:
+            if isinstance(s, dict):
+                # choose normalized if present, otherwise original, else stringify
+                text = s.get('normalized') or s.get('original') or str(s)
+            else:
+                text = str(s)
+            prepared_sentences.append(text)
+
         sheets_service = GoogleSheetsService()
         spreadsheet_url = sheets_service.export_to_sheet(
             creds=creds,
-            sentences=entry.sentences,
+            sentences=prepared_sentences,
             sheet_name=sheet_name,
             folder_id=folder_id
         )

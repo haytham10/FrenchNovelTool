@@ -26,9 +26,11 @@ export default function JobCreditDisplay({ jobId }: JobCreditDisplayProps) {
   }
 
   const isRefunded = job.status === 'failed' || job.status === 'cancelled';
-  const actualCredits = job.actual_credits || 0;
+  // Use nullish coalescing so that null/undefined actual_credits are preserved
+  // and don't display as 0 while a job is still processing.
+  const actualCredits: number | null = job.actual_credits ?? null;
   const estimatedCredits = job.estimated_credits;
-  const difference = actualCredits - estimatedCredits;
+  const difference: number | null = actualCredits !== null ? actualCredits - estimatedCredits : null;
 
   return (
     <Tooltip
@@ -40,12 +42,12 @@ export default function JobCreditDisplay({ jobId }: JobCreditDisplayProps) {
           <Typography variant="caption" display="block">
             Estimated: {estimatedCredits} credits
           </Typography>
-          {job.status === 'completed' && (
+          {job.status === 'completed' && actualCredits !== null && (
             <>
               <Typography variant="caption" display="block">
                 Actual: {actualCredits} credits
               </Typography>
-              {difference !== 0 && (
+              {difference !== null && difference !== 0 && (
                 <Typography variant="caption" display="block" color={difference > 0 ? 'error.light' : 'success.light'}>
                   Adjustment: {difference > 0 ? '+' : ''}{difference} credits
                 </Typography>
@@ -77,9 +79,9 @@ export default function JobCreditDisplay({ jobId }: JobCreditDisplayProps) {
         ) : job.status === 'completed' ? (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <Typography variant="body2" fontWeight={600}>
-              {actualCredits}
+              {actualCredits ?? estimatedCredits}
             </Typography>
-            {difference !== 0 && (
+            {difference !== null && difference !== 0 && (
               <Icon
                 icon={difference > 0 ? TrendingUp : TrendingDown}
                 fontSize="small"
