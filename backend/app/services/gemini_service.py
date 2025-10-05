@@ -24,7 +24,7 @@ class GeminiService:
         self,
         sentence_length_limit: int = 8,
         *,
-        model_preference: str = 'balanced',
+    model_preference: str = 'speed',
         ignore_dialogue: bool = False,
         preserve_formatting: bool = True,
         fix_hyphenation: bool = True,
@@ -34,7 +34,7 @@ class GeminiService:
         self.model_preference = model_preference
         self.model_name = self.MODEL_PREFERENCE_MAP.get(
             model_preference,
-            current_app.config['GEMINI_MODEL']
+            current_app.config.get('GEMINI_MODEL', 'gemini-2.5-flash-lite')
         )
         self.sentence_length_limit = sentence_length_limit
         self.ignore_dialogue = ignore_dialogue

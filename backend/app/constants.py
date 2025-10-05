@@ -24,7 +24,8 @@ API_SERVICE_NAME = "French Novel Tool API"
 ALLOWED_FILE_EXTENSIONS = {'pdf'}
 
 # Gemini API
-DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash'
+# Default runtime Gemini model (changed default preference from 'balanced' to 'speed')
+DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash-lite'
 DEFAULT_GEMINI_MAX_RETRIES = 3
 DEFAULT_GEMINI_RETRY_DELAY = 1
 

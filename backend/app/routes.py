@@ -145,7 +145,7 @@ def estimate_pdf():
         return jsonify({'error': str(e)}), 400
     
     # Get optional model preference from form data
-    model_preference = request.form.get('model_preference', 'balanced')
+    model_preference = request.form.get('model_preference', 'speed')
     
     # Validate model preference
     try:
@@ -271,9 +271,9 @@ def process_pdf():
             form_data.get('sentence_length_limit'),
             settings.get('sentence_length_limit', 8)
         )
-        gemini_model = (form_data.get('gemini_model') or settings.get('gemini_model', 'balanced')).lower()
+        gemini_model = (form_data.get('gemini_model') or settings.get('gemini_model', 'speed')).lower()
         if gemini_model not in {'balanced', 'quality', 'speed'}:
-            gemini_model = 'balanced'
+            gemini_model = 'speed'
         ignore_dialogue = _coerce_bool(
             form_data.get('ignore_dialogue'),
             settings.get('ignore_dialogue', False)
@@ -1068,9 +1068,9 @@ def process_pdf_async_endpoint():
             form_data.get('sentence_length_limit'),
             settings.get('sentence_length_limit', 8)
         )
-        gemini_model = (form_data.get('gemini_model') or settings.get('gemini_model', 'balanced')).lower()
+        gemini_model = (form_data.get('gemini_model') or settings.get('gemini_model', 'speed')).lower()
         if gemini_model not in {'balanced', 'quality', 'speed'}:
-            gemini_model = 'balanced'
+            gemini_model = 'speed'
         ignore_dialogue = _coerce_bool(
             form_data.get('ignore_dialogue'),
             settings.get('ignore_dialogue', False)
