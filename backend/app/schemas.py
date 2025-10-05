@@ -94,7 +94,7 @@ class UserSettingsSchema(Schema):
         validate=validate.Range(min=3, max=50)
     )
     gemini_model = fields.String(
-        load_default='balanced',
+        load_default='speed',
         validate=validate.OneOf(['balanced', 'quality', 'speed'])
     )
     ignore_dialogue = fields.Boolean(load_default=False)
@@ -158,7 +158,7 @@ class EstimatePdfSchema(Schema):
     # File is validated separately via validate_pdf_file()
     # This schema validates optional form fields
     model_preference = fields.String(
-        load_default='balanced',
+        load_default='speed',
         validate=validate.OneOf(['balanced', 'quality', 'speed'])
     )
 

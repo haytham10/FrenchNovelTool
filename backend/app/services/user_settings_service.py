@@ -5,7 +5,7 @@ from app.models import UserSettings
 
 DEFAULT_SETTINGS = {
     'sentence_length_limit': 8,
-    'gemini_model': 'balanced',
+    'gemini_model': 'speed',
     'ignore_dialogue': False,
     'preserve_formatting': True,
     'fix_hyphenation': True,

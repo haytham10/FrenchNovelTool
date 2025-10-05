@@ -184,8 +184,8 @@ export default function NormalizeControls({
             </Typography>
           </Box>
           <FormControl fullWidth>
-            <Select
-              value={advancedOptions.geminiModel || 'balanced'}
+              <Select
+              value={advancedOptions.geminiModel || 'speed'}
               onChange={(e) => handleAdvancedOptionChange('geminiModel', e.target.value)}
               disabled={disabled}
               sx={{ 

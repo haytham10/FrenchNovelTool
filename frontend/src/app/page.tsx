@@ -126,7 +126,7 @@ export default function Home() {
       // Fast metadata-only PDF estimation (no text extraction)
       const pdfEstimate = await estimatePdfMutation.mutateAsync({
         file,
-        model_preference: advancedOptions.geminiModel || 'balanced',
+        model_preference: advancedOptions.geminiModel || 'speed',
       });
 
       // Ensure we have a fresh credit balance before showing the modal
@@ -174,7 +174,7 @@ export default function Home() {
           original_filename: currentFile.name,
           estimated_tokens: costEstimate.estimated_tokens,
           sentence_length_limit: sentenceLength,
-          gemini_model: advancedOptions.geminiModel,
+          gemini_model: advancedOptions.geminiModel || 'speed',
           ignore_dialogue: advancedOptions.ignoreDialogues,
           preserve_formatting: advancedOptions.preserveQuotes,
           fix_hyphenation: advancedOptions.fixHyphenations,

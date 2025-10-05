@@ -33,7 +33,7 @@ class JobService:
         Returns:
             Actual Gemini model name
         """
-        return MODEL_PREFERENCE_MAP.get(model_preference, MODEL_PREFERENCE_MAP['balanced'])
+        return MODEL_PREFERENCE_MAP.get(model_preference, MODEL_PREFERENCE_MAP['speed'])
     
     @staticmethod
     def get_pricing_rate(model_name: str) -> float:

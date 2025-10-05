@@ -13,7 +13,6 @@ import Icon from './Icon';
 import IconButton from './IconButton';
 import { CheckCircle, XCircle, Loader2, RefreshCw, Eye, Filter, Send, Calendar, Copy, ExternalLink, RotateCw } from 'lucide-react';
 import ExportDialog from './ExportDialog';
-import JobCreditDisplay from './JobCreditDisplay';
 import { useRouter } from 'next/navigation';
 import HistoryDetailDialog from './HistoryDetailDialog';
 
@@ -62,6 +61,15 @@ const StyledTableRow = styled(TableRow)(({ theme }) => ({
     outline: `2px solid ${theme.palette.primary.main}`,
     outlineOffset: '2px',
   },
+}));
+
+// Timestamp-specific cell: allow enough space and prevent truncation for dates
+const TimestampCell = styled(StyledTableCell)(() => ({
+  minWidth: 160,
+  maxWidth: 240,
+  whiteSpace: 'nowrap',
+  overflow: 'visible',
+  textOverflow: 'clip',
 }));
 
 // Add keyframes for spinning animation
@@ -596,7 +604,7 @@ export default function HistoryTable() {
           <TableHead>
             <TableRow>
               <StyledTableCell>Status</StyledTableCell>
-              <StyledTableCell>
+              <TimestampCell>
                 <TableSortLabel
                   active={orderBy === 'timestamp'}
                   direction={orderBy === 'timestamp' ? order : 'asc'}
@@ -605,7 +613,7 @@ export default function HistoryTable() {
                 >
                   Timestamp
                 </TableSortLabel>
-              </StyledTableCell>
+              </TimestampCell>
               <StyledTableCell>
                 <TableSortLabel
                   active={orderBy === 'original_filename'}
@@ -715,12 +723,12 @@ export default function HistoryTable() {
                       }}
                     />
                   </StyledTableCell>
-                  <StyledTableCell>{new Date(entry.timestamp).toLocaleString()}</StyledTableCell>
+                  <TimestampCell>{new Date(entry.timestamp).toLocaleString()}</TimestampCell>
                   <StyledTableCell>{entry.original_filename}</StyledTableCell>
                   <StyledTableCell>{entry.processed_sentences_count}</StyledTableCell>
                   <StyledTableCell>
-                    {(entry as HistoryEntry).job_id ? (
-                      <JobCreditDisplay jobId={(entry as HistoryEntry).job_id!} />
+                    {entry.job_id ? (
+                      <Typography variant="body2">{entry.job_id}</Typography>
                     ) : (
                       <Typography variant="caption" color="text.secondary">
                         N/A
