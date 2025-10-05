@@ -29,6 +29,13 @@ class GeminiService:
         'quality': 'gemini-2.5-pro',
         'speed': 'gemini-2.5-flash-lite',
     }
+    
+    # Model fallback cascade: if current model fails, try these in order
+    MODEL_FALLBACK_CASCADE = {
+        'speed': ['balanced', 'quality'],
+        'balanced': ['quality'],
+        'quality': []  # No fallback for quality (already best model)
+    }
 
     DIALOGUE_BOUNDARIES = ('"', "'", '«', '»', '“', '”')
 
@@ -124,6 +131,19 @@ class GeminiService:
         ])
 
         return "\n".join(sections)
+    
+    def build_minimal_prompt(self) -> str:
+        """Build a minimal prompt that only asks for JSON sentence list.
+        
+        Used as a fallback when the full prompt fails due to hallucination or format issues.
+        """
+        return (
+            f"Extract and split all French sentences from the text. "
+            f"If a sentence has more than {self.sentence_length_limit} words, split it into shorter sentences. "
+            f"Return ONLY a JSON object: {{\"sentences\": [\"sentence 1\", \"sentence 2\", ...]}}. "
+            f"Do not include any explanations or additional text."
+        )
+
 
     @retry(
         stop=stop_after_attempt(3),
@@ -387,6 +407,117 @@ class GeminiService:
             # As a last resort, return the entire text as a single sentence
             t = str(text).strip()
             return {"sentences": [{"normalized": t, "original": t}], "tokens": 0}
+    
+    def _split_text_into_subchunks(self, text: str, num_subchunks: int = 2) -> List[str]:
+        """Split text into smaller sub-chunks for recursive Gemini processing.
+        
+        Args:
+            text: The text to split
+            num_subchunks: Number of sub-chunks to create (default: 2)
+            
+        Returns:
+            List of text sub-chunks
+        """
+        if not text or num_subchunks < 1:
+            return [text] if text else []
+        
+        # Split on paragraph boundaries first (double newlines or sentence boundaries)
+        paragraphs = re.split(r'\n\n+', text)
+        if len(paragraphs) < num_subchunks:
+            # Not enough paragraphs; split on sentence boundaries
+            sentences = re.findall(r'[^.!?…]+[.!?…]', text)
+            if len(sentences) < num_subchunks:
+                # Not enough sentences; split by character count
+                chunk_size = len(text) // num_subchunks
+                return [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
+            else:
+                # Distribute sentences evenly across subchunks
+                chunk_size = len(sentences) // num_subchunks
+                subchunks = []
+                for i in range(0, len(sentences), chunk_size):
+                    subchunk = ''.join(sentences[i:i+chunk_size])
+                    if subchunk.strip():
+                        subchunks.append(subchunk.strip())
+                return subchunks[:num_subchunks] if len(subchunks) > num_subchunks else subchunks
+        else:
+            # Distribute paragraphs evenly across subchunks
+            chunk_size = len(paragraphs) // num_subchunks
+            subchunks = []
+            for i in range(0, len(paragraphs), chunk_size):
+                subchunk = '\n\n'.join(paragraphs[i:i+chunk_size])
+                if subchunk.strip():
+                    subchunks.append(subchunk.strip())
+            return subchunks[:num_subchunks] if len(subchunks) > num_subchunks else subchunks
+    
+    def _merge_subchunk_results(self, subchunk_results: List[List[str]]) -> List[str]:
+        """Merge results from processing multiple sub-chunks.
+        
+        Args:
+            subchunk_results: List of sentence lists from each sub-chunk
+            
+        Returns:
+            Merged and post-processed sentence list
+        """
+        # Simply concatenate all sentences from all subchunks
+        all_sentences = []
+        for sentences in subchunk_results:
+            all_sentences.extend(sentences)
+        
+        # Run post-processing on merged result to handle any edge cases
+        # at subchunk boundaries
+        return self._post_process_sentences(all_sentences)
+    
+    def _call_gemini_api(self, text: str, prompt: str, model_name: str) -> Dict[str, Any]:
+        """Low-level Gemini API call helper.
+        
+        Args:
+            text: Text to process
+            prompt: Prompt to use
+            model_name: Model name to use
+            
+        Returns:
+            Dict with 'sentences' list and 'tokens' count
+            
+        Raises:
+            GeminiAPIError: If API returns empty or malformed response
+        """
+        contents = [prompt, text]
+        
+        response = self.client.models.generate_content(
+            model=model_name,
+            contents=contents,
+            config=types.GenerateContentConfig(
+                safety_settings=[
+                    types.SafetySetting(category='HARM_CATEGORY_HARASSMENT', threshold='BLOCK_NONE'),
+                    types.SafetySetting(category='HARM_CATEGORY_HATE_SPEECH', threshold='BLOCK_NONE'),
+                    types.SafetySetting(category='HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold='BLOCK_NONE'),
+                    types.SafetySetting(category='HARM_CATEGORY_DANGEROUS_CONTENT', threshold='BLOCK_NONE'),
+                ]
+            ),
+        )
+        
+        # Coerce None to empty string
+        response_text = getattr(response, 'text', '') or ''
+        cleaned_response = response_text.strip().replace('```json', '').replace('```', '')
+        
+        if not cleaned_response:
+            raise GeminiAPIError('Gemini returned an empty response.', response_text)
+        
+        try:
+            data = json.loads(cleaned_response)
+        except json.JSONDecodeError:
+            # Attempt recovery
+            try:
+                data = self._recover_json(cleaned_response)
+            except Exception:
+                raise GeminiAPIError('Failed to parse Gemini JSON response.', response_text)
+        
+        sentences = self._extract_sentence_list(data)
+        processed = self._post_process_sentences(sentences)
+        
+        sentence_dicts = [{"normalized": s, "original": s} for s in processed]
+        return {"sentences": sentence_dicts, "tokens": 0}
+
 
     # Public helper for processing already-extracted text (non-PDF)
     @retry(
@@ -395,87 +526,147 @@ class GeminiService:
         retry=retry_if_exception_type((ConnectionError, TimeoutError))
     )
     def normalize_text(self, text: str, prompt: Optional[str] = None) -> Dict[str, Any]:
-        """Normalize and split raw text into sentences using Gemini, then post-process.
-
+        """Normalize and split raw text into sentences using intelligent Gemini retry cascade.
+        
+        This method implements a multi-step fallback strategy:
+        1. Try with the selected model and full prompt
+        2. On failure, retry with a safer/heavier model (speed->balanced->quality)
+        3. If still failing, split into sub-chunks and process each
+        4. If still failing, try with minimal stripped prompt
+        5. As absolute last resort, use local fallback (marked in result)
+        
         Returns a dict with 'sentences' as a list of {normalized, original}.
+        The dict may include '_fallback_method' to indicate which method succeeded.
         """
         if not text or not text.strip():
             return {"sentences": [], "tokens": 0}
-
+        
         prompt_text = self.build_prompt(prompt)
-
-        # Compose prompt and content for the model
-        contents = [prompt_text, text]
-
-
+        
+        # Step 1: Try with original model and full prompt
+        current_app.logger.info(
+            'Attempting Gemini normalize_text with model=%s (preference=%s)',
+            self.model_name, self.model_preference
+        )
         try:
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    safety_settings=[
-                        types.SafetySetting(category='HARM_CATEGORY_HARASSMENT', threshold='BLOCK_NONE'),
-                        types.SafetySetting(category='HARM_CATEGORY_HATE_SPEECH', threshold='BLOCK_NONE'),
-                        types.SafetySetting(category='HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold='BLOCK_NONE'),
-                        types.SafetySetting(category='HARM_CATEGORY_DANGEROUS_CONTENT', threshold='BLOCK_NONE'),
-                    ]
-                ),
+            result = self._call_gemini_api(text, prompt_text, self.model_name)
+            current_app.logger.info('Successfully processed with original model %s', self.model_name)
+            return result
+        except GeminiAPIError as e:
+            current_app.logger.warning(
+                'Primary Gemini call failed with model=%s: %s',
+                self.model_name, str(e)
             )
         except Exception as e:
-            # Log full diagnostic including model name and suggestion for API key / model access
             current_app.logger.exception(
-                'Gemini API call failed for model=%s (preference=%s): %s',
-                self.model_name, self.model_preference, str(e)
+                'Unexpected error during primary Gemini call with model=%s: %s',
+                self.model_name, str(e)
             )
-            # If user selected the lightweight 'speed' model, try a safe fallback to balanced once
-            if self.model_preference == 'speed':
-                fallback = self.MODEL_PREFERENCE_MAP.get('balanced')
-                current_app.logger.info('Falling back from %s to %s and retrying Gemini call', self.model_name, fallback)
-                try:
-                    response = self.client.models.generate_content(
-                        model=fallback,
-                        contents=contents,
-                        config=types.GenerateContentConfig(
-                            safety_settings=[
-                                types.SafetySetting(category='HARM_CATEGORY_HARASSMENT', threshold='BLOCK_NONE'),
-                                types.SafetySetting(category='HARM_CATEGORY_HATE_SPEECH', threshold='BLOCK_NONE'),
-                                types.SafetySetting(category='HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold='BLOCK_NONE'),
-                                types.SafetySetting(category='HARM_CATEGORY_DANGEROUS_CONTENT', threshold='BLOCK_NONE'),
-                            ]
-                        ),
-                    )
-                    # Update model_name for diagnostics
-                    self.model_name = fallback
-                except Exception as e2:
-                    current_app.logger.exception('Fallback Gemini call also failed: %s', str(e2))
-                    raise
-            else:
-                raise
-
-        # Coerce None to empty string to avoid AttributeError on .strip()
-        response_text = getattr(response, 'text', '') or ''
-        cleaned_response = response_text.strip().replace('```json', '').replace('```', '')
-
-        if not cleaned_response:
-            current_app.logger.error('Received empty response from Gemini API for normalize_text.')
-            raise GeminiAPIError('Gemini returned an empty response.', response_text)
-
-        try:
-            data = json.loads(cleaned_response)
-        except json.JSONDecodeError:
-            current_app.logger.warning('normalize_text: JSON parsing failed, attempting recovery...')
+        
+        # Step 2: Try model fallback cascade
+        fallback_models = self.MODEL_FALLBACK_CASCADE.get(self.model_preference, [])
+        for fallback_pref in fallback_models:
+            fallback_model = self.MODEL_PREFERENCE_MAP.get(fallback_pref)
+            if not fallback_model:
+                continue
+            
+            current_app.logger.info(
+                'Attempting model fallback: %s -> %s (%s)',
+                self.model_preference, fallback_pref, fallback_model
+            )
             try:
-                data = self._recover_json(cleaned_response)
-            except Exception:
-                # Attach raw response for diagnostics
-                raise GeminiAPIError('Failed to parse Gemini JSON response.', response_text)
-
-        sentences = self._extract_sentence_list(data)
-        processed = self._post_process_sentences(sentences)
-
-        sentence_dicts = [
-            {"normalized": s, "original": s}
-            for s in processed
-        ]
-
-        return {"sentences": sentence_dicts, "tokens": 0}
+                result = self._call_gemini_api(text, prompt_text, fallback_model)
+                result['_fallback_method'] = f'model_fallback:{fallback_pref}'
+                current_app.logger.info('Successfully processed with fallback model %s', fallback_model)
+                return result
+            except GeminiAPIError as e:
+                current_app.logger.warning(
+                    'Model fallback %s failed: %s',
+                    fallback_model, str(e)
+                )
+            except Exception as e:
+                current_app.logger.exception(
+                    'Unexpected error during model fallback %s: %s',
+                    fallback_model, str(e)
+                )
+        
+        # Step 3: Try subchunk splitting (divide and conquer)
+        current_app.logger.info('Attempting subchunk processing (split into 2 parts)')
+        try:
+            subchunks = self._split_text_into_subchunks(text, num_subchunks=2)
+            if len(subchunks) > 1:
+                subchunk_results = []
+                for i, subchunk in enumerate(subchunks):
+                    current_app.logger.info('Processing subchunk %d/%d', i+1, len(subchunks))
+                    try:
+                        # Try with original model first, then fallback models
+                        sub_result = self._call_gemini_api(subchunk, prompt_text, self.model_name)
+                        subchunk_results.append(sub_result['sentences'])
+                    except Exception:
+                        # Try fallback models for this subchunk
+                        sub_processed = False
+                        for fallback_pref in fallback_models:
+                            fallback_model = self.MODEL_PREFERENCE_MAP.get(fallback_pref)
+                            if not fallback_model:
+                                continue
+                            try:
+                                sub_result = self._call_gemini_api(subchunk, prompt_text, fallback_model)
+                                subchunk_results.append(sub_result['sentences'])
+                                sub_processed = True
+                                break
+                            except Exception:
+                                continue
+                        
+                        if not sub_processed:
+                            raise Exception(f'All models failed for subchunk {i}')
+                
+                # Merge results from all subchunks
+                merged_sentences = []
+                for sub_sentences in subchunk_results:
+                    merged_sentences.extend([s['normalized'] for s in sub_sentences])
+                
+                # Post-process merged sentences
+                processed = self._post_process_sentences(merged_sentences)
+                sentence_dicts = [{"normalized": s, "original": s} for s in processed]
+                result = {"sentences": sentence_dicts, "tokens": 0, "_fallback_method": "subchunk_split"}
+                current_app.logger.info('Successfully processed via subchunk splitting')
+                return result
+            else:
+                current_app.logger.info('Text too small to split into subchunks')
+        except Exception as e:
+            current_app.logger.warning('Subchunk processing failed: %s', str(e))
+        
+        # Step 4: Try minimal/stripped prompt
+        current_app.logger.info('Attempting minimal prompt fallback')
+        minimal_prompt = self.build_minimal_prompt()
+        try:
+            result = self._call_gemini_api(text, minimal_prompt, self.model_name)
+            result['_fallback_method'] = 'minimal_prompt'
+            current_app.logger.info('Successfully processed with minimal prompt')
+            return result
+        except Exception as e:
+            current_app.logger.warning('Minimal prompt fallback failed: %s', str(e))
+            
+            # Try minimal prompt with fallback models
+            for fallback_pref in fallback_models:
+                fallback_model = self.MODEL_PREFERENCE_MAP.get(fallback_pref)
+                if not fallback_model:
+                    continue
+                try:
+                    result = self._call_gemini_api(text, minimal_prompt, fallback_model)
+                    result['_fallback_method'] = f'minimal_prompt_model_fallback:{fallback_pref}'
+                    current_app.logger.info(
+                        'Successfully processed with minimal prompt and model %s',
+                        fallback_model
+                    )
+                    return result
+                except Exception:
+                    continue
+        
+        # Step 5: Absolute last resort - local fallback
+        current_app.logger.warning(
+            'All Gemini retry strategies exhausted; using local fallback as last resort'
+        )
+        result = self.local_normalize_text(text)
+        result['_fallback_method'] = 'local_segmentation'
+        return result
