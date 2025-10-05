@@ -84,7 +84,6 @@ MONTHLY_CREDIT_GRANT = 10000  # Default credits granted per month
 MODEL_PRICING = {
     'gemini-2.5-flash': 1,      # balanced - fastest, cheapest
     'gemini-2.5-flash-lite': 1, # speed - ultra-fast, experimental
-    'gemini-2.5-flash-lite-preview-09-2025': 1, # lightning - preview lightweight flash model
     'gemini-2.5-pro': 5,        # quality - best quality, most expensive
 }
 
@@ -93,7 +92,6 @@ MODEL_PREFERENCE_MAP = {
     'balanced': 'gemini-2.5-flash',
     'speed': 'gemini-2.5-flash-lite',
     'quality': 'gemini-2.5-pro',
-    'lightning': 'gemini-2.5-flash-lite-preview-09-2025'
 }
 
 # Token estimation

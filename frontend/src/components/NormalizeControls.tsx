@@ -18,7 +18,8 @@ export interface AdvancedNormalizationOptions {
   preserveQuotes?: boolean;
   fixHyphenations?: boolean;
   minSentenceLength?: number;
-  geminiModel?: 'balanced' | 'quality' | 'speed' | 'lightning';
+  geminiModel?: 'balanced' | 'quality' | 'speed';
+  
 }
 
 const PRESETS = [
@@ -31,7 +32,6 @@ const GEMINI_MODELS = [
   { value: 'balanced', label: 'Balanced', description: 'Best balance of speed and quality' },
   { value: 'quality', label: 'Quality', description: 'Highest quality, slower processing' },
   { value: 'speed', label: 'Speed', description: 'Fastest processing, good quality' },
-  { value: 'lightning', label: 'Lightning', description: 'Preview: extremely fast/lightweight flash model' },
 ];
 
 export default function NormalizeControls({
