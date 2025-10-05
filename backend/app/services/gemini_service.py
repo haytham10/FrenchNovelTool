@@ -154,8 +154,11 @@ class GeminiService:
                 ]
             ),
         )
-        response_text = response.text if hasattr(response, 'text') else ''
-        current_app.logger.debug('Raw Gemini response: %s', response_text[:1000])
+
+        # Some SDKs may set response.text to None; coerce to empty string to
+        # avoid failing calls to .strip() or slicing when logging.
+        response_text = getattr(response, 'text', '') or ''
+        current_app.logger.debug('Raw Gemini response: %s', (response_text[:1000] if isinstance(response_text, str) else ''))
 
         cleaned_response = response_text.strip().replace('```json', '').replace('```', '')
 
@@ -406,7 +409,8 @@ class GeminiService:
             else:
                 raise
 
-        response_text = response.text if hasattr(response, 'text') else ''
+        # Coerce None to empty string to avoid AttributeError on .strip()
+        response_text = getattr(response, 'text', '') or ''
         cleaned_response = response_text.strip().replace('```json', '').replace('```', '')
 
         if not cleaned_response:

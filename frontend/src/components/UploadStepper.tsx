@@ -6,8 +6,8 @@ import { styled } from '@mui/material/styles';
 
 const steps = [
   { label: 'Upload', eta: '~5s' },
-  { label: 'Analyze', eta: '~10s' },
-  { label: 'Normalize', eta: '~20s' },
+  { label: 'Analyze', eta: '' },
+  { label: 'Normalize', eta: '' },
   { label: 'Done', eta: '' }
 ];
 
