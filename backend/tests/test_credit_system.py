@@ -274,7 +274,7 @@ class TestJobService:
     def test_calculate_credits(self, app):
         """Test credit calculation"""
         # 1000 tokens with rate 1 = 1 credit
-        credits = JobService.calculate_credits(1000, 'gemini-2.5-flash')
+        credits = JobService.calculate_credits(1000, 'gemini-2.5-flash-lite')
         assert credits == 1
         
         # 1000 tokens with rate 5 = 5 credits

@@ -100,8 +100,8 @@ TOKEN_ESTIMATION_SAFETY_BUFFER = 1.10  # Add 10% buffer to estimates
 
 # PDF metadata estimation (for fast cost estimates without text extraction)
 MAX_PAGES_FOR_ESTIMATE = 1000  # Maximum pages to allow for estimation
-PAGES_TO_TOKENS_HEURISTIC = 500  # Average tokens per page for estimation
-ESTIMATE_IMAGE_WEIGHT = 50  # Additional tokens per image for estimation
+PAGES_TO_TOKENS_HEURISTIC = 50  # Average tokens per page for estimation
+ESTIMATE_IMAGE_WEIGHT = 5  # Additional tokens per image for estimation
 
 # Credit limits
 CREDIT_OVERDRAFT_LIMIT = -100  # Allow small negative balance to handle overruns
