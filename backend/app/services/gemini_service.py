@@ -64,7 +64,7 @@ class GeminiService:
         self.retry_delay = current_app.config['GEMINI_RETRY_DELAY']
         # Allow operator to disable local segmentation fallback via config.
         # Default: True to preserve existing behaviour unless explicitly changed.
-        self.allow_local_fallback = current_app.config.get('GEMINI_ALLOW_LOCAL_FALLBACK', True)
+        self.allow_local_fallback = current_app.config.get('GEMINI_ALLOW_LOCAL_FALLBACK', False)
 
     def build_prompt(self, base_prompt: Optional[str] = None) -> str:
         """Build the advanced Gemini prompt for French literary processing."""
@@ -484,8 +484,16 @@ class GeminiService:
         Raises:
             GeminiAPIError: If API returns empty or malformed response
         """
-        contents = [prompt, text]
-        
+        # Place the user text/document before the prompt to match the PDF path
+        # ordering used in generate_content_from_pdf. Some SDKs/models behave
+        # more reliably when the primary content is provided first.
+        contents = [text, prompt]
+
+        current_app.logger.debug(
+            'Calling Gemini API model=%s prompt_len=%s text_len=%s',
+            model_name, (len(prompt) if prompt else 0), (len(text) if text else 0)
+        )
+
         response = self.client.models.generate_content(
             model=model_name,
             contents=contents,
@@ -502,8 +510,17 @@ class GeminiService:
         # Coerce None to empty string
         response_text = getattr(response, 'text', '') or ''
         cleaned_response = response_text.strip().replace('```json', '').replace('```', '')
-        
+
         if not cleaned_response:
+            # Log extra diagnostics for empty responses
+            try:
+                resp_repr = repr(response)
+            except Exception:
+                resp_repr = '<unrepresentable response>'
+            current_app.logger.warning(
+                'Gemini API returned empty cleaned_response for model=%s; raw_len=%s repr=%s',
+                model_name, len(response_text), resp_repr[:1000]
+            )
             raise GeminiAPIError('Gemini returned an empty response.', response_text)
         
         try:
@@ -560,6 +577,12 @@ class GeminiService:
                 'Primary Gemini call failed with model=%s: %s',
                 self.model_name, str(e)
             )
+            # Dump a short snippet of the raw response to debug intermittent empty responses
+            if getattr(e, 'raw_response', None):
+                try:
+                    current_app.logger.debug('Gemini raw_response (snippet): %s', e.raw_response[:2000])
+                except Exception:
+                    current_app.logger.debug('Gemini raw_response present but could not be displayed')
         except Exception as e:
             current_app.logger.exception(
                 'Unexpected error during primary Gemini call with model=%s: %s',
