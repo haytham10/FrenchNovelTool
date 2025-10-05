@@ -107,6 +107,7 @@ export interface HistoryDetail extends ProcessingHistory {
   sentences: Array<{ normalized: string; original: string }>;
   chunk_ids: number[];
   chunks: ChunkDetail[];
+  sentences_source?: 'snapshot' | 'live_chunks';
 }
 
 export interface ChunkDetail {
@@ -289,6 +290,18 @@ export async function getHistoryChunks(entryId: number): Promise<{ chunks: Chunk
 }
 
 /**
+ * Refresh history snapshot from current JobChunk results
+ */
+export async function refreshHistoryFromChunks(entryId: number): Promise<{ 
+  message: string; 
+  sentences_count: number; 
+  entry: HistoryDetail 
+}> {
+  const response = await api.post(`/history/${entryId}/refresh`);
+  return response.data;
+}
+
+/**
  * Export history entry to Google Sheets
  */
 export interface ExportHistoryRequest {
@@ -296,7 +309,11 @@ export interface ExportHistoryRequest {
   folderId?: string | null;
 }
 
-export async function exportHistoryToSheets(entryId: number, data?: ExportHistoryRequest): Promise<{ spreadsheet_url: string }> {
+export async function exportHistoryToSheets(entryId: number, data?: ExportHistoryRequest): Promise<{ 
+  spreadsheet_url: string;
+  sentences_source?: string;
+  sentences_count?: number;
+}> {
   const response = await api.post(`/history/${entryId}/export`, data || {});
   return response.data;
 }

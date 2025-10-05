@@ -602,11 +602,10 @@ def get_history_chunks(entry_id):
         return jsonify({'error': str(e)}), 500
 
 
-@main_bp.route('/history/<int:entry_id>/export', methods=['POST'])
+@main_bp.route('/history/<int:entry_id>/refresh', methods=['POST'])
 @jwt_required()
-@limiter.limit("5 per hour")
-def export_history_to_sheets(entry_id):
-    """Export historical job results to Google Sheets"""
+def refresh_history_from_chunks(entry_id):
+    """Refresh history snapshot from current JobChunk results (after retries)"""
     try:
         user_id = int(get_jwt_identity())
         user = User.query.get(user_id)
@@ -614,12 +613,50 @@ def export_history_to_sheets(entry_id):
         if not user or not user.is_active:
             return jsonify({'error': 'User not found or inactive'}), 401
         
-        # Get history entry with sentences
-        entry = history_service.get_entry_by_id(entry_id, user_id)
-        if not entry:
+        # Refresh history snapshot from chunks
+        updated_entry = history_service.refresh_from_chunks(entry_id, user_id)
+        
+        if not updated_entry:
+            return jsonify({'error': 'History entry not found or has no chunk data'}), 404
+        
+        current_app.logger.info(
+            f'User {user.email} refreshed history entry {entry_id} from chunks '
+            f'({updated_entry.processed_sentences_count} sentences)'
+        )
+        
+        return jsonify({
+            'message': 'History snapshot refreshed from chunks',
+            'sentences_count': updated_entry.processed_sentences_count,
+            'entry': updated_entry.to_dict_with_sentences()
+        })
+        
+    except Exception as e:
+        current_app.logger.exception(f'Failed to refresh history entry {entry_id}')
+        return jsonify({'error': str(e)}), 500
+
+
+@main_bp.route('/history/<int:entry_id>/export', methods=['POST'])
+@jwt_required()
+@limiter.limit("5 per hour")
+def export_history_to_sheets(entry_id):
+    """Export historical job results to Google Sheets (uses live chunk data when available)"""
+    try:
+        user_id = int(get_jwt_identity())
+        user = User.query.get(user_id)
+        
+        if not user or not user.is_active:
+            return jsonify({'error': 'User not found or inactive'}), 401
+        
+        # Get history entry - use live chunk data if available
+        entry_detail = history_service.get_entry_with_details(entry_id, user_id, use_live_chunks=True)
+        if not entry_detail:
             return jsonify({'error': 'History entry not found'}), 404
         
-        if not entry.sentences:
+        # Get sentences from live chunks or snapshot
+        sentences = entry_detail.get('sentences', [])
+        sentences_source = entry_detail.get('sentences_source', 'snapshot')
+        
+        if not sentences:
             return jsonify({'error': 'No sentences available for this history entry'}), 400
         
         # Check if user has authorized Google Sheets access
@@ -639,15 +676,14 @@ def export_history_to_sheets(entry_id):
         
         # Get export parameters from request
         data = request.json or {}
-        sheet_name = data.get('sheetName', f"{entry.original_filename} - Export")
+        sheet_name = data.get('sheetName', f"{entry_detail['original_filename']} - Export")
         folder_id = data.get('folderId')
         
         # Export to Google Sheets
-        # `entry.sentences` may be a list of dicts like {'normalized': str, 'original': str}
-        # Google Sheets API expects scalar values per cell, so convert each sentence
-        # to a display string (prefer 'normalized' then 'original').
+        # Sentences from chunks may be dicts like {'normalized': str, 'original': str}
+        # Google Sheets API expects scalar values per cell
         prepared_sentences = []
-        for s in entry.sentences:
+        for s in sentences:
             if isinstance(s, dict):
                 # choose normalized if present, otherwise original, else stringify
                 text = s.get('normalized') or s.get('original') or str(s)
@@ -666,10 +702,15 @@ def export_history_to_sheets(entry_id):
         # Mark history as exported
         history_service.mark_exported(entry_id, user_id, spreadsheet_url)
         
-        current_app.logger.info(f'User {user.email} exported history entry {entry_id} to Google Sheets')
+        current_app.logger.info(
+            f'User {user.email} exported history entry {entry_id} to Google Sheets '
+            f'(source: {sentences_source}, sentences: {len(prepared_sentences)})'
+        )
         return jsonify({
             'message': 'Export successful',
-            'spreadsheet_url': spreadsheet_url
+            'spreadsheet_url': spreadsheet_url,
+            'sentences_source': sentences_source,
+            'sentences_count': len(prepared_sentences)
         })
         
     except Exception as e:
@@ -992,11 +1033,16 @@ def retry_failed_chunks(job_id):
     
     current_app.logger.info(f"Job {job_id}: manually retrying {len(chunks_to_retry)} chunks, group_id={group_result.id}")
     
+    # Note: History snapshot will NOT be automatically updated
+    # Users should call POST /history/{entry_id}/refresh after retries complete
+    # Or export will automatically use live chunk data
+    
     return jsonify({
         'message': f'Retrying {len(chunks_to_retry)} chunks',
         'retried_count': len(chunks_to_retry),
         'group_id': str(group_result.id),
-        'chunk_ids': [c.chunk_id for c in chunks_to_retry]
+        'chunk_ids': [c.chunk_id for c in chunks_to_retry],
+        'note': 'Export will use updated chunk results automatically. Use POST /history/{id}/refresh to update snapshot.'
     }), 200
 
 
