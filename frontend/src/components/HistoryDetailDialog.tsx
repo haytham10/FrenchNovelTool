@@ -3,7 +3,7 @@
 /**
  * History Detail Dialog - View and export historical job results
  */
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -29,10 +29,15 @@ import {
   TableRow,
   Paper,
   Divider,
+  TextField,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
-import { X, Download, ExternalLink, ChevronDown, CheckCircle, XCircle, Clock, RefreshCw } from 'lucide-react';
+import { X, Download, ExternalLink, ChevronDown, CheckCircle, XCircle, Clock, RefreshCw, Copy, Search, Eye } from 'lucide-react';
 import { useHistoryDetail, useHistoryChunks, useExportHistoryToSheets } from '@/lib/queries';
 import { formatDistanceToNow } from 'date-fns';
+import { useSnackbar } from 'notistack';
+import Icon from './Icon';
 
 interface HistoryDetailDialogProps {
   entryId: number | null;
@@ -48,8 +53,11 @@ export default function HistoryDetailDialog({
   const { data: entry, isLoading, error } = useHistoryDetail(entryId);
   const { data: chunksData } = useHistoryChunks(entryId);
   const exportMutation = useExportHistoryToSheets();
+  const { enqueueSnackbar } = useSnackbar();
   const [showSentences, setShowSentences] = useState(false);
   const [showChunks, setShowChunks] = useState(false);
+  const [sentenceSearch, setSentenceSearch] = useState('');
+  const [showDiff, setShowDiff] = useState<'all' | 'changed' | 'unchanged'>('all');
 
   const handleExport = () => {
     if (entryId) {
@@ -68,6 +76,38 @@ export default function HistoryDetailDialog({
       window.open(url, '_blank');
     }
   };
+
+  const handleCopyUrl = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      enqueueSnackbar('Link copied to clipboard', { variant: 'success' });
+    } catch {
+      enqueueSnackbar('Failed to copy link', { variant: 'error' });
+    }
+  };
+
+  // Filter and highlight sentences
+  const filteredSentences = useMemo(() => {
+    if (!entry?.sentences) return [];
+    let filtered = entry.sentences;
+    
+    // Apply text search
+    if (sentenceSearch) {
+      filtered = filtered.filter((sentence) => 
+        sentence.normalized?.toLowerCase().includes(sentenceSearch.toLowerCase()) ||
+        sentence.original?.toLowerCase().includes(sentenceSearch.toLowerCase())
+      );
+    }
+
+    // Apply diff filter
+    if (showDiff === 'changed') {
+      filtered = filtered.filter((sentence) => sentence.normalized !== sentence.original);
+    } else if (showDiff === 'unchanged') {
+      filtered = filtered.filter((sentence) => sentence.normalized === sentence.original);
+    }
+
+    return filtered;
+  }, [entry?.sentences, sentenceSearch, showDiff]);
 
   const getChunkStatusIcon = (status: string) => {
     switch (status) {
@@ -181,7 +221,9 @@ export default function HistoryDetailDialog({
                       <Typography variant="body2" color="text.secondary" sx={{ minWidth: 150 }}>
                         Sentence Length:
                       </Typography>
-                      <Typography variant="body2">{entry.settings.sentence_length_limit} words</Typography>
+                      <Tooltip title="Maximum number of words allowed per normalized sentence" placement="top">
+                        <Typography variant="body2">{entry.settings.sentence_length_limit} words</Typography>
+                      </Tooltip>
                     </Stack>
                   )}
                   {entry.settings.gemini_model && (
@@ -189,7 +231,9 @@ export default function HistoryDetailDialog({
                       <Typography variant="body2" color="text.secondary" sx={{ minWidth: 150 }}>
                         Model:
                       </Typography>
-                      <Typography variant="body2">{entry.settings.gemini_model}</Typography>
+                      <Tooltip title="AI model used for sentence normalization" placement="top">
+                        <Typography variant="body2">{entry.settings.gemini_model}</Typography>
+                      </Tooltip>
                     </Stack>
                   )}
                 </Stack>
@@ -207,28 +251,117 @@ export default function HistoryDetailDialog({
               </AccordionSummary>
               <AccordionDetails>
                 {entry.sentences && entry.sentences.length > 0 ? (
-                  <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 400 }}>
-                    <Table stickyHeader size="small">
-                      <TableHead>
-                        <TableRow>
-                          <TableCell>#</TableCell>
-                          <TableCell>Normalized</TableCell>
-                          <TableCell>Original</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {entry.sentences.map((sentence, index) => (
-                          <TableRow key={index}>
-                            <TableCell>{index + 1}</TableCell>
-                            <TableCell>{sentence.normalized}</TableCell>
-                            <TableCell sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>
-                              {sentence.original}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
+                  <Stack spacing={2}>
+                    {/* Search and Filter Controls */}
+                    <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
+                      <TextField
+                        placeholder="Search sentences..."
+                        size="small"
+                        value={sentenceSearch}
+                        onChange={(e) => setSentenceSearch(e.target.value)}
+                        InputProps={{
+                          startAdornment: <Icon icon={Search} fontSize="small" style={{ marginRight: 8 }} />
+                        }}
+                        sx={{ flexGrow: 1, minWidth: 200 }}
+                      />
+                      <ToggleButtonGroup
+                        value={showDiff}
+                        exclusive
+                        onChange={(_, value) => value && setShowDiff(value)}
+                        size="small"
+                        aria-label="Sentence filter"
+                      >
+                        <ToggleButton value="all" aria-label="Show all sentences">
+                          All
+                        </ToggleButton>
+                        <ToggleButton value="changed" aria-label="Show changed sentences">
+                          Changed
+                        </ToggleButton>
+                        <ToggleButton value="unchanged" aria-label="Show unchanged sentences">
+                          Unchanged
+                        </ToggleButton>
+                      </ToggleButtonGroup>
+                    </Stack>
+                    
+                    {filteredSentences.length > 0 ? (
+                      <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 400 }}>
+                        <Table stickyHeader size="small">
+                          <TableHead>
+                            <TableRow>
+                              <TableCell sx={{ width: 60 }}>#</TableCell>
+                              <TableCell sx={{ width: '45%' }}>
+                                <Tooltip title="Normalized/cleaned sentence after AI processing">
+                                  <span>Normalized</span>
+                                </Tooltip>
+                              </TableCell>
+                              <TableCell sx={{ width: '45%' }}>
+                                <Tooltip title="Original sentence from PDF">
+                                  <span>Original</span>
+                                </Tooltip>
+                              </TableCell>
+                              <TableCell sx={{ width: 60 }}>
+                                <Tooltip title="Copy sentence actions">
+                                  <span>Actions</span>
+                                </Tooltip>
+                              </TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {filteredSentences.map((sentence, index) => {
+                              const isDifferent = sentence.normalized !== sentence.original;
+                              const actualIndex = entry.sentences.indexOf(sentence);
+                              return (
+                                <TableRow 
+                                  key={actualIndex}
+                                  sx={{
+                                    ...(isDifferent && showDiff === 'all' && {
+                                      bgcolor: 'action.hover'
+                                    })
+                                  }}
+                                >
+                                  <TableCell>{actualIndex + 1}</TableCell>
+                                  <TableCell 
+                                    sx={{ 
+                                      ...(isDifferent && {
+                                        fontWeight: 500,
+                                        color: 'primary.main'
+                                      })
+                                    }}
+                                  >
+                                    {sentence.normalized}
+                                  </TableCell>
+                                  <TableCell sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>
+                                    {sentence.original}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Tooltip title="Copy normalized sentence">
+                                      <IconButton
+                                        size="small"
+                                        onClick={() => handleCopyUrl(sentence.normalized)}
+                                        aria-label="Copy normalized sentence"
+                                      >
+                                        <Icon icon={Copy} fontSize="small" />
+                                      </IconButton>
+                                    </Tooltip>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    ) : (
+                      <Alert severity="info">
+                        No sentences match your search criteria
+                      </Alert>
+                    )}
+                    
+                    {sentenceSearch && (
+                      <Typography variant="caption" color="text.secondary">
+                        Showing {filteredSentences.length} of {entry.sentences.length} sentences
+                      </Typography>
+                    )}
+                  </Stack>
                 ) : (
                   <Typography variant="body2" color="text.secondary">
                     No sentences available
@@ -253,7 +386,11 @@ export default function HistoryDetailDialog({
                           <TableCell>Chunk</TableCell>
                           <TableCell>Pages</TableCell>
                           <TableCell>Status</TableCell>
-                          <TableCell>Attempts</TableCell>
+                          <TableCell>
+                            <Tooltip title="Number of processing attempts (current/maximum)">
+                              <span>Attempts</span>
+                            </Tooltip>
+                          </TableCell>
                           <TableCell>Error</TableCell>
                         </TableRow>
                       </TableHead>
@@ -264,7 +401,7 @@ export default function HistoryDetailDialog({
                             <TableCell>
                               {chunk.start_page + 1}-{chunk.end_page + 1}
                               {chunk.has_overlap && (
-                                <Tooltip title="Has overlap with previous chunk">
+                                <Tooltip title="This chunk has overlap with the previous chunk to maintain context continuity">
                                   <Chip label="Overlap" size="small" sx={{ ml: 1 }} />
                                 </Tooltip>
                               )}
@@ -276,21 +413,43 @@ export default function HistoryDetailDialog({
                                   label={chunk.status}
                                   size="small"
                                   color={getChunkStatusColor(chunk.status)}
+                                  sx={{ textTransform: 'capitalize' }}
                                 />
                               </Stack>
                             </TableCell>
                             <TableCell>
-                              {chunk.attempts}/{chunk.max_retries}
+                              <Tooltip title={`This chunk has been attempted ${chunk.attempts} time(s) out of ${chunk.max_retries} maximum retries`}>
+                                <Chip
+                                  label={`${chunk.attempts}/${chunk.max_retries}`}
+                                  size="small"
+                                  color={chunk.attempts > 1 ? 'warning' : 'default'}
+                                />
+                              </Tooltip>
                             </TableCell>
                             <TableCell>
                               {chunk.last_error ? (
-                                <Tooltip title={chunk.last_error}>
-                                  <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
-                                    {chunk.last_error_code || 'Error'}
-                                  </Typography>
+                                <Tooltip 
+                                  title={
+                                    <Box>
+                                      <Typography variant="body2" fontWeight="bold">Error Details:</Typography>
+                                      <Typography variant="body2">{chunk.last_error}</Typography>
+                                      {chunk.last_error_code && (
+                                        <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                                          Code: {chunk.last_error_code}
+                                        </Typography>
+                                      )}
+                                    </Box>
+                                  }
+                                >
+                                  <Box sx={{ cursor: 'help', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                    <Typography variant="body2" color="error" noWrap sx={{ maxWidth: 200 }}>
+                                      {chunk.last_error_code || 'Error'}
+                                    </Typography>
+                                    <Icon icon={Eye} fontSize="small" style={{ color: 'rgba(0,0,0,0.54)' }} />
+                                  </Box>
                                 </Tooltip>
                               ) : (
-                                '-'
+                                <Typography variant="body2" color="text.secondary">—</Typography>
                               )}
                             </TableCell>
                           </TableRow>
@@ -301,7 +460,7 @@ export default function HistoryDetailDialog({
 
                   {/* Chunk Summary */}
                   <Box mt={2}>
-                    <Stack direction="row" spacing={2}>
+                    <Stack direction="row" spacing={2} flexWrap="wrap">
                       <Chip
                         icon={<CheckCircle size={14} />}
                         label={`${chunksData.chunks.filter(c => c.status === 'success').length} Successful`}
@@ -332,29 +491,43 @@ export default function HistoryDetailDialog({
       </DialogContent>
 
       <DialogActions>
-        <Stack direction="row" spacing={2} width="100%" justifyContent="space-between">
-          <Box>
+        <Stack direction="row" spacing={2} width="100%" justifyContent="space-between" flexWrap="wrap">
+          <Box sx={{ display: 'flex', gap: 1 }}>
             {entry?.export_sheet_url || entry?.spreadsheet_url ? (
-                          <Button
-                            startIcon={<ExternalLink />}
-                            onClick={handleOpenSheet}
-                            variant="outlined"
-                          >
-                            Open Sheet
-                          </Button>
-                        ) : null}
+              <>
+                <Tooltip title="Open spreadsheet in new tab">
+                  <Button
+                    startIcon={<ExternalLink />}
+                    onClick={handleOpenSheet}
+                    variant="outlined"
+                  >
+                    Open Sheet
+                  </Button>
+                </Tooltip>
+                <Tooltip title="Copy spreadsheet link to clipboard">
+                  <IconButton
+                    onClick={() => handleCopyUrl(entry?.export_sheet_url || entry?.spreadsheet_url || '')}
+                    aria-label="Copy spreadsheet link"
+                  >
+                    <Copy />
+                  </IconButton>
+                </Tooltip>
+              </>
+            ) : null}
           </Box>
           <Stack direction="row" spacing={1}>
             <Button onClick={onClose}>Close</Button>
             {entry && entry.sentences && entry.sentences.length > 0 && (
-              <Button
-                startIcon={exportMutation.isPending ? <CircularProgress size={16} /> : <Download />}
-                onClick={handleExport}
-                variant="contained"
-                disabled={exportMutation.isPending}
-              >
-                {entry.exported_to_sheets ? 'Re-export' : 'Export to Sheets'}
-              </Button>
+              <Tooltip title={entry.exported_to_sheets ? "Export to a new spreadsheet" : "Export to Google Sheets"}>
+                <Button
+                  startIcon={exportMutation.isPending ? <CircularProgress size={16} /> : <Download />}
+                  onClick={handleExport}
+                  variant="contained"
+                  disabled={exportMutation.isPending}
+                >
+                  {entry.exported_to_sheets ? 'Re-export' : 'Export to Sheets'}
+                </Button>
+              </Tooltip>
             )}
           </Stack>
         </Stack>
