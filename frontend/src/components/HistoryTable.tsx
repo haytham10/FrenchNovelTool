@@ -11,7 +11,7 @@ import { getHistoryStatus } from '@/lib/types';
 import { useDebounce } from '@/lib/hooks';
 import Icon from './Icon';
 import IconButton from './IconButton';
-import { CheckCircle, XCircle, Loader2, RefreshCw, Eye, Filter, Send, Calendar } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, RefreshCw, Eye, Filter, Send, Calendar, Copy, ExternalLink, RotateCw, Trash2 } from 'lucide-react';
 import ExportDialog from './ExportDialog';
 import JobCreditDisplay from './JobCreditDisplay';
 import { useRouter } from 'next/navigation';
@@ -38,6 +38,18 @@ const StyledTableRow = styled(TableRow)(({ theme }) => ({
   // hide last border
   '&:last-child td, &:last-child th': {
     border: 0,
+  },
+  cursor: 'pointer',
+  transition: 'all 0.2s ease',
+  '&:hover': {
+    backgroundColor: theme.palette.mode === 'dark' 
+      ? 'rgba(255, 255, 255, 0.08)' 
+      : 'rgba(0, 0, 0, 0.04)',
+    transform: 'scale(1.002)',
+  },
+  '&:focus-visible': {
+    outline: `2px solid ${theme.palette.primary.main}`,
+    outlineOffset: '2px',
   },
 }));
 
@@ -179,6 +191,44 @@ export default function HistoryTable() {
 
   // Duplicate functionality removed from UI; keep code removed to avoid unused imports
 
+  const handleCopyUrl = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      enqueueSnackbar('Link copied to clipboard', { variant: 'success' });
+    } catch {
+      enqueueSnackbar('Failed to copy link', { variant: 'error' });
+    }
+  };
+
+  const handleClearAllFilters = () => {
+    setFilter('');
+    setStatusFilter('all');
+    setDateRangeStart('');
+    setDateRangeEnd('');
+  };
+
+  const hasActiveFilters = filter || statusFilter !== 'all' || dateRangeStart || dateRangeEnd;
+
+  const setQuickDateRange = (days: number) => {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - days);
+    setDateRangeStart(start.toISOString().split('T')[0]);
+    setDateRangeEnd(end.toISOString().split('T')[0]);
+  };
+
+  // Calculate summary statistics
+  const summaryStats = useMemo(() => {
+    const filtered = dateRangeStart || dateRangeEnd ? filteredHistory : history;
+    return {
+      total: filtered.length,
+      complete: filtered.filter(e => getHistoryStatus(e) === 'complete').length,
+      exported: filtered.filter(e => getHistoryStatus(e) === 'exported').length,
+      failed: filtered.filter(e => getHistoryStatus(e) === 'failed').length,
+      processing: filtered.filter(e => getHistoryStatus(e) === 'processing').length,
+    };
+  }, [filteredHistory, history, dateRangeStart, dateRangeEnd]);
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
@@ -201,6 +251,105 @@ export default function HistoryTable() {
 
   return (
     <Box>
+      {/* Summary Statistics Bar */}
+      <Paper sx={{ p: 2, mb: 3, bgcolor: 'background.default', border: 1, borderColor: 'divider' }}>
+        <Stack direction="row" spacing={3} flexWrap="wrap">
+          <Box>
+            <Typography variant="caption" color="text.secondary" display="block">
+              Total Processed
+            </Typography>
+            <Typography variant="h6" fontWeight="bold">
+              {summaryStats.total}
+            </Typography>
+          </Box>
+          <Box>
+            <Typography variant="caption" color="text.secondary" display="block">
+              Exported
+            </Typography>
+            <Typography variant="h6" fontWeight="bold" color="secondary.main">
+              {summaryStats.exported}
+            </Typography>
+          </Box>
+          <Box>
+            <Typography variant="caption" color="text.secondary" display="block">
+              Complete
+            </Typography>
+            <Typography variant="h6" fontWeight="bold" color="success.main">
+              {summaryStats.complete}
+            </Typography>
+          </Box>
+          <Box>
+            <Typography variant="caption" color="text.secondary" display="block">
+              Failed
+            </Typography>
+            <Typography variant="h6" fontWeight="bold" color="error.main">
+              {summaryStats.failed}
+            </Typography>
+          </Box>
+          {summaryStats.processing > 0 && (
+            <Box>
+              <Typography variant="caption" color="text.secondary" display="block">
+                Processing
+              </Typography>
+              <Typography variant="h6" fontWeight="bold" color="primary.main">
+                {summaryStats.processing}
+              </Typography>
+            </Box>
+          )}
+          <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center' }}>
+            <Tooltip title="Refresh history">
+              <IconButton onClick={() => refetch()} size="small" aria-label="Refresh history">
+                <Icon icon={RotateCw} fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        </Stack>
+      </Paper>
+
+      {/* Active Filters Display */}
+      {hasActiveFilters && (
+        <Box sx={{ mb: 2 }}>
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+            <Typography variant="body2" color="text.secondary">
+              Active filters:
+            </Typography>
+            {filter && (
+              <Chip
+                label={`Search: "${filter}"`}
+                size="small"
+                onDelete={() => setFilter('')}
+              />
+            )}
+            {statusFilter !== 'all' && (
+              <Chip
+                label={`Status: ${statusFilter}`}
+                size="small"
+                onDelete={() => setStatusFilter('all')}
+                sx={{ textTransform: 'capitalize' }}
+              />
+            )}
+            {(dateRangeStart || dateRangeEnd) && (
+              <Chip
+                label={`Date: ${dateRangeStart || '...'} to ${dateRangeEnd || '...'}`}
+                size="small"
+                onDelete={() => {
+                  setDateRangeStart('');
+                  setDateRangeEnd('');
+                }}
+              />
+            )}
+            <Button
+              size="small"
+              variant="text"
+              onClick={handleClearAllFilters}
+              sx={{ ml: 1 }}
+            >
+              Clear all
+            </Button>
+          </Stack>
+        </Box>
+      )}
+
       {/* Search and Filter Controls */}
       <Box sx={{ mb: 3 }}>
         <TextField
@@ -211,6 +360,7 @@ export default function HistoryTable() {
           onChange={(e) => setFilter(e.target.value)}
           placeholder="Search by filename, URL, or error message..."
           sx={{ mb: 2 }}
+          aria-label="Search history entries"
         />
         
         {/* Date Range Filter */}
@@ -221,6 +371,35 @@ export default function HistoryTable() {
               Date Range:
             </Typography>
           </Box>
+          
+          {/* Quick Date Presets */}
+          <Stack direction="row" spacing={1}>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => setQuickDateRange(0)}
+              sx={{ textTransform: 'none' }}
+            >
+              Today
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => setQuickDateRange(7)}
+              sx={{ textTransform: 'none' }}
+            >
+              7 days
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => setQuickDateRange(30)}
+              sx={{ textTransform: 'none' }}
+            >
+              30 days
+            </Button>
+          </Stack>
+          
           <TextField
             label="Start Date"
             type="date"
@@ -229,6 +408,7 @@ export default function HistoryTable() {
             InputLabelProps={{ shrink: true }}
             size="small"
             sx={{ minWidth: 150 }}
+            aria-label="Start date"
           />
           <TextField
             label="End Date"
@@ -238,7 +418,11 @@ export default function HistoryTable() {
             InputLabelProps={{ shrink: true }}
             size="small"
             sx={{ minWidth: 150 }}
+            aria-label="End date"
           />
+          <Typography variant="caption" color="text.secondary">
+            ({Intl.DateTimeFormat().resolvedOptions().timeZone})
+          </Typography>
           {(dateRangeStart || dateRangeEnd) && (
             <Button
               size="small"
@@ -261,14 +445,14 @@ export default function HistoryTable() {
           </Typography>
           <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
             <Chip
-              label="All"
+              label={`All (${history.length})`}
               onClick={() => setStatusFilter('all')}
               color={statusFilter === 'all' ? 'primary' : 'default'}
               variant={statusFilter === 'all' ? 'filled' : 'outlined'}
               size="small"
             />
             <Chip
-              label="Complete"
+              label={`Complete (${summaryStats.complete})`}
               onClick={() => setStatusFilter('complete')}
               color={statusFilter === 'complete' ? 'success' : 'default'}
               variant={statusFilter === 'complete' ? 'filled' : 'outlined'}
@@ -276,29 +460,31 @@ export default function HistoryTable() {
               size="small"
             />
             <Chip
-              label="Failed"
-              onClick={() => setStatusFilter('failed')}
-              color={statusFilter === 'failed' ? 'error' : 'default'}
-              variant={statusFilter === 'failed' ? 'filled' : 'outlined'}
-              icon={<Icon icon={XCircle} fontSize="small" />}
-              size="small"
-            />
-            <Chip
-              label="Processing"
-              onClick={() => setStatusFilter('processing')}
-              color={statusFilter === 'processing' ? 'primary' : 'default'}
-              variant={statusFilter === 'processing' ? 'filled' : 'outlined'}
-              icon={<Icon icon={Loader2} fontSize="small" />}
-              size="small"
-            />
-            <Chip
-              label="Exported"
+              label={`Exported (${summaryStats.exported})`}
               onClick={() => setStatusFilter('exported')}
               color={statusFilter === 'exported' ? 'secondary' : 'default'}
               variant={statusFilter === 'exported' ? 'filled' : 'outlined'}
               icon={<Icon icon={Send} fontSize="small" />}
               size="small"
             />
+            <Chip
+              label={`Failed (${summaryStats.failed})`}
+              onClick={() => setStatusFilter('failed')}
+              color={statusFilter === 'failed' ? 'error' : 'default'}
+              variant={statusFilter === 'failed' ? 'filled' : 'outlined'}
+              icon={<Icon icon={XCircle} fontSize="small" />}
+              size="small"
+            />
+            {summaryStats.processing > 0 && (
+              <Chip
+                label={`Processing (${summaryStats.processing})`}
+                onClick={() => setStatusFilter('processing')}
+                color={statusFilter === 'processing' ? 'primary' : 'default'}
+                variant={statusFilter === 'processing' ? 'filled' : 'outlined'}
+                icon={<Icon icon={Loader2} fontSize="small" />}
+                size="small"
+              />
+            )}
           </Stack>
         </Box>
 
@@ -322,6 +508,7 @@ export default function HistoryTable() {
                   active={orderBy === 'timestamp'}
                   direction={orderBy === 'timestamp' ? order : 'asc'}
                   onClick={(event) => handleRequestSort(event, 'timestamp')}
+                  aria-label="Sort by timestamp"
                 >
                   Timestamp
                 </TableSortLabel>
@@ -331,6 +518,7 @@ export default function HistoryTable() {
                   active={orderBy === 'original_filename'}
                   direction={orderBy === 'original_filename' ? order : 'asc'}
                   onClick={(event) => handleRequestSort(event, 'original_filename')}
+                  aria-label="Sort by filename"
                 >
                   Filename
                 </TableSortLabel>
@@ -340,6 +528,7 @@ export default function HistoryTable() {
                   active={orderBy === 'processed_sentences_count'}
                   direction={orderBy === 'processed_sentences_count' ? order : 'asc'}
                   onClick={(event) => handleRequestSort(event, 'processed_sentences_count')}
+                  aria-label="Sort by sentence count"
                 >
                   Sentences
                 </TableSortLabel>
@@ -350,8 +539,9 @@ export default function HistoryTable() {
                   active={orderBy === 'spreadsheet_url'}
                   direction={orderBy === 'spreadsheet_url' ? order : 'asc'}
                   onClick={(event) => handleRequestSort(event, 'spreadsheet_url')}
+                  aria-label="Sort by spreadsheet URL"
                 >
-                  Spreadsheet URL
+                  Spreadsheet
                 </TableSortLabel>
               </StyledTableCell>
               <StyledTableCell>
@@ -359,6 +549,7 @@ export default function HistoryTable() {
                   active={orderBy === 'error_message'}
                   direction={orderBy === 'error_message' ? order : 'asc'}
                   onClick={(event) => handleRequestSort(event, 'error_message')}
+                  aria-label="Sort by error"
                 >
                   Error
                 </TableSortLabel>
@@ -372,7 +563,26 @@ export default function HistoryTable() {
               .map((entry) => {
               const status = getHistoryStatus(entry);
               return (
-                <StyledTableRow key={entry.id}>
+                <StyledTableRow 
+                  key={entry.id}
+                  onClick={(e) => {
+                    // Don't open details if clicking on action buttons or links
+                    const target = e.target as HTMLElement;
+                    if (target.closest('button') || target.closest('a')) {
+                      return;
+                    }
+                    handleViewDetails(entry);
+                  }}
+                  tabIndex={0}
+                  role="button"
+                  aria-label={`View details for ${entry.original_filename}`}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleViewDetails(entry);
+                    }
+                  }}
+                >
                   <StyledTableCell>
                     <Chip 
                       icon={
@@ -426,11 +636,37 @@ export default function HistoryTable() {
                   </StyledTableCell>
                   <StyledTableCell>
                     {entry.spreadsheet_url ? (
-                      <Link href={entry.spreadsheet_url} target="_blank" rel="noopener noreferrer">
-                        View Sheet
-                      </Link>
+                      <Box sx={{ display: 'flex', gap: 0.5 }}>
+                        <Tooltip title="Open spreadsheet in new tab">
+                          <IconButton
+                            size="small"
+                            component="a"
+                            href={entry.spreadsheet_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            aria-label="Open spreadsheet"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Icon icon={ExternalLink} fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Copy link to clipboard">
+                          <IconButton
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCopyUrl(entry.spreadsheet_url!);
+                            }}
+                            aria-label="Copy spreadsheet link"
+                          >
+                            <Icon icon={Copy} fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
                     ) : (
-                      'N/A'
+                      <Typography variant="body2" color="text.secondary">
+                        Not exported
+                      </Typography>
                     )}
                   </StyledTableCell>
                   <StyledTableCell>
@@ -473,7 +709,7 @@ export default function HistoryTable() {
                         </Box>
                       </Tooltip>
                     ) : (
-                      <Typography variant="body2" color="text.secondary">—</Typography>
+                      <Typography variant="body2" color="text.secondary">No errors</Typography>
                     )}
                   </StyledTableCell>
                   <StyledTableCell>
@@ -481,7 +717,10 @@ export default function HistoryTable() {
                       <Tooltip title="View details">
                         <IconButton 
                           size="small"
-                          onClick={() => handleViewDetails(entry)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleViewDetails(entry);
+                          }}
                           aria-label="View details"
                         >
                           <Icon icon={Eye} fontSize="small" />
@@ -492,7 +731,10 @@ export default function HistoryTable() {
                           <IconButton 
                             size="small"
                             color="primary"
-                            onClick={() => handleSendToSheets(entry)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSendToSheets(entry);
+                            }}
                             aria-label="Send to Google Sheets"
                           >
                             <Icon icon={Send} fontSize="small" />
@@ -504,7 +746,10 @@ export default function HistoryTable() {
                           <IconButton 
                             size="small" 
                             color="primary"
-                            onClick={() => handleRetry(entry)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRetry(entry);
+                            }}
                             aria-label="Retry processing"
                             disabled={retryMutation.isPending}
                           >
