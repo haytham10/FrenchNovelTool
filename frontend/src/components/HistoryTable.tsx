@@ -32,6 +32,13 @@ const StyledTableCell = styled(TableCell)(({ theme }) => ({
     color: theme.palette.mode === 'dark' 
       ? 'rgba(255, 255, 255, 0.87)' 
       : theme.palette.text.primary,
+    // Prevent overflow and remove scrollbars: truncate with ellipsis
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    // Better spacing for body cells
+    padding: '12px 16px',
+    verticalAlign: 'middle',
   },
 }));
 
@@ -577,8 +584,15 @@ export default function HistoryTable() {
         </Box>
       )}
       
-      <TableContainer component={Paper} sx={{ overflowX: 'auto' }}>
-        <Table>
+      <TableContainer
+        component={Paper}
+        sx={{
+          overflowX: 'hidden',
+          // hide native webkit scrollbar if it appears
+          '&::-webkit-scrollbar': { display: 'none' },
+        }}
+      >
+        <Table sx={{ tableLayout: 'fixed', width: '100%' }}>
           <TableHead>
             <TableRow>
               <StyledTableCell>Status</StyledTableCell>

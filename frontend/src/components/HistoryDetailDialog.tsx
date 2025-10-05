@@ -30,8 +30,6 @@ import {
   Paper,
   Divider,
   TextField,
-  ToggleButton,
-  ToggleButtonGroup,
   Skeleton,
 } from '@mui/material';
 import { X, Download, ExternalLink, ChevronDown, CheckCircle, XCircle, Clock, RefreshCw, Copy, Search, Eye } from 'lucide-react';
@@ -58,7 +56,6 @@ export default function HistoryDetailDialog({
   const [showSentences, setShowSentences] = useState(false);
   const [showChunks, setShowChunks] = useState(false);
   const [sentenceSearch, setSentenceSearch] = useState('');
-  const [showDiff, setShowDiff] = useState<'all' | 'changed' | 'unchanged'>('all');
 
   const handleExport = () => {
     if (entryId) {
@@ -100,15 +97,9 @@ export default function HistoryDetailDialog({
       );
     }
 
-    // Apply diff filter
-    if (showDiff === 'changed') {
-      filtered = filtered.filter((sentence) => sentence.normalized !== sentence.original);
-    } else if (showDiff === 'unchanged') {
-      filtered = filtered.filter((sentence) => sentence.normalized === sentence.original);
-    }
 
     return filtered;
-  }, [entry?.sentences, sentenceSearch, showDiff]);
+  }, [entry?.sentences, sentenceSearch]);
 
   const getChunkStatusIcon = (status: string) => {
     switch (status) {
@@ -306,23 +297,6 @@ export default function HistoryDetailDialog({
                         }}
                         sx={{ flexGrow: 1, minWidth: 200 }}
                       />
-                      <ToggleButtonGroup
-                        value={showDiff}
-                        exclusive
-                        onChange={(_, value) => value && setShowDiff(value)}
-                        size="small"
-                        aria-label="Sentence filter"
-                      >
-                        <ToggleButton value="all" aria-label="Show all sentences">
-                          All
-                        </ToggleButton>
-                        <ToggleButton value="changed" aria-label="Show changed sentences">
-                          Changed
-                        </ToggleButton>
-                        <ToggleButton value="unchanged" aria-label="Show unchanged sentences">
-                          Unchanged
-                        </ToggleButton>
-                      </ToggleButtonGroup>
                     </Stack>
                     
                     {filteredSentences.length > 0 ? (
@@ -351,7 +325,7 @@ export default function HistoryDetailDialog({
                                 <TableRow 
                                   key={actualIndex}
                                   sx={{
-                                    ...(isDifferent && showDiff === 'all' && {
+                                    ...(isDifferent && {
                                       bgcolor: 'action.hover'
                                     })
                                   }}
