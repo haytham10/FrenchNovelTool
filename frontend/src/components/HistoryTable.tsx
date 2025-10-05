@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TableSortLabel, TextField, Box, CircularProgress, Typography, Tooltip, TablePagination, Chip, Stack, Drawer, Divider, Button } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { useSnackbar } from 'notistack';
@@ -53,6 +53,18 @@ const StyledTableRow = styled(TableRow)(({ theme }) => ({
   },
 }));
 
+// Add keyframes for spinning animation
+const globalStyles = `
+  @keyframes spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+`;
+
 export default function HistoryTable() {
   const [order, setOrder] = useState<Order>('desc');
   const [orderBy, setOrderBy] = useState<keyof HistoryEntry>('timestamp');
@@ -76,6 +88,18 @@ export default function HistoryTable() {
   const { data: history = [], isLoading: loading, error, refetch } = useHistory();
   const retryMutation = useRetryHistoryEntry();
   const exportMutation = useExportToSheet();
+
+  // Auto-refresh when there are processing entries
+  useEffect(() => {
+    const hasProcessing = history.some(entry => getHistoryStatus(entry) === 'processing');
+    if (!hasProcessing) return;
+
+    const interval = setInterval(() => {
+      refetch();
+    }, 10000); // Refresh every 10 seconds when processing
+
+    return () => clearInterval(interval);
+  }, [history, refetch]);
 
   const handleRequestSort = (
     _event: React.MouseEvent<unknown>,
@@ -229,6 +253,8 @@ export default function HistoryTable() {
     };
   }, [filteredHistory, history, dateRangeStart, dateRangeEnd]);
 
+  const hasProcessing = summaryStats.processing > 0;
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
@@ -251,6 +277,9 @@ export default function HistoryTable() {
 
   return (
     <Box>
+      {/* Add global styles for animations */}
+      <style>{globalStyles}</style>
+      
       {/* Summary Statistics Bar */}
       <Paper sx={{ p: 2, mb: 3, bgcolor: 'background.default', border: 1, borderColor: 'divider' }}>
         <Stack direction="row" spacing={3} flexWrap="wrap">
@@ -296,7 +325,22 @@ export default function HistoryTable() {
               </Typography>
             </Box>
           )}
-          <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center' }}>
+          <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1 }}>
+            {hasProcessing && (
+              <Tooltip title="Auto-refreshing every 10 seconds while processing">
+                <Chip
+                  icon={<Icon icon={Loader2} fontSize="small" />}
+                  label="Auto-refresh"
+                  size="small"
+                  color="primary"
+                  sx={{
+                    '& .MuiChip-icon': {
+                      animation: 'spin 1s linear infinite'
+                    }
+                  }}
+                />
+              </Tooltip>
+            )}
             <Tooltip title="Refresh history">
               <IconButton onClick={() => refetch()} size="small" aria-label="Refresh history">
                 <Icon icon={RotateCw} fontSize="small" />
@@ -640,12 +684,11 @@ export default function HistoryTable() {
                         <Tooltip title="Open spreadsheet in new tab">
                           <IconButton
                             size="small"
-                            component="a"
-                            href={entry.spreadsheet_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open(entry.spreadsheet_url!, '_blank', 'noopener,noreferrer');
+                            }}
                             aria-label="Open spreadsheet"
-                            onClick={(e) => e.stopPropagation()}
                           >
                             <Icon icon={ExternalLink} fontSize="small" />
                           </IconButton>
