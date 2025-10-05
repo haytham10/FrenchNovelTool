@@ -83,6 +83,106 @@ Check if the API is running and healthy.
 
 ---
 
+### Estimate PDF Cost
+
+Fast metadata-only PDF cost estimation without full text extraction. Returns page count, file size, and estimated processing cost.
+
+**Endpoint:** `POST /estimate-pdf`
+
+**Rate Limit:** 30 requests per minute
+
+**Authentication:** Required (JWT Bearer token)
+
+**Request:**
+- Content-Type: `multipart/form-data`
+- Body:
+  - `pdf_file`: PDF file (required, max 50MB)
+  - `model_preference`: AI model to use (optional, default: 'balanced', values: 'balanced', 'quality', 'speed')
+
+**Example:**
+```bash
+curl -X POST \
+  http://localhost:5000/api/v1/estimate-pdf \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -F "pdf_file=@document.pdf" \
+  -F "model_preference=balanced"
+```
+
+**Success Response:**
+```json
+{
+  "page_count": 45,
+  "file_size": 2457600,
+  "image_count": 3,
+  "estimated_tokens": 22550,
+  "estimated_credits": 23,
+  "model": "gemini-2.5-flash",
+  "model_preference": "balanced",
+  "pricing_rate": 1.0,
+  "capped": false,
+  "warning": null
+}
+```
+
+**Response Fields:**
+- `page_count`: Number of pages in the PDF
+- `file_size`: File size in bytes
+- `image_count`: Estimated number of images in the PDF
+- `estimated_tokens`: Estimated token count for processing
+- `estimated_credits`: Estimated credits required
+- `model`: Actual Gemini model name to be used
+- `model_preference`: User-facing model preference
+- `pricing_rate`: Credits per 1,000 tokens for this model
+- `capped`: True if page count exceeds maximum for estimation
+- `warning`: Warning message if estimation is capped or uncertain
+
+**Error Responses:**
+
+*400 Bad Request - No file provided*
+```json
+{
+  "error": "No PDF file provided"
+}
+```
+
+*400 Bad Request - Invalid file type*
+```json
+{
+  "error": "File extension must be one of: pdf"
+}
+```
+
+*422 Unprocessable Entity - Invalid or corrupted PDF*
+```json
+{
+  "error": "Invalid or corrupted PDF file",
+  "details": "startxref not found"
+}
+```
+
+*429 Too Many Requests - Rate limit exceeded*
+```json
+{
+  "error": "Rate limit exceeded. Please try again later."
+}
+```
+
+**Status Codes:**
+- `200 OK`: Estimation completed successfully
+- `400 Bad Request`: Invalid request or file
+- `422 Unprocessable Entity`: PDF is corrupted or cannot be read
+- `429 Too Many Requests`: Rate limit exceeded
+- `500 Internal Server Error`: Estimation error
+
+**Notes:**
+- This endpoint does NOT create history entries
+- This endpoint does NOT perform full text extraction
+- Page count is capped at 1,000 for estimation purposes
+- Estimation uses heuristic: ~500 tokens per page + 50 tokens per image
+- Much faster than full text extraction (no Gemini API calls)
+
+---
+
 ### Process PDF
 
 Upload and process a PDF file to extract and normalize French sentences.

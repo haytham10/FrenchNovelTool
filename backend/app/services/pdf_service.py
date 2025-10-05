@@ -88,6 +88,83 @@ class PDFService:
         except Exception as e:
             raise RuntimeError(f'Failed to extract text: {e}')
 
+    def get_page_count(self, file_stream=None) -> dict:
+        """
+        Get metadata-only page count and file information without text extraction.
+        
+        This is a fast, lightweight operation that only reads PDF metadata,
+        making it suitable for cost estimation before full processing.
+        
+        Args:
+            file_stream: Optional seekable file-like stream. If not provided,
+                        uses the uploaded file from initialization.
+        
+        Returns:
+            dict: {
+                'page_count': int,
+                'file_size': int (bytes),
+                'image_count': int (estimated, optional)
+            }
+            
+        Raises:
+            RuntimeError: If PDF is invalid or corrupted
+        """
+        try:
+            import PyPDF2
+            
+            # Use provided stream or the instance file
+            stream = file_stream if file_stream else self.file
+            
+            # Ensure stream is seekable and at start
+            if hasattr(stream, 'seek'):
+                stream.seek(0)
+            
+            # Read file size
+            if hasattr(stream, 'content_length') and stream.content_length:
+                file_size = stream.content_length
+            else:
+                # Read current position, seek to end, get size, seek back
+                current_pos = stream.tell() if hasattr(stream, 'tell') else 0
+                if hasattr(stream, 'seek'):
+                    stream.seek(0, 2)  # Seek to end
+                    file_size = stream.tell()
+                    stream.seek(current_pos)  # Seek back
+                else:
+                    file_size = 0
+            
+            # Get page count using PyPDF2 (metadata-only, no text extraction)
+            reader = PyPDF2.PdfReader(stream)
+            page_count = len(reader.pages)
+            
+            # Optionally estimate image count by inspecting /XObject resources
+            image_count = 0
+            try:
+                for page in reader.pages:
+                    if '/Resources' in page and '/XObject' in page['/Resources']:
+                        xobject = page['/Resources']['/XObject']
+                        if hasattr(xobject, 'get_object'):
+                            xobject = xobject.get_object()
+                        # Count XObjects that are likely images
+                        for obj in xobject.values() if hasattr(xobject, 'values') else []:
+                            if hasattr(obj, 'get_object'):
+                                obj = obj.get_object()
+                            if hasattr(obj, 'get') and obj.get('/Subtype') == '/Image':
+                                image_count += 1
+            except Exception:
+                # Image counting is optional, don't fail if it doesn't work
+                pass
+            
+            return {
+                'page_count': page_count,
+                'file_size': file_size,
+                'image_count': image_count
+            }
+            
+        except PyPDF2.errors.PdfReadError as e:
+            raise RuntimeError(f'Invalid or corrupted PDF file: {e}')
+        except Exception as e:
+            raise RuntimeError(f'Failed to read PDF metadata: {e}')
+
     def delete_temp_file(self):
         """Delete the temporary file if it exists"""
         if self.temp_file_path and os.path.exists(self.temp_file_path):

@@ -152,3 +152,27 @@ class JobFinalizeSchema(Schema):
     error_message = fields.String(allow_none=True)
     error_code = fields.String(allow_none=True)
 
+
+class EstimatePdfSchema(Schema):
+    """Schema for PDF metadata estimation request (input validation)"""
+    # File is validated separately via validate_pdf_file()
+    # This schema validates optional form fields
+    model_preference = fields.String(
+        load_default='balanced',
+        validate=validate.OneOf(['balanced', 'quality', 'speed'])
+    )
+
+
+class EstimatePdfResponseSchema(Schema):
+    """Schema for PDF metadata estimation response"""
+    page_count = fields.Integer(required=True)
+    file_size = fields.Integer(required=True)
+    image_count = fields.Integer(required=True)
+    estimated_tokens = fields.Integer(required=True)
+    estimated_credits = fields.Integer(required=True)
+    model = fields.String(required=True)
+    model_preference = fields.String(required=True)
+    pricing_rate = fields.Float(required=True)
+    capped = fields.Boolean(required=True)  # True if page count exceeds cap
+    warning = fields.String(allow_none=True)  # Warning message if capped
+
