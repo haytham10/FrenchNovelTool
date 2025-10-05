@@ -28,6 +28,10 @@ const StyledTableCell = styled(TableCell)(({ theme }) => ({
   },
   [`&.MuiTableCell-body`]: {
     fontSize: 14,
+    // Improve dark mode contrast
+    color: theme.palette.mode === 'dark' 
+      ? 'rgba(255, 255, 255, 0.87)' 
+      : theme.palette.text.primary,
   },
 }));
 
@@ -255,6 +259,23 @@ export default function HistoryTable() {
 
   const hasProcessing = summaryStats.processing > 0;
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Focus search on '/' key
+      if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const target = e.target as HTMLElement;
+        // Don't trigger if already in an input
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+        e.preventDefault();
+        document.querySelector<HTMLInputElement>('input[aria-label="Search history entries"]')?.focus();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
@@ -295,7 +316,7 @@ export default function HistoryTable() {
             <Typography variant="caption" color="text.secondary" display="block">
               Exported
             </Typography>
-            <Typography variant="h6" fontWeight="bold" color="secondary.main">
+            <Typography variant="h6" fontWeight="bold" sx={{ color: '#9c27b0' }}>
               {summaryStats.exported}
             </Typography>
           </Box>
@@ -402,7 +423,7 @@ export default function HistoryTable() {
           fullWidth
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          placeholder="Search by filename, URL, or error message..."
+          placeholder="Search by filename, URL, or error message... (Press / to focus)"
           sx={{ mb: 2 }}
           aria-label="Search history entries"
         />
@@ -506,7 +527,13 @@ export default function HistoryTable() {
             <Chip
               label={`Exported (${summaryStats.exported})`}
               onClick={() => setStatusFilter('exported')}
-              color={statusFilter === 'exported' ? 'secondary' : 'default'}
+              sx={{
+                ...(statusFilter === 'exported' && {
+                  bgcolor: '#9c27b0',
+                  color: '#ffffff',
+                  '& .MuiChip-icon': { color: '#ffffff' }
+                })
+              }}
               variant={statusFilter === 'exported' ? 'filled' : 'outlined'}
               icon={<Icon icon={Send} fontSize="small" />}
               size="small"
@@ -659,9 +686,9 @@ export default function HistoryTable() {
                           }
                         }),
                         ...(status === 'exported' && {
-                          bgcolor: 'secondary.main',
-                          color: 'secondary.contrastText',
-                          '& .MuiChip-icon': { color: 'secondary.contrastText' }
+                          bgcolor: '#9c27b0',  // Purple color for exported
+                          color: '#ffffff',
+                          '& .MuiChip-icon': { color: '#ffffff' }
                         }),
                       }}
                     />
@@ -845,14 +872,14 @@ export default function HistoryTable() {
                 Status
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                {getHistoryStatus(selectedEntry) === 'complete' && <Icon icon={CheckCircle} color="success" />}
-                {getHistoryStatus(selectedEntry) === 'exported' && <Icon icon={Send} color="secondary" />}
-                {getHistoryStatus(selectedEntry) === 'failed' && <Icon icon={XCircle} color="error" />}
-                {getHistoryStatus(selectedEntry) === 'processing' && <Icon icon={Loader2} color="primary" />}
+                {getHistoryStatus(selectedEntry) === 'complete' && <Icon icon={CheckCircle} style={{ color: '#4caf50' }} />}
+                {getHistoryStatus(selectedEntry) === 'exported' && <Icon icon={Send} style={{ color: '#9c27b0' }} />}
+                {getHistoryStatus(selectedEntry) === 'failed' && <Icon icon={XCircle} style={{ color: '#f44336' }} />}
+                {getHistoryStatus(selectedEntry) === 'processing' && <Icon icon={Loader2} style={{ color: '#2196f3' }} />}
                 <Typography variant="body1" sx={{ 
-                  color: getHistoryStatus(selectedEntry) === 'complete' ? 'success.main' : 
-                         getHistoryStatus(selectedEntry) === 'exported' ? 'secondary.main' : 
-                         getHistoryStatus(selectedEntry) === 'failed' ? 'error.main' : 'primary.main',
+                  color: getHistoryStatus(selectedEntry) === 'complete' ? '#4caf50' : 
+                         getHistoryStatus(selectedEntry) === 'exported' ? '#9c27b0' : 
+                         getHistoryStatus(selectedEntry) === 'failed' ? '#f44336' : '#2196f3',
                   fontWeight: 600,
                   textTransform: 'capitalize'
                 }}>
