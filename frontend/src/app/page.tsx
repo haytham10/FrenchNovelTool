@@ -7,7 +7,7 @@ import NormalizeControls from '@/components/NormalizeControls';
 import ExportDialog from '@/components/ExportDialog';
 import PreflightModal from '@/components/PreflightModal';
 import { getApiErrorMessage } from '@/lib/api';
-import { useProcessPdf, useExportToSheet, useEstimatePdfCost, useConfirmJob } from '@/lib/queries';
+import { useProcessPdf, useExportToSheet, useEstimatePdfCost, useConfirmJob, useCredits } from '@/lib/queries';
 import { CircularProgress, Button, Typography, Box, Container, Paper, Divider, List, ListItem, ListItemText, LinearProgress } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import UploadStepper from '@/components/UploadStepper';
@@ -54,6 +54,7 @@ export default function Home() {
   const exportMutation = useExportToSheet();
   const estimatePdfMutation = useEstimatePdfCost();
   const confirmJobMutation = useConfirmJob();
+  const creditsQuery = useCredits();
 
   // WebSocket connection for real-time job progress
   const [wsJobId, setWsJobId] = useState<number | null>(null);
@@ -127,8 +128,16 @@ export default function Home() {
         file,
         model_preference: advancedOptions.geminiModel || 'balanced',
       });
+
+      // Ensure we have a fresh credit balance before showing the modal
+      try {
+        await creditsQuery.refetch();
+      } catch {
+        // ignore refetch errors; we'll fall back to whatever data we have
+      }
       
       // Convert to CostEstimate format expected by PreflightModal
+      const currentBalance = creditsQuery.data?.balance ?? 0;
       const estimate: CostEstimate = {
         model: pdfEstimate.model,
         model_preference: pdfEstimate.model_preference,
@@ -137,8 +146,8 @@ export default function Home() {
         pricing_rate: pdfEstimate.pricing_rate,
         pricing_version: 'v1.0',
         estimation_method: 'heuristic',
-        current_balance: 0, // Will be fetched separately if needed
-        allowed: true,
+        current_balance: currentBalance,
+        allowed: currentBalance >= (pdfEstimate.estimated_credits || 0),
       };
       
       setCostEstimate(estimate);
