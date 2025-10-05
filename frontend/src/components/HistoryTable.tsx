@@ -5,7 +5,8 @@ import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper
 import { styled } from '@mui/material/styles';
 import { useSnackbar } from 'notistack';
 import Link from 'next/link';
-import { useHistory, useRetryHistoryEntry, useExportToSheet } from '@/lib/queries';
+import { useHistory, useRetryHistoryEntry, useExportHistoryToSheets, useJob } from '@/lib/queries';
+import type { ExportOptions } from './ExportDialog';
 import type { HistoryEntry } from '@/lib/types';
 import { getHistoryStatus } from '@/lib/types';
 import { useDebounce } from '@/lib/hooks';
@@ -72,6 +73,19 @@ const TimestampCell = styled(StyledTableCell)(() => ({
   textOverflow: 'clip',
 }));
 
+const ActionCell = styled(StyledTableCell)(() => ({
+  width: 120,
+  maxWidth: 140,
+  whiteSpace: 'nowrap',
+  paddingRight: 12,
+  '& > div': {
+    display: 'flex',
+    gap: 4,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  }
+}));
+
 // Add keyframes for spinning animation
 const globalStyles = `
   @keyframes spin {
@@ -85,6 +99,25 @@ const globalStyles = `
 `;
 
 export default function HistoryTable() {
+  // Small subcomponent to fetch and display job cost (actual_credits preferred)
+  function JobCost({ jobId }: { jobId?: number | null }) {
+    const { data: job, isLoading } = useJob(jobId ?? null);
+
+    if (!jobId) {
+      return <Typography variant="caption" color="text.secondary">N/A</Typography>;
+    }
+
+    if (isLoading) {
+      return <Typography variant="caption" color="text.secondary">...</Typography>;
+    }
+
+    const credits = job?.actual_credits ?? job?.estimated_credits ?? null;
+    if (credits === null || credits === undefined) {
+      return <Typography variant="caption" color="text.secondary">N/A</Typography>;
+    }
+
+    return <Typography variant="body2">{credits}</Typography>;
+  }
   const [order, setOrder] = useState<Order>('desc');
   const [orderBy, setOrderBy] = useState<keyof HistoryEntry>('timestamp');
   const [filter, setFilter] = useState<string>('');
@@ -106,7 +139,7 @@ export default function HistoryTable() {
   // Use React Query for data fetching
   const { data: history = [], isLoading: loading, error, refetch } = useHistory();
   const retryMutation = useRetryHistoryEntry();
-  const exportMutation = useExportToSheet();
+  const exportMutation = useExportHistoryToSheets();
 
   // Auto-refresh when there are processing entries
   useEffect(() => {
@@ -200,19 +233,15 @@ export default function HistoryTable() {
     setExportDialogOpen(true);
   };
 
-  const handleExport = async () => {
+  const handleExport = async (options: ExportOptions) => {
     if (!entryToExport) return;
-    
+
     try {
-      // For history entries, we don't have the sentences stored
-      // In a real implementation, you would either:
-      // 1. Store sentences in the history entry
-      // 2. Re-process the file
-      // For now, we'll show a message
-      enqueueSnackbar('This feature requires storing processed sentences. Please reprocess the file to export.', { variant: 'info' });
+      await exportMutation.mutateAsync({ entryId: entryToExport.id, data: { sheetName: options.sheetName, folderId: options.folderId } });
       setExportDialogOpen(false);
+      setEntryToExport(null);
     } catch {
-      // Error is handled by the mutation
+      // Errors are surfaced by the mutation's onError handler
     }
   };
 
@@ -600,7 +629,7 @@ export default function HistoryTable() {
           '&::-webkit-scrollbar': { display: 'none' },
         }}
       >
-        <Table sx={{ tableLayout: 'fixed', width: '100%' }}>
+  	<Table sx={{ tableLayout: 'auto', width: '100%' }}>
           <TableHead>
             <TableRow>
               <StyledTableCell>Status</StyledTableCell>
@@ -634,7 +663,7 @@ export default function HistoryTable() {
                   Sentences
                 </TableSortLabel>
               </StyledTableCell>
-              <StyledTableCell>Credits</StyledTableCell>
+              <StyledTableCell align="center">Cost</StyledTableCell>
               <StyledTableCell>
                 <TableSortLabel
                   active={orderBy === 'spreadsheet_url'}
@@ -725,15 +754,9 @@ export default function HistoryTable() {
                   </StyledTableCell>
                   <TimestampCell>{new Date(entry.timestamp).toLocaleString()}</TimestampCell>
                   <StyledTableCell>{entry.original_filename}</StyledTableCell>
-                  <StyledTableCell>{entry.processed_sentences_count}</StyledTableCell>
+                  <StyledTableCell align="center">{entry.processed_sentences_count}</StyledTableCell>
                   <StyledTableCell>
-                    {entry.job_id ? (
-                      <Typography variant="body2">{entry.job_id}</Typography>
-                    ) : (
-                      <Typography variant="caption" color="text.secondary">
-                        N/A
-                      </Typography>
-                    )}
+                    <JobCost jobId={entry.job_id} />
                   </StyledTableCell>
                   <StyledTableCell>
                     {entry.spreadsheet_url ? (
@@ -812,54 +835,70 @@ export default function HistoryTable() {
                       <Typography variant="body2" color="text.secondary">No errors</Typography>
                     )}
                   </StyledTableCell>
-                  <StyledTableCell>
-                    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                      <Tooltip title="View details">
-                        <IconButton 
-                          size="small"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleViewDetails(entry);
-                          }}
-                          aria-label="View details"
-                        >
-                          <Icon icon={Eye} fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      {!entry.spreadsheet_url && status === 'complete' && (
-                        <Tooltip title="Send to Google Sheets">
+                  <ActionCell>
+                    {(() => {
+                      // Compute visible actions for the row to center when only one action
+                      const buttons: React.ReactNode[] = [];
+                      buttons.push(
+                        <Tooltip title="View details" key="view">
                           <IconButton 
                             size="small"
-                            color="primary"
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleSendToSheets(entry);
+                              handleViewDetails(entry);
                             }}
-                            aria-label="Send to Google Sheets"
+                            aria-label="View details"
                           >
-                            <Icon icon={Send} fontSize="small" />
+                            <Icon icon={Eye} fontSize="small" />
                           </IconButton>
                         </Tooltip>
-                      )}
-                      {status === 'failed' && entry.failed_step && (
-                        <Tooltip title="Retry from failed step">
-                          <IconButton 
-                            size="small" 
-                            color="primary"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRetry(entry);
-                            }}
-                            aria-label="Retry processing"
-                            disabled={retryMutation.isPending}
-                          >
-                            <Icon icon={RefreshCw} fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      )}
-                      {/* Duplicate action removed from inline actions to reduce UI clutter. */}
-                    </Box>
-                  </StyledTableCell>
+                      );
+                      if (!entry.spreadsheet_url && status === 'complete') {
+                        buttons.push(
+                          <Tooltip title="Send to Google Sheets" key="send">
+                            <IconButton 
+                              size="small"
+                              color="primary"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSendToSheets(entry);
+                              }}
+                              aria-label="Send to Google Sheets"
+                            >
+                              <Icon icon={Send} fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        );
+                      }
+                      if (status === 'failed' && entry.failed_step) {
+                        buttons.push(
+                          <Tooltip title="Retry from failed step" key="retry">
+                            <IconButton 
+                              size="small" 
+                              color="primary"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRetry(entry);
+                              }}
+                              aria-label="Retry processing"
+                              disabled={retryMutation.isPending}
+                            >
+                              <Icon icon={RefreshCw} fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        );
+                      }
+
+                      // If there is only one visible button, center it; otherwise right-align
+                      const justify = buttons.length === 1 ? 'center' : 'flex-end';
+
+                      return (
+                        <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', justifyContent: justify, width: '100%' }}>
+                          {buttons}
+                        </Box>
+                      );
+                    })()}
+                  </ActionCell>
                 </StyledTableRow>
               );
             })}

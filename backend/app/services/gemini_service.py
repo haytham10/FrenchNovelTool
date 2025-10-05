@@ -9,6 +9,18 @@ from google.genai import types
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 
+class GeminiAPIError(Exception):
+    """Raised when Gemini returns an empty, malformed or unparseable response.
+
+    Attributes:
+        message: human readable message
+        raw_response: the original raw text returned by Gemini (may be None)
+    """
+    def __init__(self, message: str, raw_response: str | None = None):
+        super().__init__(message)
+        self.raw_response = raw_response
+
+
 class GeminiService:
     """Service wrapper around Gemini PDF processing with advanced post-processing."""
 
@@ -24,7 +36,7 @@ class GeminiService:
         self,
         sentence_length_limit: int = 8,
         *,
-    model_preference: str = 'speed',
+        model_preference: str = 'speed',
         ignore_dialogue: bool = False,
         preserve_formatting: bool = True,
         fix_hyphenation: bool = True,
@@ -154,20 +166,27 @@ class GeminiService:
                 ]
             ),
         )
-        response_text = response.text if hasattr(response, 'text') else ''
-        current_app.logger.debug('Raw Gemini response: %s', response_text[:1000])
+
+        # Some SDKs may set response.text to None; coerce to empty string to
+        # avoid failing calls to .strip() or slicing when logging.
+        response_text = getattr(response, 'text', '') or ''
+        current_app.logger.debug('Raw Gemini response: %s', (response_text[:1000] if isinstance(response_text, str) else ''))
 
         cleaned_response = response_text.strip().replace('```json', '').replace('```', '')
 
         if not cleaned_response:
             current_app.logger.error('Received empty response from Gemini API.')
-            raise ValueError('Gemini returned an empty response.')
+            raise GeminiAPIError('Gemini returned an empty response.', response_text)
 
         try:
             data = json.loads(cleaned_response)
         except json.JSONDecodeError:
             current_app.logger.warning('Initial JSON parsing failed, attempting recovery...')
-            data = self._recover_json(cleaned_response)
+            try:
+                data = self._recover_json(cleaned_response)
+            except Exception:
+                # _recover_json will log details; raise a GeminiAPIError attaching raw response
+                raise GeminiAPIError('Failed to parse Gemini JSON response.', response_text)
 
         sentences = self._extract_sentence_list(data)
         processed_sentences = self._post_process_sentences(sentences)
@@ -236,7 +255,7 @@ class GeminiService:
         normalised = [str(sentence).strip() for sentence in sentences if sentence and str(sentence).strip()]
         if not normalised:
             current_app.logger.error('Gemini response contained no valid sentences: %s', sentences)
-            raise ValueError('Gemini response did not contain any valid sentences.')
+            raise GeminiAPIError('Gemini response did not contain any valid sentences.', str(sentences))
 
         return normalised
 
@@ -342,6 +361,33 @@ class GeminiService:
             return True
         return False
 
+    def local_normalize_text(self, text: str) -> Dict[str, Any]:
+        """Local fallback to segment and post-process text without calling Gemini.
+
+        This is used when the Gemini API returns an empty or malformed response.
+        It performs a conservative sentence segmentation using punctuation and
+        then runs the existing post-processing pipeline.
+        """
+        if not text or not str(text).strip():
+            return {"sentences": [], "tokens": 0}
+
+        # Conservative segmentation: split on sentence-ending punctuation
+        # followed by whitespace. Keep the punctuation with the sentence.
+        try:
+            segments = re.findall(r'[^.!?…]+[.!?…]?\s*', str(text))
+            sentences = [s.strip() for s in segments if s and s.strip()]
+            if not sentences:
+                sentences = [str(text).strip()]
+
+            processed = self._post_process_sentences(sentences)
+            sentence_dicts = [{"normalized": s, "original": s} for s in processed]
+            return {"sentences": sentence_dicts, "tokens": 0}
+        except Exception as e:
+            current_app.logger.exception('Local fallback segmentation failed: %s', e)
+            # As a last resort, return the entire text as a single sentence
+            t = str(text).strip()
+            return {"sentences": [{"normalized": t, "original": t}], "tokens": 0}
+
     # Public helper for processing already-extracted text (non-PDF)
     @retry(
         stop=stop_after_attempt(3),
@@ -406,18 +452,23 @@ class GeminiService:
             else:
                 raise
 
-        response_text = response.text if hasattr(response, 'text') else ''
+        # Coerce None to empty string to avoid AttributeError on .strip()
+        response_text = getattr(response, 'text', '') or ''
         cleaned_response = response_text.strip().replace('```json', '').replace('```', '')
 
         if not cleaned_response:
             current_app.logger.error('Received empty response from Gemini API for normalize_text.')
-            raise ValueError('Gemini returned an empty response.')
+            raise GeminiAPIError('Gemini returned an empty response.', response_text)
 
         try:
             data = json.loads(cleaned_response)
         except json.JSONDecodeError:
             current_app.logger.warning('normalize_text: JSON parsing failed, attempting recovery...')
-            data = self._recover_json(cleaned_response)
+            try:
+                data = self._recover_json(cleaned_response)
+            except Exception:
+                # Attach raw response for diagnostics
+                raise GeminiAPIError('Failed to parse Gemini JSON response.', response_text)
 
         sentences = self._extract_sentence_list(data)
         processed = self._post_process_sentences(sentences)

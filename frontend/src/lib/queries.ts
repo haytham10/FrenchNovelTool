@@ -12,6 +12,7 @@ import {
   getHistoryDetail,
   getHistoryChunks,
   exportHistoryToSheets,
+  refreshHistoryFromChunks,
   getUserSettings,
   updateUserSettings,
   retryHistoryEntry,
@@ -88,12 +89,42 @@ export function useExportHistoryToSheets() {
       queryClient.invalidateQueries({ queryKey: queryKeys.history });
       queryClient.invalidateQueries({ queryKey: queryKeys.historyDetail(variables.entryId) });
       
-      enqueueSnackbar('Successfully exported to Google Sheets!', { variant: 'success' });
+      const source = result.sentences_source || 'snapshot';
+      const sourceText = source === 'live_chunks' ? ' (using latest chunk results)' : '';
+      enqueueSnackbar(`Successfully exported to Google Sheets${sourceText}!`, { variant: 'success' });
     },
     
     onError: (error) => {
       enqueueSnackbar(
         getApiErrorMessage(error, 'Failed to export to Google Sheets'),
+        { variant: 'error' }
+      );
+    },
+  });
+}
+
+export function useRefreshHistoryFromChunks() {
+  const queryClient = useQueryClient();
+  const { enqueueSnackbar } = useSnackbar();
+
+  return useMutation({
+    mutationFn: (entryId: number) => refreshHistoryFromChunks(entryId),
+    
+    onSuccess: (result, entryId) => {
+      // Invalidate queries to show updated data
+      queryClient.invalidateQueries({ queryKey: queryKeys.history });
+      queryClient.invalidateQueries({ queryKey: queryKeys.historyDetail(entryId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.historyChunks(entryId) });
+      
+      enqueueSnackbar(
+        `History refreshed: ${result.sentences_count} sentences from chunks`,
+        { variant: 'success' }
+      );
+    },
+    
+    onError: (error) => {
+      enqueueSnackbar(
+        getApiErrorMessage(error, 'Failed to refresh history from chunks'),
         { variant: 'error' }
       );
     },
