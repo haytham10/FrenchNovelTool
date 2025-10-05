@@ -32,8 +32,8 @@ import {
   TextField,
   Skeleton,
 } from '@mui/material';
-import { X, Download, ExternalLink, ChevronDown, CheckCircle, XCircle, Clock, RefreshCw, Copy, Search, Eye } from 'lucide-react';
-import { useHistoryDetail, useHistoryChunks, useExportHistoryToSheets } from '@/lib/queries';
+import { X, Download, ExternalLink, ChevronDown, CheckCircle, XCircle, Clock, RefreshCw, Copy, Search, Eye, Database } from 'lucide-react';
+import { useHistoryDetail, useHistoryChunks, useExportHistoryToSheets, useRefreshHistoryFromChunks } from '@/lib/queries';
 import { formatDistanceToNow } from 'date-fns';
 import { useSnackbar } from 'notistack';
 import Icon from './Icon';
@@ -52,6 +52,7 @@ export default function HistoryDetailDialog({
   const { data: entry, isLoading, error } = useHistoryDetail(entryId);
   const { data: chunksData } = useHistoryChunks(entryId);
   const exportMutation = useExportHistoryToSheets();
+  const refreshMutation = useRefreshHistoryFromChunks();
   const { enqueueSnackbar } = useSnackbar();
   const [showSentences, setShowSentences] = useState(false);
   const [showChunks, setShowChunks] = useState(false);
@@ -65,6 +66,12 @@ export default function HistoryDetailDialog({
           sheetName: entry?.original_filename ? `${entry.original_filename} - Export` : undefined
         }
       });
+    }
+  };
+
+  const handleRefreshFromChunks = () => {
+    if (entryId) {
+      refreshMutation.mutate(entryId);
     }
   };
 
@@ -223,6 +230,30 @@ export default function HistoryDetailDialog({
                     Sentences:
                   </Typography>
                   <Typography variant="body2">{entry.processed_sentences_count}</Typography>
+                </Stack>
+                <Stack direction="row" spacing={2} alignItems="center">
+                  <Typography variant="body2" color="text.secondary" sx={{ minWidth: 150 }}>
+                    Data Source:
+                  </Typography>
+                  <Chip
+                    label={entry.sentences_source === 'live_chunks' ? 'Live Chunks' : 'Snapshot'}
+                    color={entry.sentences_source === 'live_chunks' ? 'info' : 'default'}
+                    size="small"
+                    icon={<Database size={14} />}
+                  />
+                  {entry.chunk_ids && entry.chunk_ids.length > 0 && (
+                    <Tooltip title="Refresh snapshot from current chunk data">
+                      <Button
+                        size="small"
+                        startIcon={<RefreshCw size={16} />}
+                        onClick={handleRefreshFromChunks}
+                        disabled={refreshMutation.isPending}
+                        sx={{ ml: 1 }}
+                      >
+                        {refreshMutation.isPending ? 'Refreshing...' : 'Refresh'}
+                      </Button>
+                    </Tooltip>
+                  )}
                 </Stack>
                 {entry.exported_to_sheets && (
                   <Stack direction="row" spacing={2} alignItems="center">
