@@ -302,51 +302,53 @@ export default function HistoryTable() {
       <style>{globalStyles}</style>
       
       {/* Summary Statistics Bar */}
-      <Paper sx={{ p: 2, mb: 3, bgcolor: 'background.default', border: 1, borderColor: 'divider' }}>
-        <Stack direction="row" spacing={3} flexWrap="wrap">
-          <Box>
-            <Typography variant="caption" color="text.secondary" display="block">
-              Total Processed
-            </Typography>
-            <Typography variant="h6" fontWeight="bold">
-              {summaryStats.total}
-            </Typography>
-          </Box>
-          <Box>
-            <Typography variant="caption" color="text.secondary" display="block">
-              Exported
-            </Typography>
-            <Typography variant="h6" fontWeight="bold" sx={{ color: '#9c27b0' }}>
-              {summaryStats.exported}
-            </Typography>
-          </Box>
-          <Box>
-            <Typography variant="caption" color="text.secondary" display="block">
-              Complete
-            </Typography>
-            <Typography variant="h6" fontWeight="bold" color="success.main">
-              {summaryStats.complete}
-            </Typography>
-          </Box>
-          <Box>
-            <Typography variant="caption" color="text.secondary" display="block">
-              Failed
-            </Typography>
-            <Typography variant="h6" fontWeight="bold" color="error.main">
-              {summaryStats.failed}
-            </Typography>
-          </Box>
-          {summaryStats.processing > 0 && (
+      <Paper sx={{ p: 2.5, mb: 3, bgcolor: 'background.default', border: 1, borderColor: 'divider' }}>
+        <Stack direction="row" spacing={3} flexWrap="wrap" alignItems="center" justifyContent="space-between">
+          <Stack direction="row" spacing={3} flexWrap="wrap">
             <Box>
               <Typography variant="caption" color="text.secondary" display="block">
-                Processing
+                Total Processed
               </Typography>
-              <Typography variant="h6" fontWeight="bold" color="primary.main">
-                {summaryStats.processing}
+              <Typography variant="h6" fontWeight="bold">
+                {summaryStats.total}
               </Typography>
             </Box>
-          )}
-          <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Box>
+              <Typography variant="caption" color="text.secondary" display="block">
+                Exported
+              </Typography>
+              <Typography variant="h6" fontWeight="bold" sx={{ color: '#9c27b0' }}>
+                {summaryStats.exported}
+              </Typography>
+            </Box>
+            <Box>
+              <Typography variant="caption" color="text.secondary" display="block">
+                Complete
+              </Typography>
+              <Typography variant="h6" fontWeight="bold" color="success.main">
+                {summaryStats.complete}
+              </Typography>
+            </Box>
+            <Box>
+              <Typography variant="caption" color="text.secondary" display="block">
+                Failed
+              </Typography>
+              <Typography variant="h6" fontWeight="bold" color="error.main">
+                {summaryStats.failed}
+              </Typography>
+            </Box>
+            {summaryStats.processing > 0 && (
+              <Box>
+                <Typography variant="caption" color="text.secondary" display="block">
+                  Processing
+                </Typography>
+                <Typography variant="h6" fontWeight="bold" color="primary.main">
+                  {summaryStats.processing}
+                </Typography>
+              </Box>
+            )}
+          </Stack>
+          <Stack direction="row" gap={1} alignItems="center">
             {hasProcessing && (
               <Tooltip title="Auto-refreshing every 10 seconds while processing">
                 <Chip
@@ -367,7 +369,7 @@ export default function HistoryTable() {
                 <Icon icon={RotateCw} fontSize="small" />
               </IconButton>
             </Tooltip>
-          </Box>
+          </Stack>
         </Stack>
       </Paper>
 
@@ -416,160 +418,166 @@ export default function HistoryTable() {
       )}
 
       {/* Search and Filter Controls */}
-      <Box sx={{ mb: 3 }}>
-        <TextField
-          label="Search history"
-          variant="outlined"
-          fullWidth
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder="Search by filename, URL, or error message... (Press / to focus)"
-          sx={{ mb: 2 }}
-          aria-label="Search history entries"
-        />
-        
-        {/* Date Range Filter */}
-        <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Icon icon={Calendar} fontSize="small" />
-            <Typography variant="body2" color="text.secondary">
-              Date Range:
-            </Typography>
-          </Box>
+      <Paper sx={{ p: 2.5, mb: 3, bgcolor: 'background.default', border: 1, borderColor: 'divider' }}>
+        <Stack spacing={2}>
+          {/* Search */}
+          <TextField
+            label="Search history"
+            variant="outlined"
+            fullWidth
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Search by filename, URL, or error message... (Press / to focus)"
+            aria-label="Search history entries"
+            size="small"
+          />
           
-          {/* Quick Date Presets */}
-          <Stack direction="row" spacing={1}>
-            <Button
-              size="small"
-              variant="outlined"
-              onClick={() => setQuickDateRange(0)}
-              sx={{ textTransform: 'none' }}
-            >
-              Today
-            </Button>
-            <Button
-              size="small"
-              variant="outlined"
-              onClick={() => setQuickDateRange(7)}
-              sx={{ textTransform: 'none' }}
-            >
-              7 days
-            </Button>
-            <Button
-              size="small"
-              variant="outlined"
-              onClick={() => setQuickDateRange(30)}
-              sx={{ textTransform: 'none' }}
-            >
-              30 days
-            </Button>
+          {/* Filters Row */}
+          <Stack direction="row" spacing={2} flexWrap="wrap" alignItems="center">
+            {/* Status Filter */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+              <Icon icon={Filter} fontSize="small" />
+              <Typography variant="body2" color="text.secondary" sx={{ mr: 0.5 }}>
+                Status:
+              </Typography>
+              <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                <Chip
+                  label={`All (${history.length})`}
+                  onClick={() => setStatusFilter('all')}
+                  color={statusFilter === 'all' ? 'primary' : 'default'}
+                  variant={statusFilter === 'all' ? 'filled' : 'outlined'}
+                  size="small"
+                />
+                <Chip
+                  label={`Complete (${summaryStats.complete})`}
+                  onClick={() => setStatusFilter('complete')}
+                  color={statusFilter === 'complete' ? 'success' : 'default'}
+                  variant={statusFilter === 'complete' ? 'filled' : 'outlined'}
+                  icon={<Icon icon={CheckCircle} fontSize="small" />}
+                  size="small"
+                />
+                <Chip
+                  label={`Exported (${summaryStats.exported})`}
+                  onClick={() => setStatusFilter('exported')}
+                  sx={{
+                    ...(statusFilter === 'exported' && {
+                      bgcolor: '#9c27b0',
+                      color: '#ffffff',
+                      '& .MuiChip-icon': { color: '#ffffff' }
+                    })
+                  }}
+                  variant={statusFilter === 'exported' ? 'filled' : 'outlined'}
+                  icon={<Icon icon={Send} fontSize="small" />}
+                  size="small"
+                />
+                <Chip
+                  label={`Failed (${summaryStats.failed})`}
+                  onClick={() => setStatusFilter('failed')}
+                  color={statusFilter === 'failed' ? 'error' : 'default'}
+                  variant={statusFilter === 'failed' ? 'filled' : 'outlined'}
+                  icon={<Icon icon={XCircle} fontSize="small" />}
+                  size="small"
+                />
+                {summaryStats.processing > 0 && (
+                  <Chip
+                    label={`Processing (${summaryStats.processing})`}
+                    onClick={() => setStatusFilter('processing')}
+                    color={statusFilter === 'processing' ? 'primary' : 'default'}
+                    variant={statusFilter === 'processing' ? 'filled' : 'outlined'}
+                    icon={<Icon icon={Loader2} fontSize="small" />}
+                    size="small"
+                  />
+                )}
+              </Stack>
+            </Box>
           </Stack>
-          
-          <TextField
-            label="Start Date"
-            type="date"
-            value={dateRangeStart}
-            onChange={(e) => setDateRangeStart(e.target.value)}
-            InputLabelProps={{ shrink: true }}
-            size="small"
-            sx={{ minWidth: 150 }}
-            aria-label="Start date"
-          />
-          <TextField
-            label="End Date"
-            type="date"
-            value={dateRangeEnd}
-            onChange={(e) => setDateRangeEnd(e.target.value)}
-            InputLabelProps={{ shrink: true }}
-            size="small"
-            sx={{ minWidth: 150 }}
-            aria-label="End date"
-          />
-          <Typography variant="caption" color="text.secondary">
-            ({Intl.DateTimeFormat().resolvedOptions().timeZone})
-          </Typography>
-          {(dateRangeStart || dateRangeEnd) && (
-            <Button
-              size="small"
-              variant="text"
-              onClick={() => {
-                setDateRangeStart('');
-                setDateRangeEnd('');
-              }}
-            >
-              Clear Dates
-            </Button>
-          )}
-        </Box>
-        
-        {/* Status Filter Chips */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 2 }}>
-          <Icon icon={Filter} fontSize="small" />
-          <Typography variant="body2" color="text.secondary">
-            Status:
-          </Typography>
-          <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
-            <Chip
-              label={`All (${history.length})`}
-              onClick={() => setStatusFilter('all')}
-              color={statusFilter === 'all' ? 'primary' : 'default'}
-              variant={statusFilter === 'all' ? 'filled' : 'outlined'}
-              size="small"
-            />
-            <Chip
-              label={`Complete (${summaryStats.complete})`}
-              onClick={() => setStatusFilter('complete')}
-              color={statusFilter === 'complete' ? 'success' : 'default'}
-              variant={statusFilter === 'complete' ? 'filled' : 'outlined'}
-              icon={<Icon icon={CheckCircle} fontSize="small" />}
-              size="small"
-            />
-            <Chip
-              label={`Exported (${summaryStats.exported})`}
-              onClick={() => setStatusFilter('exported')}
-              sx={{
-                ...(statusFilter === 'exported' && {
-                  bgcolor: '#9c27b0',
-                  color: '#ffffff',
-                  '& .MuiChip-icon': { color: '#ffffff' }
-                })
-              }}
-              variant={statusFilter === 'exported' ? 'filled' : 'outlined'}
-              icon={<Icon icon={Send} fontSize="small" />}
-              size="small"
-            />
-            <Chip
-              label={`Failed (${summaryStats.failed})`}
-              onClick={() => setStatusFilter('failed')}
-              color={statusFilter === 'failed' ? 'error' : 'default'}
-              variant={statusFilter === 'failed' ? 'filled' : 'outlined'}
-              icon={<Icon icon={XCircle} fontSize="small" />}
-              size="small"
-            />
-            {summaryStats.processing > 0 && (
-              <Chip
-                label={`Processing (${summaryStats.processing})`}
-                onClick={() => setStatusFilter('processing')}
-                color={statusFilter === 'processing' ? 'primary' : 'default'}
-                variant={statusFilter === 'processing' ? 'filled' : 'outlined'}
-                icon={<Icon icon={Loader2} fontSize="small" />}
+
+          {/* Date Range Filter */}
+          <Stack direction="row" spacing={1.5} flexWrap="wrap" alignItems="center">
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Icon icon={Calendar} fontSize="small" />
+              <Typography variant="body2" color="text.secondary">
+                Date Range:
+              </Typography>
+            </Box>
+            
+            {/* Quick Date Presets */}
+            <Stack direction="row" spacing={0.5}>
+              <Button
                 size="small"
-              />
+                variant="outlined"
+                onClick={() => setQuickDateRange(0)}
+                sx={{ textTransform: 'none', minWidth: 'auto', px: 1.5 }}
+              >
+                Today
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => setQuickDateRange(7)}
+                sx={{ textTransform: 'none', minWidth: 'auto', px: 1.5 }}
+              >
+                7 days
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => setQuickDateRange(30)}
+                sx={{ textTransform: 'none', minWidth: 'auto', px: 1.5 }}
+              >
+                30 days
+              </Button>
+            </Stack>
+            
+            <TextField
+              label="Start Date"
+              type="date"
+              value={dateRangeStart}
+              onChange={(e) => setDateRangeStart(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              size="small"
+              sx={{ width: 150 }}
+              aria-label="Start date"
+            />
+            <TextField
+              label="End Date"
+              type="date"
+              value={dateRangeEnd}
+              onChange={(e) => setDateRangeEnd(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              size="small"
+              sx={{ width: 150 }}
+              aria-label="End date"
+            />
+            <Typography variant="caption" color="text.secondary">
+              ({Intl.DateTimeFormat().resolvedOptions().timeZone})
+            </Typography>
+            {(dateRangeStart || dateRangeEnd) && (
+              <Button
+                size="small"
+                variant="text"
+                onClick={() => {
+                  setDateRangeStart('');
+                  setDateRangeEnd('');
+                }}
+              >
+                Clear
+              </Button>
             )}
           </Stack>
-        </Box>
+        </Stack>
+      </Paper>
 
-        {/* Info for large datasets */}
-        {filteredHistory.length > 100 && (
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="body2" color="text.secondary">
-              Showing {filteredHistory.length} entries. Use filters and pagination for better performance with large datasets.
-            </Typography>
-          </Box>
-        )}
-      </Box>
+      {/* Info for large datasets */}
+      {filteredHistory.length > 100 && (
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="body2" color="text.secondary">
+            Showing {filteredHistory.length} entries. Use filters and pagination for better performance with large datasets.
+          </Typography>
+        </Box>
+      )}
       
-      <TableContainer component={Paper}>
+      <TableContainer component={Paper} sx={{ overflowX: 'auto' }}>
         <Table>
           <TableHead>
             <TableRow>

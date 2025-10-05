@@ -32,6 +32,7 @@ import {
   TextField,
   ToggleButton,
   ToggleButtonGroup,
+  Skeleton,
 } from '@mui/material';
 import { X, Download, ExternalLink, ChevronDown, CheckCircle, XCircle, Clock, RefreshCw, Copy, Search, Eye } from 'lucide-react';
 import { useHistoryDetail, useHistoryChunks, useExportHistoryToSheets } from '@/lib/queries';
@@ -152,9 +153,50 @@ export default function HistoryDetailDialog({
 
       <DialogContent>
         {isLoading && (
-          <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
-            <CircularProgress />
-          </Box>
+          <Stack spacing={3}>
+            {/* File Information Skeleton */}
+            <Box>
+              <Skeleton variant="text" width={150} height={28} sx={{ mb: 2 }} />
+              <Stack spacing={1}>
+                <Stack direction="row" spacing={2}>
+                  <Skeleton variant="text" width={150} height={24} />
+                  <Skeleton variant="text" width={300} height={24} />
+                </Stack>
+                <Stack direction="row" spacing={2}>
+                  <Skeleton variant="text" width={150} height={24} />
+                  <Skeleton variant="text" width={200} height={24} />
+                </Stack>
+                <Stack direction="row" spacing={2}>
+                  <Skeleton variant="text" width={150} height={24} />
+                  <Skeleton variant="text" width={100} height={24} />
+                </Stack>
+              </Stack>
+            </Box>
+
+            <Divider />
+
+            {/* Processing Settings Skeleton */}
+            <Box>
+              <Skeleton variant="text" width={180} height={28} sx={{ mb: 2 }} />
+              <Stack spacing={1}>
+                <Stack direction="row" spacing={2}>
+                  <Skeleton variant="text" width={150} height={24} />
+                  <Skeleton variant="text" width={120} height={24} />
+                </Stack>
+                <Stack direction="row" spacing={2}>
+                  <Skeleton variant="text" width={150} height={24} />
+                  <Skeleton variant="text" width={100} height={24} />
+                </Stack>
+              </Stack>
+            </Box>
+
+            <Divider />
+
+            {/* Sentences Skeleton */}
+            <Box>
+              <Skeleton variant="rectangular" width="100%" height={300} />
+            </Box>
+          </Stack>
         )}
 
         {error && (
@@ -284,23 +326,18 @@ export default function HistoryDetailDialog({
                     </Stack>
                     
                     {filteredSentences.length > 0 ? (
-                      <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 400 }}>
+                      <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 400, overflowX: 'hidden' }}>
                         <Table stickyHeader size="small">
                           <TableHead>
                             <TableRow>
                               <TableCell sx={{ width: 60 }}>#</TableCell>
-                              <TableCell sx={{ width: '45%' }}>
+                              <TableCell>
                                 <Tooltip title="Normalized/cleaned sentence after AI processing">
-                                  <span>Normalized</span>
-                                </Tooltip>
-                              </TableCell>
-                              <TableCell sx={{ width: '45%' }}>
-                                <Tooltip title="Original sentence from PDF">
-                                  <span>Original</span>
+                                  <span>Sentence</span>
                                 </Tooltip>
                               </TableCell>
                               <TableCell sx={{ width: 60 }}>
-                                <Tooltip title="Copy sentence actions">
+                                <Tooltip title="Copy sentence">
                                   <span>Actions</span>
                                 </Tooltip>
                               </TableCell>
@@ -325,20 +362,18 @@ export default function HistoryDetailDialog({
                                       ...(isDifferent && {
                                         fontWeight: 500,
                                         color: 'primary.main'
-                                      })
+                                      }),
+                                      wordBreak: 'break-word'
                                     }}
                                   >
                                     {sentence.normalized}
                                   </TableCell>
-                                  <TableCell sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>
-                                    {sentence.original}
-                                  </TableCell>
                                   <TableCell>
-                                    <Tooltip title="Copy normalized sentence">
+                                    <Tooltip title="Copy sentence">
                                       <IconButton
                                         size="small"
                                         onClick={() => handleCopyUrl(sentence.normalized)}
-                                        aria-label="Copy normalized sentence"
+                                        aria-label="Copy sentence"
                                       >
                                         <Icon icon={Copy} fontSize="small" />
                                       </IconButton>
