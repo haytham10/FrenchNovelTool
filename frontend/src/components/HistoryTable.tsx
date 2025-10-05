@@ -11,7 +11,7 @@ import { getHistoryStatus } from '@/lib/types';
 import { useDebounce } from '@/lib/hooks';
 import Icon from './Icon';
 import IconButton from './IconButton';
-import { CheckCircle, XCircle, Loader2, RefreshCw, Eye, Filter, Send, Calendar, Copy, ExternalLink, RotateCw, Trash2 } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, RefreshCw, Eye, Filter, Send, Calendar, Copy, ExternalLink, RotateCw } from 'lucide-react';
 import ExportDialog from './ExportDialog';
 import JobCreditDisplay from './JobCreditDisplay';
 import { useRouter } from 'next/navigation';

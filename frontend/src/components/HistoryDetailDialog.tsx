@@ -307,7 +307,7 @@ export default function HistoryDetailDialog({
                             </TableRow>
                           </TableHead>
                           <TableBody>
-                            {filteredSentences.map((sentence, index) => {
+                            {filteredSentences.map((sentence) => {
                               const isDifferent = sentence.normalized !== sentence.original;
                               const actualIndex = entry.sentences.indexOf(sentence);
                               return (
