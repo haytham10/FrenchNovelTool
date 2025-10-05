@@ -458,13 +458,17 @@ class GeminiService:
 
         if not cleaned_response:
             current_app.logger.error('Received empty response from Gemini API for normalize_text.')
-            raise ValueError('Gemini returned an empty response.')
+            raise GeminiAPIError('Gemini returned an empty response.', response_text)
 
         try:
             data = json.loads(cleaned_response)
         except json.JSONDecodeError:
             current_app.logger.warning('normalize_text: JSON parsing failed, attempting recovery...')
-            data = self._recover_json(cleaned_response)
+            try:
+                data = self._recover_json(cleaned_response)
+            except Exception:
+                # Attach raw response for diagnostics
+                raise GeminiAPIError('Failed to parse Gemini JSON response.', response_text)
 
         sentences = self._extract_sentence_list(data)
         processed = self._post_process_sentences(sentences)
