@@ -27,7 +27,8 @@ def app_context():
 class TestPhase1PromptImprovements:
     """Test cases for Phase 1 prompt improvements"""
 
-    def test_prompt_includes_grammatical_rules(self, app_context):
+    @patch('google.genai.Client')
+    def test_prompt_includes_grammatical_rules(self, mock_client, app_context):
         """Test that prompt includes specific grammatical splitting rules"""
         with app_context.test_request_context():
             prompt = GeminiService(sentence_length_limit=8).build_prompt()
@@ -94,7 +95,9 @@ class TestPhase1PromptImprovements:
         temp_path.write_bytes(pdf_content)
 
         prompt = "Test prompt"
-        with pytest.raises(ValueError, match="Failed to parse response from Gemini API"):
+        # Now raises GeminiAPIError instead of ValueError
+        from app.services.gemini_service import GeminiAPIError
+        with pytest.raises(GeminiAPIError, match="Failed to parse Gemini JSON response"):
             gemini_service.generate_content_from_pdf(prompt, str(temp_path))
 
     @patch('google.genai.Client')
@@ -118,7 +121,9 @@ class TestPhase1PromptImprovements:
         temp_path.write_bytes(pdf_content)
 
         prompt = "Test prompt"
-        with pytest.raises(ValueError, match="Gemini returned an empty response"):
+        # Now raises GeminiAPIError instead of ValueError
+        from app.services.gemini_service import GeminiAPIError
+        with pytest.raises(GeminiAPIError, match="Gemini returned an empty response"):
             gemini_service.generate_content_from_pdf(prompt, str(temp_path))
 
 

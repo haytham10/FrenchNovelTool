@@ -208,53 +208,41 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
             chunk_info.get('chunk_id'), chunk_info.get('job_id'), chunk_info.get('start_page'),
             chunk_info.get('end_page'), chunk_info.get('page_count'), (len(text) if text else 0),
         )
-        try:
-            result = gemini_service.normalize_text(text, prompt)
-        except Exception as exc:
-            # Import GeminiAPIError type if available to add richer diagnostics
+        
+        # Process with Gemini (includes intelligent retry cascade)
+        result = gemini_service.normalize_text(text, prompt)
+        
+        # Check if a fallback method was used and persist marker to DB
+        fallback_method = result.get('_fallback_method')
+        if fallback_method and chunk_db_record:
             try:
-                from app.services.gemini_service import GeminiAPIError
-            except Exception:
-                GeminiAPIError = None
-
-            # Log diagnostics: keep raw_response truncated to avoid huge logs
-            if GeminiAPIError and isinstance(exc, GeminiAPIError):
-                raw_snip = (str(getattr(exc, 'raw_response', ''))[:300] + '...') if getattr(exc, 'raw_response', None) and len(str(getattr(exc, 'raw_response', ''))) > 300 else getattr(exc, 'raw_response', '')
-                logger.warning(
-                    "GeminiAPIError processing chunk %s (job %s): %s; raw_response_snip=%s",
-                    chunk_info.get('chunk_id'), chunk_info.get('job_id'), str(exc), raw_snip
+                # Map fallback method to error code for DB tracking
+                if 'local_segmentation' in fallback_method:
+                    error_code = 'GEMINI_LOCAL_FALLBACK'
+                    error_msg = 'All Gemini retries failed; local fallback used'
+                elif 'subchunk' in fallback_method:
+                    error_code = 'GEMINI_SUBCHUNK_FALLBACK'
+                    error_msg = f'Gemini succeeded via subchunk splitting'
+                elif 'minimal_prompt' in fallback_method:
+                    error_code = 'GEMINI_MINIMAL_PROMPT_FALLBACK'
+                    error_msg = f'Gemini succeeded with minimal prompt'
+                elif 'model_fallback' in fallback_method:
+                    error_code = 'GEMINI_MODEL_FALLBACK'
+                    error_msg = f'Gemini succeeded with model fallback: {fallback_method}'
+                else:
+                    error_code = 'GEMINI_FALLBACK'
+                    error_msg = f'Gemini fallback method: {fallback_method}'
+                
+                chunk_db_record.last_error = error_msg[:1000]
+                chunk_db_record.last_error_code = error_code
+                chunk_db_record.updated_at = datetime.utcnow()
+                safe_db_commit(db)
+                logger.info(
+                    'Chunk %s (job %s) processed with fallback: %s',
+                    chunk_info.get('chunk_id'), chunk_info.get('job_id'), fallback_method
                 )
-                # Persist into chunk DB record if present
-                if chunk_db_record:
-                    try:
-                        chunk_db_record.status = 'failed'
-                        chunk_db_record.last_error = str(exc)[:1000]
-                        chunk_db_record.last_error_code = 'GEMINI_API_ERROR'
-                        chunk_db_record.updated_at = datetime.utcnow()
-                        safe_db_commit(db)
-                    except Exception:
-                        logger.warning('Failed to persist Gemini error for chunk %s', chunk_info.get('chunk_id'))
-                # Attempt a local fallback segmentation instead of failing the chunk
-                try:
-                    logger.info('Attempting local fallback segmentation for chunk %s (job %s)', chunk_info.get('chunk_id'), chunk_info.get('job_id'))
-                    result = gemini_service.local_normalize_text(text)
-                    # Attach a flag so the caller/UI can indicate fallback was used
-                    result['_fallback'] = 'gemini_local_fallback'
-                    # Persist a short diagnostic to DB so UI shows fallback occurred
-                    if chunk_db_record:
-                        try:
-                            chunk_db_record.last_error = 'Gemini API failed; local fallback used.'
-                            chunk_db_record.last_error_code = 'GEMINI_LOCAL_FALLBACK'
-                            chunk_db_record.updated_at = datetime.utcnow()
-                            safe_db_commit(db)
-                        except Exception:
-                            logger.warning('Failed to persist fallback marker for chunk %s', chunk_info.get('chunk_id'))
-                except Exception:
-                    logger.exception('Local fallback also failed for chunk %s', chunk_info.get('chunk_id'))
-                    raise
-            else:
-                logger.exception('Unexpected error processing chunk %s: %s', chunk_info.get('chunk_id'), exc)
-                raise
+            except Exception:
+                logger.warning('Failed to persist fallback marker for chunk %s', chunk_info.get('chunk_id'))
         
         # Cleanup chunk file after processing only if a filesystem path was used
         try:

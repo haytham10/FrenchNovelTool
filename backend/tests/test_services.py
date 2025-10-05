@@ -140,7 +140,8 @@ def test_gemini_service_initialization_basic(mock_client, app_context):
     service = GeminiService(sentence_length_limit=10)
     
     assert service.sentence_length_limit == 10
-    assert service.model_name == GeminiService.MODEL_PREFERENCE_MAP['balanced']
+    # Default model_preference is 'speed' which maps to gemini-2.5-flash-lite
+    assert service.model_name == GeminiService.MODEL_PREFERENCE_MAP['speed']
     assert service.ignore_dialogue is False
     assert service.preserve_formatting is True
     assert service.fix_hyphenation is True

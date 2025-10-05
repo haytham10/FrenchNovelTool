@@ -235,7 +235,7 @@ class TestUserSettingsSchema:
         result = schema.load(data)
         
         assert result['sentence_length_limit'] == 12
-        assert result['gemini_model'] == 'balanced'  # default
+        assert result['gemini_model'] == 'speed'  # default (changed from balanced)
         assert result['ignore_dialogue'] is False  # default
     
     def test_full_settings_schema(self):
