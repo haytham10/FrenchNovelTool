@@ -125,12 +125,15 @@ def test_gemini_service_prompt_includes_phase1_sections(mock_client, app_context
 
     assert "extract and process every single sentence" in prompt.lower()
     assert f"{gemini_service.sentence_length_limit} words" in prompt
-    assert "**Rewriting Rules:**" in prompt
+    # Updated: We now use "Rewriting Methodology" instead of "Rewriting Rules"
+    assert "**Rewriting Methodology:**" in prompt
     assert "**Context-Awareness:**" in prompt
     assert "**Dialogue Handling:**" in prompt
     assert "**Style and Tone Preservation:**" in prompt
     assert "**Hyphenation & Formatting:**" in prompt
-    assert "merge it with the previous or next sentence" in prompt
+    # Updated: New approach focuses on linguistic rewriting
+    assert "CRITICAL: Linguistic Rewriting" in prompt
+    assert "FORBIDDEN: sentence fragments" in prompt
     assert '"sentences"' in prompt
 
 

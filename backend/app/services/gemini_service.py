@@ -307,6 +307,8 @@ class GeminiService:
     def _post_process_sentences(self, sentences: List[str]) -> List[str]:
         """Apply manual splitting, merging, and normalisation rules to sentences."""
         processed: List[str] = []
+        fragment_count = 0
+        
         for idx, raw_sentence in enumerate(sentences):
             # Defensive: skip None inputs and log for diagnostics
             if raw_sentence is None:
@@ -344,11 +346,26 @@ class GeminiService:
 
                 if not chunk:
                     continue
+                
+                # Check for fragments and log warnings
+                if self._is_likely_fragment(chunk):
+                    fragment_count += 1
+                    current_app.logger.warning(
+                        'Potential sentence fragment detected at index %s: "%s"',
+                        idx, chunk[:100]
+                    )
 
                 if len(chunk.split()) < self.min_sentence_length and processed and not original_unsplit:
                     processed[-1] = f"{processed[-1]} {chunk}".strip()
                 else:
                     processed.append(chunk)
+        
+        # Log summary if fragments were detected
+        if fragment_count > 0:
+            current_app.logger.warning(
+                'Fragment detection summary: %d potential fragments found out of %d sentences (%.1f%%)',
+                fragment_count, len(processed), (fragment_count / len(processed) * 100) if processed else 0
+            )
 
         return [sentence.strip() for sentence in processed if sentence and sentence.strip()]
 
@@ -397,6 +414,64 @@ class GeminiService:
             return True
         if stripped.endswith((':', '—')):
             return True
+        return False
+
+    def _is_likely_fragment(self, sentence: str) -> bool:
+        """Check if a sentence appears to be a fragment rather than a complete sentence.
+        
+        This is a heuristic check to detect common patterns of sentence fragmentation
+        that may occur when the AI model doesn't follow rewriting instructions properly.
+        
+        Returns True if the sentence is likely a fragment.
+        """
+        if not sentence or not str(sentence).strip():
+            return True
+        
+        sentence = str(sentence).strip()
+        words = sentence.split()
+        
+        # Very short sentences are often fragments (unless they're valid imperatives or exclamations)
+        if len(words) < 2:
+            # Allow single-word imperatives, exclamations, or dialogue
+            if sentence.endswith(('!', '?', '.')) or self._looks_like_dialogue(sentence):
+                return False
+            return True
+        
+        # Sentences ending only with comma are fragments
+        if sentence.endswith(','):
+            current_app.logger.debug('Fragment detected (ends with comma): %s', sentence[:50])
+            return True
+        
+        # Dependent clauses starting with conjunctions without proper structure
+        # Common fragment patterns in French
+        fragment_starts = ['et', 'mais', 'donc', 'car', 'or', 'ni']
+        first_word_lower = words[0].lower()
+        if first_word_lower in fragment_starts:
+            # Check if it's a complete sentence despite starting with conjunction
+            # Must have proper punctuation and reasonable length
+            if len(words) < 4 or not sentence.endswith(('.', '!', '?', '…')):
+                current_app.logger.debug(
+                    'Fragment detected (conjunction start without completion): %s',
+                    sentence[:50]
+                )
+                return True
+        
+        # Prepositional phrases without a main verb
+        preposition_starts = ['dans', 'sur', 'sous', 'avec', 'sans', 'pour', 'de', 'à']
+        if first_word_lower in preposition_starts:
+            # These are often fragments unless they're part of a complete sentence
+            # Simple heuristic: must have a verb-like word (common French verb endings)
+            has_verb = any(
+                word.lower().endswith(('er', 'ir', 'oir', 'ais', 'ait', 'ont', 'est', 'sont', 'fut'))
+                for word in words
+            )
+            if not has_verb:
+                current_app.logger.debug(
+                    'Fragment detected (preposition without verb): %s',
+                    sentence[:50]
+                )
+                return True
+        
         return False
 
     def local_normalize_text(self, text: str) -> Dict[str, Any]:

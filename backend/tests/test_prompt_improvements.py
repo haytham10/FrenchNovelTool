@@ -70,6 +70,36 @@ class TestPhase1PromptImprovements:
             assert "CORRECT approach (rewriting)" in prompt
 
     @patch('google.genai.Client')
+    def test_fragment_detection(self, mock_client, app_context):
+        """Test that the service can detect sentence fragments"""
+        with app_context.test_request_context():
+            service = GeminiService(sentence_length_limit=8)
+            
+            # Test cases: fragments that should be detected
+            fragments = [
+                "le standard d'Elvis Presley,",  # Ends with comma
+                "et froide",  # Conjunction start without completion
+                "dans la rue sombre",  # Prepositional phrase without verb
+                "It's Now or Never,",  # Fragment ending with comma
+            ]
+            
+            for fragment in fragments:
+                assert service._is_likely_fragment(fragment), \
+                    f"Should detect as fragment: {fragment}"
+            
+            # Test cases: complete sentences that should NOT be flagged
+            complete_sentences = [
+                "Il marchait lentement dans la rue.",
+                "La rue était sombre et froide.",
+                "Elvis chante une chanson.",
+                "C'est maintenant ou jamais !",
+            ]
+            
+            for sentence in complete_sentences:
+                assert not service._is_likely_fragment(sentence), \
+                    f"Should NOT detect as fragment: {sentence}"
+
+    @patch('google.genai.Client')
     def test_json_output_validation(self, mock_client, app_context, tmp_path):
         """Test that the service properly validates JSON output"""
         # Mock the Gemini client
