@@ -484,6 +484,40 @@ def finalize_job_results(self, chunk_results, job_id):
         # Load all chunks from DB to get latest state
         db_chunks = JobChunk.query.filter_by(job_id=job_id).order_by(JobChunk.chunk_id).all()
         
+        # CRITICAL: Check if all chunks have reached a terminal state
+        # If any chunks are still 'pending' or 'processing', we cannot finalize yet
+        if db_chunks:
+            non_terminal_chunks = [
+                chunk for chunk in db_chunks 
+                if chunk.status in ('pending', 'processing', 'retry_scheduled')
+            ]
+            
+            if non_terminal_chunks:
+                from flask import current_app
+                max_finalize_retries = int(current_app.config.get('FINALIZE_MAX_RETRIES', 10))
+                finalize_retry_delay = int(current_app.config.get('FINALIZE_RETRY_DELAY', 30))
+                
+                if self.request.retries < max_finalize_retries:
+                    logger.warning(
+                        f"Job {job_id}: {len(non_terminal_chunks)} chunks still in non-terminal state "
+                        f"(statuses: {[c.status for c in non_terminal_chunks[:5]]}). "
+                        f"Retrying finalization in {finalize_retry_delay}s (attempt {self.request.retries + 1}/{max_finalize_retries})"
+                    )
+                    raise self.retry(countdown=finalize_retry_delay, max_retries=max_finalize_retries)
+                else:
+                    # Max retries exceeded - force finalize with whatever we have
+                    logger.error(
+                        f"Job {job_id}: {len(non_terminal_chunks)} chunks still non-terminal after {max_finalize_retries} retries. "
+                        f"Force-finalizing with available results. Non-terminal chunks: {[c.chunk_id for c in non_terminal_chunks]}"
+                    )
+                    # Mark stuck chunks as failed so they don't block finalization
+                    for chunk in non_terminal_chunks:
+                        chunk.status = 'failed'
+                        chunk.last_error = 'Chunk stuck in processing state - force-finalized'
+                        chunk.last_error_code = 'FINALIZE_TIMEOUT'
+                        chunk.updated_at = datetime.utcnow()
+                    safe_db_commit(db)
+        
         # Build chunk results from DB if available, else use in-memory results
         if db_chunks:
             logger.info(f"Job {job_id}: loaded {len(db_chunks)} chunks from DB for finalization")

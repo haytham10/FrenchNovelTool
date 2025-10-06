@@ -127,3 +127,12 @@ class Config:
     CELERY_BROKER_URL = redis_broker_url
     CELERY_RESULT_BACKEND = redis_backend_url
     CELERY_TASK_IGNORE_RESULT = False  # We need results for progress tracking
+    
+    # Celery Task Configuration
+    CHUNK_TASK_MAX_RETRIES = int(os.getenv('CHUNK_TASK_MAX_RETRIES', '3'))
+    CHUNK_TASK_RETRY_DELAY = int(os.getenv('CHUNK_TASK_RETRY_DELAY', '2'))
+    CHORD_WATCHDOG_SECONDS = int(os.getenv('CHORD_WATCHDOG_SECONDS', '300'))  # 5 minutes default
+    
+    # Finalization Configuration
+    FINALIZE_MAX_RETRIES = int(os.getenv('FINALIZE_MAX_RETRIES', '10'))
+    FINALIZE_RETRY_DELAY = int(os.getenv('FINALIZE_RETRY_DELAY', '30'))  # 30 seconds between retries

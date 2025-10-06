@@ -623,6 +623,27 @@ class GeminiService:
             # Keep minimal adjustments for spacing around any remaining markers
             text = text.replace('« ', '«').replace(' »', '»')
 
+        # Remove leading reporting clauses like "Il dit :", "Sam dit :", "Elle ajouta :"
+        # Pattern: optional speaker (capitalized name or pronoun) followed by up to 3 small tokens
+        # then a reporting verb (dit, ajouta, répondit, etc.) and optional punctuation. Case-insensitive.
+        try:
+            reporting_re = re.compile(
+                r"^\s*(?:(?:[A-Z][\w'’\-]+(?:\s+[A-Z][\w'’\-]+)*)|(?:il|elle|ils|elles|on|je|tu|nous|vous|lui|leur))(?:\s+\S{1,30}){0,3}\s+(?:a\s+dit|avait\s+dit|avait\s+r[ée]pondu|a\s+r[ée]pondu|r[ée]pondu|r[ée]pondit|dit|ditait|ajouta|ajoutait|ajoute|ajout[ée])\s*[:\-,\u2013\u2014]?\s*",
+                flags=re.IGNORECASE,
+            )
+            new_text = reporting_re.sub('', text, count=1)
+            # Also remove stray leading punctuation like multiple colons, dashes, or opening quotes
+            new_text = re.sub(r'^[\s:;\'"«»\-–—]+', '', new_text)
+            # Remove trailing closing quotes/punctuation so both opening and closing
+            # quotation marks are removed when stripping reporting clauses
+            new_text = re.sub(r'[\s:;\'"«»\-–—]+$', '', new_text)
+            # Only accept the stripped form if it results in non-empty text
+            if new_text and len(new_text.split()) >= 1:
+                text = new_text
+        except Exception:
+            # If regex fails for some reason, just keep the original text
+            pass
+
         return text.strip()
 
     def _looks_like_dialogue(self, sentence: str) -> bool:
