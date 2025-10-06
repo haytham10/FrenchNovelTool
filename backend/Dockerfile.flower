@@ -19,7 +19,4 @@ EXPOSE 5555
 # Use shell form so we can pick the broker from env vars and optionally enable basic auth.
 # By default we prefer REDIS_URL (project config), then CELERY_BROKER_URL. If neither is set
 # Flower will log a warning and fall back to its default (amqp://localhost).
-CMD ["sh", "-c", "BROKER=${REDIS_URL:-${CELERY_BROKER_URL:-}}; \\
-RESULT=${CELERY_RESULT_BACKEND:-$BROKER}; \\
-if [ -z \"$BROKER\" ]; then echo \"WARNING: no broker configured (REDIS_URL or CELERY_BROKER_URL). Flower will try default amqp://localhost which may fail.\"; fi; \\
-exec celery --broker \"$BROKER\" --result-backend \"$RESULT\" -A app.celery flower --port=5555 ${FLOWER_BASIC_AUTH:+--basic_auth $FLOWER_BASIC_AUTH}"]
+CMD ["sh", "-c", "BROKER=${REDIS_URL:-${CELERY_BROKER_URL:-}}; RESULT=${CELERY_RESULT_BACKEND:-$BROKER}; if [ -z \"$BROKER\" ]; then echo \"WARNING: no broker configured (REDIS_URL or CELERY_BROKER_URL). Flower will try default amqp://localhost which may fail.\"; fi; exec celery --broker \"$BROKER\" --result-backend \"$RESULT\" -A app.celery flower --port=5555 ${FLOWER_BASIC_AUTH:+--basic_auth $FLOWER_BASIC_AUTH}"]
