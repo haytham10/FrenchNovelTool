@@ -708,6 +708,16 @@ def finalize_job_results(self, chunk_results, job_id):
         }
         
     except Exception as e:
+        # If this is a Celery retry signal, do NOT mark the job as failed.
+        try:
+            from celery.exceptions import Retry as CeleryRetry
+            is_retry = isinstance(e, CeleryRetry)
+        except Exception:
+            is_retry = False
+
+        if is_retry:
+            logger.info(f"Job {job_id}: finalize retry scheduled: {e}")
+            raise
         logger.error(f"Job {job_id}: finalization failed: {e}")
         
         # Mark job as failed
