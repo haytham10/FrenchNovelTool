@@ -25,7 +25,7 @@ from .constants import (
     ESTIMATE_IMAGE_WEIGHT,
     HTTP_UNPROCESSABLE_ENTITY
 )
-import PyPDF2
+from app.pdf_compat import PdfReader
 
 main_bp = Blueprint('main', __name__)
 history_service = HistoryService()

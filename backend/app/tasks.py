@@ -6,7 +6,7 @@ from typing import Dict, List
 from typing import Optional
 import base64
 import tempfile
-import PyPDF2
+from app.pdf_compat import PdfReader
 from celery import group, chord
 from celery.exceptions import SoftTimeLimitExceeded
 
@@ -15,6 +15,16 @@ logger = logging.getLogger(__name__)
 def get_celery():
     """Get celery instance (deferred import to avoid circular dependency)"""
     from app import celery
+    # If the application hasn't initialised Celery (e.g., during unit tests
+    # where create_app() isn't called), provide a lightweight stub that
+    # supports the `.task` decorator used at module import time.
+    if celery is None:
+        class _DummyCelery:
+            def task(self, *args, **kwargs):
+                def decorator(func):
+                    return func
+                return decorator
+        return _DummyCelery()
     return celery
 
 
@@ -159,13 +169,13 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
             import io
             chunk_bytes = base64.b64decode(chunk_info['file_b64'])
             pdf_file = io.BytesIO(chunk_bytes)
-            pdf_reader = PyPDF2.PdfReader(pdf_file)
+            pdf_reader = PdfReader(pdf_file)
             for page in pdf_reader.pages:
                 text += (page.extract_text() or "") + "\n"
         else:
             # Fallback to file path if present
             with open(chunk_info['file_path'], 'rb') as pdf_file:
-                pdf_reader = PyPDF2.PdfReader(pdf_file)
+                pdf_reader = PdfReader(pdf_file)
                 for page in pdf_reader.pages:
                     text += (page.extract_text() or "") + "\n"
         
@@ -713,7 +723,8 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
 
         # Calculate chunks
         with open(file_path, 'rb') as f:
-            page_count = len(PyPDF2.PdfReader(f).pages)
+            from app.pdf_compat import PdfReader
+            page_count = len(PdfReader(f).pages)
         
         chunk_config = chunking_service.calculate_chunks(page_count)
         

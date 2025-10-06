@@ -3,7 +3,7 @@ import os
 import io
 import base64
 from typing import List, Dict
-from PyPDF2 import PdfWriter, PdfReader
+from app.pdf_compat import PdfReader, PdfWriter
 
 
 class ChunkingService:

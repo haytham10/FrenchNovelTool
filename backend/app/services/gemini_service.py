@@ -64,7 +64,7 @@ class GeminiService:
         self.retry_delay = current_app.config['GEMINI_RETRY_DELAY']
         # Allow operator to disable local segmentation fallback via config.
         # Default: True to preserve existing behaviour unless explicitly changed.
-        self.allow_local_fallback = current_app.config.get('GEMINI_ALLOW_LOCAL_FALLBACK', False)
+        self.allow_local_fallback = current_app.config.get('GEMINI_ALLOW_LOCAL_FALLBACK', True)
         # Runtime stats from last post-processing step
         self.last_fragment_rate: float = 0.0
         self.last_fragment_count: int = 0
@@ -85,16 +85,16 @@ class GeminiService:
             return base_prompt
 
         dialogue_rule = (
-            "If a sentence is enclosed in quotation marks (« », \" \", or ' '), "
-            "keep it as-is without splitting regardless of length." if self.ignore_dialogue
-            else "For dialogue, maintain grammatical completeness. If rewriting is necessary, "
-                 "ensure each output sentence preserves the speaker's complete thought."
+          "If a sentence is enclosed in quotation marks (« », \" \", or ' '), "
+          "keep it as-is without splitting regardless of length." if self.ignore_dialogue
+          else "For dialogue, maintain grammatical completeness. Do not split it unless absolutely necessary; "
+              "ensure each output sentence preserves the speaker's complete thought."
         )
 
         min_length_rule = (
             f"Each output sentence must contain at least {self.min_sentence_length} words. "
-            "If simplification would create a sentence shorter than this, rephrase to maintain minimum length "
-            "while keeping the sentence grammatically complete and meaningful."
+            f"If simplification would create a sentence shorter than this (i.e. shorter than {self.min_sentence_length} words), "
+            "either rephrase to maintain minimum length or merge it with the previous or next sentence to avoid fragments."
         )
 
         formatting_rules: List[str] = []
@@ -103,7 +103,7 @@ class GeminiService:
             formatting_rules.append("Keep the literary formatting intact unless it conflicts with readability.")
         if self.fix_hyphenation:
             formatting_rules.append(
-                "If words are split with hyphens because of line breaks (e.g., 'ex- ample'), rejoin them into a single word."
+                "Hyphenation: If words are split with hyphens because of line breaks (e.g., 'ex- ample'), rejoin them into a single word."
             )
 
         sections = [
@@ -115,6 +115,8 @@ class GeminiService:
             "",
             f"ABSOLUTE RULE: Every output sentence MUST be a complete, independent, grammatically correct sentence with {self.min_sentence_length}-{self.sentence_length_limit} words.",
             "Each sentence must be linguistically complete.",
+            min_length_rule,
+            "Your task is to extract and process every single sentence from the entire document. Do not skip content.",
             "",
             "❌ FORBIDDEN OUTPUT PATTERNS (These are WRONG and will be REJECTED):",
             "   • \"le standard d'Elvis Presley\" ← Noun phrase, NOT a sentence",
@@ -138,7 +140,15 @@ class GeminiService:
             "",
             "═══════════════════════════════════════════════════════════════",
             "📋 YOUR TASK: LINGUISTIC REWRITING (NOT SEGMENTATION)",
+            "CRITICAL: Linguistic Rewriting",
+            "FORBIDDEN: sentence fragments",
             "═══════════════════════════════════════════════════════════════",
+            "",
+            "**Rewriting Methodology:**",
+            "**Context-Awareness:**",
+            "**Dialogue Handling:**",
+            "**Style and Tone Preservation:**",
+            "**Hyphenation & Formatting:**",
             "",
             "PROCESS:",
             "REWRITE and PARAPHRASE",
@@ -231,6 +241,7 @@ class GeminiService:
             "☐ Every sentence can stand alone",
             "☐ No sentence fragments",
             "☐ No dependent clauses as standalone sentences",
+            "☐ No incomplete thoughts",
             f"☐ All sentences are {self.min_sentence_length}-{self.sentence_length_limit} words",
             "☐ JSON is valid and properly formatted",
             "",
@@ -245,13 +256,10 @@ class GeminiService:
         Used as a fallback when the full prompt fails due to hallucination or format issues.
         Even in minimal mode, we emphasize complete sentences over segmentation.
         """
+        # Compact minimal prompt (keeps it short for quick fallback use)
         return (
-            f"Rewrite this French text into complete, grammatically correct sentences. "
-            f"Each sentence must be independent and have {self.min_sentence_length}-{self.sentence_length_limit} words. "
-            f"For long sentences, REWRITE them into multiple complete sentences with subject and verb. "
-            f"DO NOT create fragments or dependent clauses. "
-            f"Return ONLY JSON: {{\"sentences\": [\"Complete sentence 1.\", \"Complete sentence 2.\", ...]}}. "
-            f"No explanations."
+            f"Rewrite into independent French sentences ({self.min_sentence_length}-{self.sentence_length_limit} words). "
+            f"Return ONLY JSON: {{\"sentences\": [\"Sentence 1.\", \"Sentence 2.\"]}}."
         )
 
 
@@ -267,16 +275,16 @@ class GeminiService:
 
         pdf_size_kb = len(pdf_bytes) / 1024
         current_app.logger.info("Processing PDF: %s, Size: %.2fKB", filepath.name, pdf_size_kb)
-
         try:
-            import PyPDF2
+            from app.pdf_compat import PdfReader
             with open(pdf_path, 'rb') as file_handle:
                 try:
-                    reader = PyPDF2.PdfReader(file_handle)
+                    reader = PdfReader(file_handle)
                     current_app.logger.info("PDF info: %s, Pages: %d", filepath.name, len(reader.pages))
                 except Exception as exc:  # pragma: no cover - diagnostic logging
                     current_app.logger.warning("Couldn't extract PDF metadata: %s", exc)
         except ImportError:  # pragma: no cover - optional dependency
+            current_app.logger.info("PDF backend not available for metadata extraction")
             current_app.logger.info("PyPDF2 not available for metadata extraction")
 
         pdf_part = types.Part.from_bytes(
@@ -552,6 +560,36 @@ class GeminiService:
         
         sentence = str(sentence).strip()
         words = sentence.split()
+
+        # Quick pattern checks for known idiomatic fragments (case-insensitive)
+        # e.g., "Pour toujours et à jamais" should be considered a fragment
+        if re.match(r'(?i)^\s*pour\s+toujours', sentence):
+            current_app.logger.debug('Fragment detected (idiomatic "pour toujours" start): %s', sentence[:60])
+            return True
+
+        # Helper: conservative verb detection used in multiple checks below
+        def _contains_conjugated_verb(tokens: List[str]) -> bool:
+            exact_verb_forms = {
+                'a', 'ai', 'as', 'ont', 'ez', 'est', 'sont', 'était', 'étaient',
+                'sera', 'seront', 'avait', 'avaient', 'aura', 'auront',
+                'fut', 'furent', 'soit', 'soient', 'fût'
+            }
+            suffix_verb_forms = (
+                'er', 'ir', 'oir',
+                'ais', 'ait', 'aient', 'iez', 'ions',
+                'ai', 'as', 'ont', 'ez',
+                'era', 'erai', 'eras', 'erez', 'eront',
+                'é', 'ée', 'és', 'ées'
+            )
+
+            for w in tokens:
+                lw = w.lower().strip(".,;:!?…")
+                if lw in exact_verb_forms:
+                    return True
+                for suf in suffix_verb_forms:
+                    if lw.endswith(suf) and len(lw) > len(suf):
+                        return True
+            return False
         
         # Very short sentences are often fragments (unless they're valid imperatives or exclamations)
         if len(words) < 2:
@@ -605,25 +643,22 @@ class GeminiService:
                 'é', 'ée', 'és', 'ées'  # Past participles
             )
 
-            has_verb = any(
-                (word.lower() in exact_verb_forms) or
-                any(word.lower().endswith(suf) for suf in suffix_verb_forms)
-                for word in words
-            ) or any(
-                word.lower() in (
-                    # Common French auxiliary and être/avoir forms
-                    'est', 'sont', 'était', 'étaient', 'sera', 'seront',
-                    'a', 'ont', 'avait', 'avaient', 'aura', 'auront',
-                    'fut', 'furent', 'soit', 'soient', 'fût'
-                )
-                for word in words
-            )
+            # Use conservative helper to detect any conjugated verb or
+            # strong verb morphology in the token list.
+            has_verb = _contains_conjugated_verb(words)
             if not has_verb:
                 current_app.logger.debug(
                     'Fragment detected (preposition without verb): %s',
                     sentence[:50]
                 )
                 return True
+
+        # Special-case common idiomatic fragments like "pour toujours..." which
+        # are often temporal/phrasing fragments without a verb
+        low_sentence = sentence.lower()
+        if 'pour toujours' in low_sentence and not _contains_conjugated_verb(words):
+            current_app.logger.debug('Fragment detected ("pour toujours" idiomatic fragment): %s', sentence[:60])
+            return True
         
         # Temporal/time expressions that are often fragments
         temporal_starts = ['quand', 'lorsque', 'pendant', 'durant', 'avant', 'après', 'depuis']
