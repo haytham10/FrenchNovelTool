@@ -88,7 +88,7 @@ services:
       target: runner
     image: french-novel-backend:latest
     container_name: french-novel-celery-worker
-    command: celery -A app.celery_app:celery worker --loglevel=info --concurrency=4 --max-tasks-per-child=50
+    command: celery -A app.celery_app:celery worker --loglevel=info --concurrency=4 --max-tasks-per-child=50 --task-events
     environment:
       - FLASK_ENV=production
       - SECRET_KEY=${SECRET_KEY:?SECRET_KEY is required}
@@ -121,7 +121,7 @@ services:
       target: runner
     image: french-novel-backend:latest
     container_name: french-novel-flower
-    command: celery -A app.celery_app:celery flower --port=5555 --basic_auth=${FLOWER_USER:-admin}:${FLOWER_PASSWORD:-admin}
+    command: celery --broker ${REDIS_URL} --result-backend ${REDIS_URL} -A app.celery_app:celery flower --port=5555 --basic_auth=${FLOWER_USER:-admin}:${FLOWER_PASSWORD:-admin}
     ports:
       - "${FLOWER_PORT:-5555}:5555"
     environment:
