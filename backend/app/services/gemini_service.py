@@ -94,65 +94,134 @@ class GeminiService:
             )
 
         sections = [
-            "You are a literary assistant specialized in processing French novels. Your task is to extract and process "
-            "EVERY SINGLE SENTENCE from the entire document. You must process the complete text from beginning to end "
-            "without skipping any content.",
+            "You are a French linguistic expert specialized in literary text rewriting. Your SOLE PURPOSE is to transform complex French text into simple, complete, grammatically perfect sentences.",
             "",
-            "**CRITICAL: Linguistic Rewriting, NOT Segmentation**",
-            f"Your goal is to produce a list of complete, independent, grammatically correct sentences where EACH sentence does not exceed {self.sentence_length_limit} words.",
+            "═══════════════════════════════════════════════════════════════",
+            "🚫 CRITICAL CONSTRAINT: ZERO TOLERANCE FOR FRAGMENTS",
+            "═══════════════════════════════════════════════════════════════",
             "",
-            "**Core Instruction:**",
-            f"- If a sentence is {self.sentence_length_limit} words or shorter: keep it as-is",
-            f"- If a sentence exceeds {self.sentence_length_limit} words: REWRITE and PARAPHRASE it into multiple complete sentences",
-            "- Do NOT simply split at commas, conjunctions, or punctuation marks",
-            "- Each output sentence MUST be linguistically complete, independent, and grammatically pure",
-            "- FORBIDDEN: sentence fragments, dependent clauses, or incomplete thoughts as standalone sentences",
+            f"ABSOLUTE RULE: Every output sentence MUST be a complete, independent, grammatically correct sentence with {self.min_sentence_length}-{self.sentence_length_limit} words.",
+            "Each sentence must be linguistically complete.",
             "",
-            "**Rewriting Methodology:**",
-            "- Simplify complex sentences by extracting key information into separate complete sentences",
-            "- Paraphrase to create standalone sentences that each express a complete thought",
-            "- Each sentence must have a subject and predicate and be grammatically correct on its own",
-            "- Example of WRONG approach (segmentation): splitting 'Il marchait lentement dans la rue sombre et froide' into 'dans la rue sombre' and 'et froide'",
-            "- Example of CORRECT approach (rewriting): 'Il marchait lentement dans la rue. La rue était sombre et froide.'",
+            "❌ FORBIDDEN OUTPUT PATTERNS (These are WRONG and will be REJECTED):",
+            "   • \"le standard d'Elvis Presley\" ← Noun phrase, NOT a sentence",
+            "   • \"It's Now or Never\" ← Title reference without context",
+            "   • \"dans la rue sombre\" ← Prepositional phrase fragment",
+            "   • \"et froide\" ← Conjunction fragment",
+            "   • \"Pour toujours et à jamais\" ← Incomplete prepositional phrase",
+            "   • \"Avec le temps\" ← Adverbial phrase without verb",
+            "   • \"Dans quinze ans\" ← Time expression without predicate",
+            "   • \"De retour dans la chambre\" ← Participial phrase without subject",
             "",
-            "**Quality Requirements:**",
-            "- Every output sentence MUST be grammatically complete and able to stand alone",
-            "- NO dependent phrases like 'le standard d'Elvis Presley' or 'It's Now or Never' without context",
-            "- NO fragments that begin with conjunctions (et, mais, donc) unless they form complete imperative sentences",
-            "- Each sentence must convey a complete idea that a reader can understand independently",
+            "✅ CORRECT OUTPUT PATTERNS (These are RIGHT):",
+            "   • \"Le standard d'Elvis Presley joue à la radio.\" ← Complete sentence",
+            "   • \"La chanson It's Now or Never résonne.\" ← Complete with context",
+            "   • \"La rue était sombre.\" ← Complete subject-verb-complement",
+            "   • \"Il faisait froid.\" ← Complete weather description",
+            "   • \"Ils s'aimeront pour toujours.\" ← Complete with verb",
+            "   • \"Le temps passera lentement.\" ← Complete with subject + verb",
+            "   • \"Dans quinze ans, ce sera différent.\" ← Complete with predicate",
+            "   • \"Il est retourné dans la chambre.\" ← Complete action",
             "",
-            "**Context-Awareness:**",
-            "- While each sentence must be independent, maintain logical narrative flow between sentences",
-            "- Preserve the story's meaning and chronological sequence",
-            "- The collection of output sentences should form a coherent, readable narrative",
+            "═══════════════════════════════════════════════════════════════",
+            "📋 YOUR TASK: LINGUISTIC REWRITING (NOT SEGMENTATION)",
+            "═══════════════════════════════════════════════════════════════",
             "",
-            "**Dialogue Handling:**",
-            f"- {dialogue_rule}",
+            "PROCESS:",
+            "REWRITE and PARAPHRASE",
+            "1. Read the ENTIRE source text thoroughly",
+            f"2. For sentences ≤ {self.sentence_length_limit} words: Output them unchanged",
+            f"3. For sentences > {self.sentence_length_limit} words: REWRITE them into multiple complete sentences",
+            "4. NEVER split at commas, conjunctions, or punctuation alone",
+            "5. ALWAYS ensure each output sentence can stand alone grammatically",
             "",
-            "**Style and Tone Preservation:**",
-            "- Maintain the literary tone and voice of the original French text",
-            "- Preserve meaning while simplifying structure",
-            "- Keep the author's vocabulary choices where possible",
+            "REWRITING STRATEGY:",
+            "• IDENTIFY the core propositions in complex sentences",
+            "• EXTRACT each proposition into a standalone sentence",
+            "• ADD subjects/verbs/complements as needed to create grammatical completeness",
+            "• PARAPHRASE to simplify while preserving meaning",
+            "• VERIFY each output sentence is grammatically independent",
             "",
-            "**Sentence Length Guardrails:**",
-            f"- {min_length_rule}",
-            f"- Maximum sentence length: {self.sentence_length_limit} words (strictly enforced)",
-            "- Do not create sentences with excessive repetition or filler words",
+            "EXAMPLE TRANSFORMATION:",
+            "❌ WRONG (Segmentation approach):",
+            "   Input: \"Il marchait lentement dans la rue sombre et froide, pensant à elle.\"",
+            "   Output: [\"dans la rue sombre\", \"et froide\", \"pensant à elle\"] ← FRAGMENTS!",
             "",
-            "**Hyphenation & Formatting:**",
+            "✅ CORRECT (Rewriting approach):",
+            "   Input: \"Il marchait lentement dans la rue sombre et froide, pensant à elle.\"",
+            "   Output: [\"Il marchait lentement dans la rue.\", \"La rue était sombre et froide.\", \"Il pensait à elle.\"]",
+            "",
+            "GRAMMATICAL REQUIREMENTS FOR EACH OUTPUT SENTENCE:",
+            "✓ Must have a SUBJECT (explicit or understood)",
+            "✓ Must have a CONJUGATED VERB (not just infinitive or participle)",
+            "✓ Must express a COMPLETE THOUGHT",
+            "✓ Must be able to stand alone with ZERO context",
+            "✓ Must end with proper punctuation (. ! ? …)",
+            f"✓ Must contain {self.min_sentence_length}-{self.sentence_length_limit} words",
+            "",
+            "═══════════════════════════════════════════════════════════════",
+            "🔍 FRAGMENT DETECTION TEST",
+            "═══════════════════════════════════════════════════════════════",
+            "",
+            "Before outputting ANY sentence, ask yourself:",
+            "1. Can this sentence be understood completely on its own?",
+            "2. Does it have both a subject AND a conjugated verb?",
+            "3. Would a native French speaker consider this grammatically complete?",
+            "4. Is it a dependent clause that needs a main clause?",
+            "",
+            "If ANY answer is NO → REWRITE until all answers are YES",
+            "",
+            "FRAGMENT PATTERNS TO AVOID:",
+            "• Starting with: dans, sur, avec, sans, pour (without full sentence)",
+            "• Starting with: et, mais, donc, car (without imperative or complete structure)",
+            "• Ending with comma instead of period/punctuation",
+            "• Only containing: adjective phrases, noun phrases, infinitive phrases",
+            "• Participial phrases without auxiliary verbs",
+            "",
+            "═══════════════════════════════════════════════════════════════",
+            "📖 ADDITIONAL REQUIREMENTS",
+            "═══════════════════════════════════════════════════════════════",
+            "",
+            f"**Dialogue Handling:** {dialogue_rule}",
+            "",
+            "**Narrative Coherence:**",
+            "• Maintain chronological sequence",
+            "• Preserve cause-and-effect relationships",
+            "• Keep character actions and motivations clear",
+            "• The simplified text should read as a coherent story",
+            "",
+            "**Style Preservation:**",
+            "• Maintain the author's literary tone",
+            "• Preserve vocabulary choices where possible",
+            "• Keep the emotional atmosphere",
+            "• Simplify structure, not meaning",
+            "",
+            "**Formatting:**",
         ]
 
         if formatting_rules:
-            sections.extend(f"- {rule}" for rule in formatting_rules)
+            sections.extend(f"• {rule}" for rule in formatting_rules)
         else:
-            sections.append("- Maintain consistent spacing and punctuation.")
+            sections.append("• Maintain consistent spacing and punctuation.")
 
         sections.extend([
             "",
-            "**Output Format:**",
-            "Present the final output as a JSON object with a single key 'sentences' containing an array of strings.",
-            "Each string in the array must be a complete, grammatically correct, independent sentence.",
-            "For example: {\"sentences\": [\"Voici la première phrase.\", \"Et voici la deuxième phrase complète.\"]}"
+            "═══════════════════════════════════════════════════════════════",
+            "📤 OUTPUT FORMAT (STRICT JSON)",
+            "═══════════════════════════════════════════════════════════════",
+            "",
+            "Return ONLY a JSON object with this structure:",
+            "{\"sentences\": [\"Complete sentence 1.\", \"Complete sentence 2.\", \"Complete sentence 3.\", ...]}",
+            "",
+            "VALIDATION CHECKLIST before submitting output:",
+            "☐ Every sentence is grammatically complete",
+            "☐ Every sentence can stand alone",
+            "☐ No sentence fragments",
+            "☐ No dependent clauses as standalone sentences",
+            f"☐ All sentences are {self.min_sentence_length}-{self.sentence_length_limit} words",
+            "☐ JSON is valid and properly formatted",
+            "",
+            "PROCESS THE ENTIRE TEXT. BEGIN NOW."
         ])
 
         return "\n".join(sections)
@@ -161,12 +230,15 @@ class GeminiService:
         """Build a minimal prompt that only asks for JSON sentence list.
         
         Used as a fallback when the full prompt fails due to hallucination or format issues.
+        Even in minimal mode, we emphasize complete sentences over segmentation.
         """
         return (
-            f"Extract and split all French sentences from the text. "
-            f"If a sentence has more than {self.sentence_length_limit} words, split it into shorter sentences. "
-            f"Return ONLY a JSON object: {{\"sentences\": [\"sentence 1\", \"sentence 2\", ...]}}. "
-            f"Do not include any explanations or additional text."
+            f"Rewrite this French text into complete, grammatically correct sentences. "
+            f"Each sentence must be independent and have {self.min_sentence_length}-{self.sentence_length_limit} words. "
+            f"For long sentences, REWRITE them into multiple complete sentences with subject and verb. "
+            f"DO NOT create fragments or dependent clauses. "
+            f"Return ONLY JSON: {{\"sentences\": [\"Complete sentence 1.\", \"Complete sentence 2.\", ...]}}. "
+            f"No explanations."
         )
 
 
@@ -305,9 +377,14 @@ class GeminiService:
         return normalised
 
     def _post_process_sentences(self, sentences: List[str]) -> List[str]:
-        """Apply manual splitting, merging, and normalisation rules to sentences."""
+        """Apply manual splitting, merging, and normalisation rules to sentences.
+        
+        This method validates the quality of the AI's output and enforces the 
+        linguistic rewriting requirement by detecting and logging fragments.
+        """
         processed: List[str] = []
         fragment_count = 0
+        fragment_details = []
         
         for idx, raw_sentence in enumerate(sentences):
             # Defensive: skip None inputs and log for diagnostics
@@ -350,6 +427,11 @@ class GeminiService:
                 # Check for fragments and log warnings
                 if self._is_likely_fragment(chunk):
                     fragment_count += 1
+                    fragment_details.append({
+                        'index': idx,
+                        'text': chunk[:100],
+                        'word_count': len(chunk.split())
+                    })
                     current_app.logger.warning(
                         'Potential sentence fragment detected at index %s: "%s"',
                         idx, chunk[:100]
@@ -360,12 +442,34 @@ class GeminiService:
                 else:
                     processed.append(chunk)
         
-        # Log summary if fragments were detected
+        # Enhanced fragment reporting with quality assessment
         if fragment_count > 0:
+            fragment_rate = (fragment_count / len(processed) * 100) if processed else 0
             current_app.logger.warning(
                 'Fragment detection summary: %d potential fragments found out of %d sentences (%.1f%%)',
-                fragment_count, len(processed), (fragment_count / len(processed) * 100) if processed else 0
+                fragment_count, len(processed), fragment_rate
             )
+            
+            # Log sample fragments for debugging
+            if fragment_details:
+                sample_size = min(5, len(fragment_details))
+                current_app.logger.warning(
+                    'Sample fragments (first %d): %s',
+                    sample_size,
+                    [f['text'] for f in fragment_details[:sample_size]]
+                )
+            
+            # Quality threshold: warn if fragment rate is high
+            # This indicates the AI is performing segmentation instead of rewriting
+            if fragment_rate > 5.0:  # More than 5% fragments is concerning
+                current_app.logger.error(
+                    '⚠️  HIGH FRAGMENT RATE DETECTED (%.1f%%) - AI may be performing SEGMENTATION instead of REWRITING',
+                    fragment_rate
+                )
+                current_app.logger.error(
+                    'Expected: Complete, independent sentences. Got: %d fragments that cannot stand alone.',
+                    fragment_count
+                )
 
         return [sentence.strip() for sentence in processed if sentence and sentence.strip()]
 
@@ -419,8 +523,9 @@ class GeminiService:
     def _is_likely_fragment(self, sentence: str) -> bool:
         """Check if a sentence appears to be a fragment rather than a complete sentence.
         
-        This is a heuristic check to detect common patterns of sentence fragmentation
-        that may occur when the AI model doesn't follow rewriting instructions properly.
+        This is an enhanced heuristic check to detect common patterns of sentence fragmentation.
+        The AI model should produce zero fragments - any detected fragment indicates the model
+        is performing segmentation instead of linguistic rewriting.
         
         Returns True if the sentence is likely a fragment.
         """
@@ -437,16 +542,22 @@ class GeminiService:
                 return False
             return True
         
-        # Sentences ending only with comma are fragments
+        # Sentences ending only with comma are definite fragments
         if sentence.endswith(','):
             current_app.logger.debug('Fragment detected (ends with comma): %s', sentence[:50])
             return True
         
+        # Sentences ending with semicolon are often fragments
+        if sentence.endswith(';'):
+            current_app.logger.debug('Fragment detected (ends with semicolon): %s', sentence[:50])
+            return True
+        
+        first_word_lower = words[0].lower()
+        
         # Dependent clauses starting with conjunctions without proper structure
         # Common fragment patterns in French
-        fragment_starts = ['et', 'mais', 'donc', 'car', 'or', 'ni']
-        first_word_lower = words[0].lower()
-        if first_word_lower in fragment_starts:
+        fragment_starts_conjunctions = ['et', 'mais', 'donc', 'car', 'or', 'ni', 'puis']
+        if first_word_lower in fragment_starts_conjunctions:
             # Check if it's a complete sentence despite starting with conjunction
             # Must have proper punctuation and reasonable length
             if len(words) < 4 or not sentence.endswith(('.', '!', '?', '…')):
@@ -456,13 +567,37 @@ class GeminiService:
                 )
                 return True
         
-        # Prepositional phrases without a main verb
-        preposition_starts = ['dans', 'sur', 'sous', 'avec', 'sans', 'pour', 'de', 'à']
+        # Prepositional phrases without a main verb - VERY common fragment pattern
+        preposition_starts = ['dans', 'sur', 'sous', 'avec', 'sans', 'pour', 'de', 'à', 'vers', 'chez', 'par']
         if first_word_lower in preposition_starts:
             # These are often fragments unless they're part of a complete sentence
-            # Simple heuristic: must have a verb-like word (common French verb endings)
+            # Enhanced verb detection: look for common French verb patterns
+            # Check for verb-like tokens. Use exact matching for very short
+            # tokens (like 'a') to avoid false positives (e.g., 'la' ending with 'a').
+            exact_verb_forms = {
+                'a', 'ai', 'as', 'ont', 'ez', 'est', 'sont', 'était', 'étaient',
+                'sera', 'seront', 'avait', 'avaient', 'aura', 'auront',
+                'fut', 'furent', 'soit', 'soient', 'fût'
+            }
+            suffix_verb_forms = (
+                'er', 'ir', 'oir',  # Infinitives
+                'ais', 'ait', 'aient', 'iez', 'ions',  # Imperfect
+                'ai', 'as', 'ont', 'ez',  # Present/past
+                'era', 'erai', 'eras', 'erez', 'eront',  # Future
+                'é', 'ée', 'és', 'ées'  # Past participles
+            )
+
             has_verb = any(
-                word.lower().endswith(('er', 'ir', 'oir', 'ais', 'ait', 'ont', 'est', 'sont', 'fut'))
+                (word.lower() in exact_verb_forms) or
+                any(word.lower().endswith(suf) for suf in suffix_verb_forms)
+                for word in words
+            ) or any(
+                word.lower() in (
+                    # Common French auxiliary and être/avoir forms
+                    'est', 'sont', 'était', 'étaient', 'sera', 'seront',
+                    'a', 'ont', 'avait', 'avaient', 'aura', 'auront',
+                    'fut', 'furent', 'soit', 'soient', 'fût'
+                )
                 for word in words
             )
             if not has_verb:
@@ -471,6 +606,41 @@ class GeminiService:
                     sentence[:50]
                 )
                 return True
+        
+        # Temporal/time expressions that are often fragments
+        temporal_starts = ['quand', 'lorsque', 'pendant', 'durant', 'avant', 'après', 'depuis']
+        if first_word_lower in temporal_starts and len(words) < 5:
+            current_app.logger.debug(
+                'Fragment detected (temporal expression without clause): %s',
+                sentence[:50]
+            )
+            return True
+        
+        # Relative pronouns without main clause
+        relative_starts = ['qui', 'que', 'dont', 'où', 'lequel', 'laquelle']
+        if first_word_lower in relative_starts and len(words) < 4:
+            current_app.logger.debug(
+                'Fragment detected (relative pronoun without main clause): %s',
+                sentence[:50]
+            )
+            return True
+        
+        # Participle phrases without auxiliary
+        if len(words) >= 2:
+            # Check if starts with past participle without auxiliary
+            participle_patterns = ['tombaient', 'retourné', 'pensant', 'marchant']
+            if any(words[0].lower().endswith(('ant', 'é', 'ée', 'és', 'ées')) for w in [words[0]]):
+                # Check for auxiliary verb
+                has_auxiliary = any(
+                    word.lower() in ('est', 'sont', 'a', 'ont', 'était', 'étaient', 'avait', 'avaient')
+                    for word in words
+                )
+                if not has_auxiliary and len(words) < 6:
+                    current_app.logger.debug(
+                        'Fragment detected (participle without auxiliary): %s',
+                        sentence[:50]
+                    )
+                    return True
         
         return False
 
