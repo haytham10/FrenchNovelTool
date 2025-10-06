@@ -74,13 +74,14 @@ class GeminiService:
         dialogue_rule = (
             "If a sentence is enclosed in quotation marks (« », \" \", or ' '), "
             "keep it as-is without splitting regardless of length." if self.ignore_dialogue
-            else "Do not split it unless absolutely necessary. If a split is unavoidable, "
-                 "preserve the cadence and meaning of the dialogue."
+            else "For dialogue, maintain grammatical completeness. If rewriting is necessary, "
+                 "ensure each output sentence preserves the speaker's complete thought."
         )
 
         min_length_rule = (
-            f"If any rewritten sentence becomes shorter than {self.min_sentence_length} words, "
-            "merge it with the previous or next sentence so that the narrative remains natural."
+            f"Each output sentence must contain at least {self.min_sentence_length} words. "
+            "If simplification would create a sentence shorter than this, rephrase to maintain minimum length "
+            "while keeping the sentence grammatically complete and meaningful."
         )
 
         formatting_rules: List[str] = []
@@ -96,27 +97,47 @@ class GeminiService:
             "You are a literary assistant specialized in processing French novels. Your task is to extract and process "
             "EVERY SINGLE SENTENCE from the entire document. You must process the complete text from beginning to end "
             "without skipping any content.",
-            f"If a sentence is {self.sentence_length_limit} words long or less, add it to the list as is. If a sentence is longer than "
-            f"{self.sentence_length_limit} words, rewrite it into shorter sentences, each with {self.sentence_length_limit} words or fewer.",
             "",
-            "**Rewriting Rules:**",
-            "- Split long sentences at natural grammatical breaks (conjunctions like 'et', 'mais', 'donc', 'car', 'or'), subordinate clauses, or logical shifts in thought.",
-            "- Maintain semantic integrity; each new sentence must stand alone grammatically and semantically.",
+            "**CRITICAL: Linguistic Rewriting, NOT Segmentation**",
+            f"Your goal is to produce a list of complete, independent, grammatically correct sentences where EACH sentence does not exceed {self.sentence_length_limit} words.",
+            "",
+            "**Core Instruction:**",
+            f"- If a sentence is {self.sentence_length_limit} words or shorter: keep it as-is",
+            f"- If a sentence exceeds {self.sentence_length_limit} words: REWRITE and PARAPHRASE it into multiple complete sentences",
+            "- Do NOT simply split at commas, conjunctions, or punctuation marks",
+            "- Each output sentence MUST be linguistically complete, independent, and grammatically pure",
+            "- FORBIDDEN: sentence fragments, dependent clauses, or incomplete thoughts as standalone sentences",
+            "",
+            "**Rewriting Methodology:**",
+            "- Simplify complex sentences by extracting key information into separate complete sentences",
+            "- Paraphrase to create standalone sentences that each express a complete thought",
+            "- Each sentence must have a subject and predicate and be grammatically correct on its own",
+            "- Example of WRONG approach (segmentation): splitting 'Il marchait lentement dans la rue sombre et froide' into 'dans la rue sombre' and 'et froide'",
+            "- Example of CORRECT approach (rewriting): 'Il marchait lentement dans la rue. La rue était sombre et froide.'",
+            "",
+            "**Quality Requirements:**",
+            "- Every output sentence MUST be grammatically complete and able to stand alone",
+            "- NO dependent phrases like 'le standard d'Elvis Presley' or 'It's Now or Never' without context",
+            "- NO fragments that begin with conjunctions (et, mais, donc) unless they form complete imperative sentences",
+            "- Each sentence must convey a complete idea that a reader can understand independently",
             "",
             "**Context-Awareness:**",
-            "- Ensure the rewritten sentences maintain the logical flow and connection to the surrounding text.",
-            "- The final output must read as a continuous, coherent narrative.",
+            "- While each sentence must be independent, maintain logical narrative flow between sentences",
+            "- Preserve the story's meaning and chronological sequence",
+            "- The collection of output sentences should form a coherent, readable narrative",
             "",
             "**Dialogue Handling:**",
             f"- {dialogue_rule}",
             "",
             "**Style and Tone Preservation:**",
-            "- Maintain the literary tone and voice of the original French text.",
-            "- Preserve the exact original meaning and vocabulary where possible.",
+            "- Maintain the literary tone and voice of the original French text",
+            "- Preserve meaning while simplifying structure",
+            "- Keep the author's vocabulary choices where possible",
             "",
             "**Sentence Length Guardrails:**",
             f"- {min_length_rule}",
-            "- Do not create sentences with excessive repetition or filler words.",
+            f"- Maximum sentence length: {self.sentence_length_limit} words (strictly enforced)",
+            "- Do not create sentences with excessive repetition or filler words",
             "",
             "**Hyphenation & Formatting:**",
         ]
@@ -130,7 +151,8 @@ class GeminiService:
             "",
             "**Output Format:**",
             "Present the final output as a JSON object with a single key 'sentences' containing an array of strings.",
-            "For example: {\"sentences\": [\"Voici la première phrase.\", \"Et voici la deuxième.\"]}"
+            "Each string in the array must be a complete, grammatically correct, independent sentence.",
+            "For example: {\"sentences\": [\"Voici la première phrase.\", \"Et voici la deuxième phrase complète.\"]}"
         ])
 
         return "\n".join(sections)
@@ -331,35 +353,28 @@ class GeminiService:
         return [sentence.strip() for sentence in processed if sentence and sentence.strip()]
 
     def _split_sentence(self, sentence: str) -> List[str]:
-        """Split sentences at natural boundaries while respecting word limits."""
+        """Validate and return sentence - no longer performs manual splitting.
+        
+        The AI model should handle all rewriting. This method now only serves as
+        a pass-through that could log warnings for sentences exceeding limits.
+        Manual chunking has been disabled to prevent sentence fragmentation.
+        """
         # Defensive: coerce to string so None or other types don't crash
         sentence = '' if sentence is None else str(sentence)
         words = sentence.split()
-        if len(words) <= self.sentence_length_limit:
-            return [sentence]
+        
+        # Log a warning if Gemini returned a sentence that exceeds the limit
+        # This helps identify when the AI model isn't following instructions
+        if len(words) > self.sentence_length_limit:
+            current_app.logger.warning(
+                'Gemini returned sentence exceeding word limit (%d > %d): %s',
+                len(words), self.sentence_length_limit, sentence[:100]
+            )
+        
+        # Return the sentence as-is - trust the AI model's rewriting
+        # Manual splitting/chunking is disabled to avoid creating fragments
+        return [sentence]
 
-        chunks: List[str] = []
-        current_words: List[str] = []
-        for word in words:
-            current_words.append(word)
-            is_boundary = bool(re.search(r'[.!?;:,…]+["»”]*$', word))
-            limit_reached = len(current_words) >= self.sentence_length_limit
-
-            if limit_reached and not is_boundary:
-                chunks.append(' '.join(current_words).strip())
-                current_words = []
-            elif is_boundary and len(current_words) >= max(self.min_sentence_length, self.sentence_length_limit // 2):
-                chunks.append(' '.join(current_words).strip())
-                current_words = []
-
-        if current_words:
-            tail = ' '.join(current_words).strip()
-            if len(tail.split()) < self.min_sentence_length and chunks:
-                chunks[-1] = f"{chunks[-1]} {tail}".strip()
-            else:
-                chunks.append(tail)
-
-        return chunks
 
     def _normalise_sentence(self, sentence: str) -> str:
         """Normalise whitespace and optional hyphenation fixes."""
@@ -385,11 +400,12 @@ class GeminiService:
         return False
 
     def local_normalize_text(self, text: str) -> Dict[str, Any]:
-        """Local fallback to segment and post-process text without calling Gemini.
+        """Local fallback when Gemini API fails completely.
 
         This is used when the Gemini API returns an empty or malformed response.
-        It performs a conservative sentence segmentation using punctuation and
-        then runs the existing post-processing pipeline.
+        It performs a conservative sentence segmentation using punctuation.
+        Note: This fallback cannot perform linguistic rewriting and may produce
+        fragments - it's a last resort when API calls fail.
         """
         if not text or not str(text).strip():
             return {"sentences": [], "tokens": 0}

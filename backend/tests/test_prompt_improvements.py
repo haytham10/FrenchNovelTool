@@ -29,22 +29,45 @@ class TestPhase1PromptImprovements:
 
     @patch('google.genai.Client')
     def test_prompt_includes_grammatical_rules(self, mock_client, app_context):
-        """Test that prompt includes specific grammatical splitting rules"""
+        """Test that prompt includes linguistic rewriting requirements"""
         with app_context.test_request_context():
             prompt = GeminiService(sentence_length_limit=8).build_prompt()
 
-            # Verify key components are present
+            # Verify key components for linguistic rewriting (not segmentation)
             assert "literary assistant" in prompt
-            assert "grammatical breaks" in prompt
-            assert "conjunctions" in prompt
-            assert "'et', 'mais', 'donc'" in prompt
+            assert "CRITICAL: Linguistic Rewriting, NOT Segmentation" in prompt
+            assert "REWRITE and PARAPHRASE" in prompt
+            assert "linguistically complete" in prompt
+            assert "FORBIDDEN: sentence fragments" in prompt
+            assert "dependent clauses" in prompt
+            assert "incomplete thoughts" in prompt
+            assert "Simplify complex sentences" in prompt
+            assert "Paraphrase to create standalone sentences" in prompt
+            assert "subject and predicate" in prompt
+            assert "grammatically correct on its own" in prompt
             assert "Context-Awareness" in prompt
             assert "Dialogue Handling" in prompt
             assert "quotation marks" in prompt
             assert "Style and Tone Preservation" in prompt
             assert "literary tone" in prompt
             assert "JSON object" in prompt
-            assert "For example:" in prompt
+            assert "complete, grammatically correct, independent sentence" in prompt
+
+    @patch('google.genai.Client')
+    def test_prompt_forbids_segmentation(self, mock_client, app_context):
+        """Test that prompt explicitly forbids simple splitting/segmentation"""
+        with app_context.test_request_context():
+            prompt = GeminiService(sentence_length_limit=8).build_prompt()
+
+            # Verify anti-segmentation instructions
+            assert "Do NOT simply split at commas, conjunctions, or punctuation marks" in prompt
+            assert "FORBIDDEN: sentence fragments" in prompt
+            assert "NO dependent phrases" in prompt
+            assert "NO fragments that begin with conjunctions" in prompt
+            
+            # Verify examples of wrong vs right approach
+            assert "WRONG approach (segmentation)" in prompt
+            assert "CORRECT approach (rewriting)" in prompt
 
     @patch('google.genai.Client')
     def test_json_output_validation(self, mock_client, app_context, tmp_path):
