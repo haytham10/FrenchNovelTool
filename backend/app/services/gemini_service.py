@@ -903,7 +903,7 @@ class GeminiService:
         return self._post_process_sentences(all_sentences)
     
     def _call_gemini_api(self, text: str, prompt: str, model_name: str) -> Dict[str, Any]:
-        """Low-level Gemini API call helper.
+        """Low-level Gemini API call helper with timeout protection.
         
         Args:
             text: Text to process
@@ -915,29 +915,54 @@ class GeminiService:
             
         Raises:
             GeminiAPIError: If API returns empty or malformed response
+            TimeoutError: If API call exceeds configured timeout
         """
+        import signal
+        
+        # Get timeout from config (default 3 minutes)
+        timeout_seconds = int(current_app.config.get('GEMINI_CALL_TIMEOUT_SECONDS', 180))
+        
+        def timeout_handler(signum, frame):
+            raise TimeoutError(f'Gemini API call exceeded {timeout_seconds}s timeout')
+        
         # Place the user text/document before the prompt to match the PDF path
         # ordering used in generate_content_from_pdf. Some SDKs/models behave
         # more reliably when the primary content is provided first.
         contents = [text, prompt]
 
         current_app.logger.debug(
-            'Calling Gemini API model=%s prompt_len=%s text_len=%s',
-            model_name, (len(prompt) if prompt else 0), (len(text) if text else 0)
+            'Calling Gemini API model=%s prompt_len=%s text_len=%s timeout=%ss',
+            model_name, (len(prompt) if prompt else 0), (len(text) if text else 0), timeout_seconds
         )
 
-        response = self.client.models.generate_content(
-            model=model_name,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                safety_settings=[
-                    types.SafetySetting(category='HARM_CATEGORY_HARASSMENT', threshold='BLOCK_NONE'),
-                    types.SafetySetting(category='HARM_CATEGORY_HATE_SPEECH', threshold='BLOCK_NONE'),
-                    types.SafetySetting(category='HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold='BLOCK_NONE'),
-                    types.SafetySetting(category='HARM_CATEGORY_DANGEROUS_CONTENT', threshold='BLOCK_NONE'),
-                ]
-            ),
-        )
+        # Set timeout alarm (Unix only; Windows will skip this)
+        old_handler = None
+        try:
+            if hasattr(signal, 'SIGALRM'):
+                old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+                signal.alarm(timeout_seconds)
+        except (AttributeError, ValueError):
+            # Windows or restricted environment - skip signal-based timeout
+            current_app.logger.debug('Signal-based timeout not available; relying on Celery soft_time_limit')
+        
+        try:
+            response = self.client.models.generate_content(
+                model=model_name,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    safety_settings=[
+                        types.SafetySetting(category='HARM_CATEGORY_HARASSMENT', threshold='BLOCK_NONE'),
+                        types.SafetySetting(category='HARM_CATEGORY_HATE_SPEECH', threshold='BLOCK_NONE'),
+                        types.SafetySetting(category='HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold='BLOCK_NONE'),
+                        types.SafetySetting(category='HARM_CATEGORY_DANGEROUS_CONTENT', threshold='BLOCK_NONE'),
+                    ]
+                ),
+            )
+        finally:
+            # Cancel alarm if set
+            if hasattr(signal, 'SIGALRM') and old_handler is not None:
+                signal.alarm(0)
+                signal.signal(signal.SIGALRM, old_handler)
         
         # Coerce None to empty string
         response_text = getattr(response, 'text', '') or ''

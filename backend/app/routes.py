@@ -77,6 +77,109 @@ def health_check():
     return jsonify(health), status_code
 
 
+@main_bp.route('/admin/jobs/<int:job_id>/force-finalize', methods=['POST'])
+@jwt_required()
+def force_finalize_job(job_id):
+    """Emergency admin endpoint to force-finalize a stuck job.
+    
+    This triggers the finalize_job_results task immediately, which will:
+    - Load all JobChunk records from DB
+    - Mark stuck chunks (still 'processing') as failed after timeout check
+    - Create History entry with available results
+    - Complete the job
+    
+    Safe to call multiple times due to idempotency in finalize_job_results.
+    """
+    try:
+        user_id = int(get_jwt_identity())
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        
+        # Load job and verify ownership
+        job = Job.query.get(job_id)
+        if not job:
+            return jsonify({'error': 'Job not found'}), 404
+        
+        if job.user_id != user_id:
+            return jsonify({'error': 'Unauthorized'}), 403
+        
+        # If job already completed/failed, return current status
+        if job.status in ['completed', 'failed']:
+            return jsonify({
+                'message': f'Job already finalized with status: {job.status}',
+                'job': job.to_dict()
+            }), 200
+        
+        # Import and trigger finalize task
+        from app.tasks import finalize_job_results
+        
+        # Pass empty in-memory results so finalize reads from DB
+        task = finalize_job_results.apply_async(args=[[], job_id])
+        
+        current_app.logger.info(
+            f'User {user.email} force-finalized job {job_id} via admin endpoint, task_id={task.id}'
+        )
+        
+        return jsonify({
+            'message': 'Force finalize triggered',
+            'job_id': job_id,
+            'finalize_task_id': task.id,
+            'status': job.status
+        }), 202
+        
+    except Exception as e:
+        current_app.logger.exception(f'Failed to force-finalize job {job_id}')
+        return jsonify({'error': str(e)}), 500
+
+
+@main_bp.route('/admin/reconcile-stuck-chunks', methods=['POST'])
+@jwt_required()
+def reconcile_stuck_chunks_endpoint():
+    """Emergency admin endpoint to scan and heal stuck chunks across all jobs.
+    
+    This triggers the reconcile_stuck_chunks task which:
+    - Finds chunks stuck in 'processing' state beyond threshold
+    - Schedules retries for chunks with attempts remaining
+    - Marks others as failed so jobs can finalize
+    
+    Returns a summary of actions taken.
+    """
+    try:
+        user_id = int(get_jwt_identity())
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        
+        # Import and trigger reconcile task
+        from app.tasks import reconcile_stuck_chunks
+        
+        # Optional: limit to user's own jobs or allow admin to heal all
+        # For now: reconcile all stuck chunks (system-wide)
+        task = reconcile_stuck_chunks.apply_async()
+        
+        current_app.logger.info(
+            f'User {user.email} triggered reconcile_stuck_chunks via admin endpoint, task_id={task.id}'
+        )
+        
+        # Wait briefly for result (or return task ID for async check)
+        try:
+            result = task.get(timeout=30)
+            return jsonify({
+                'message': 'Reconciliation completed',
+                'result': result
+            }), 200
+        except Exception:
+            return jsonify({
+                'message': 'Reconciliation started',
+                'task_id': task.id
+            }), 202
+        
+    except Exception as e:
+        current_app.logger.exception('Failed to trigger reconcile_stuck_chunks')
+        return jsonify({'error': str(e)}), 500
+
+
 @main_bp.route('/extract-pdf-text', methods=['POST'])
 @jwt_required()
 @limiter.limit("20 per minute")

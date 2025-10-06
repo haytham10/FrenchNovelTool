@@ -129,12 +129,15 @@ class Config:
     CELERY_TASK_IGNORE_RESULT = False  # We need results for progress tracking
     
     # Celery Task Configuration
-    CHUNK_TASK_MAX_RETRIES = int(os.getenv('CHUNK_TASK_MAX_RETRIES', '3'))
-    CHUNK_TASK_RETRY_DELAY = int(os.getenv('CHUNK_TASK_RETRY_DELAY', '2'))
-    CHORD_WATCHDOG_SECONDS = int(os.getenv('CHORD_WATCHDOG_SECONDS', '300'))  # 5 minutes default
-    CHUNK_WATCHDOG_SECONDS = int(os.getenv('CHUNK_WATCHDOG_SECONDS', '360'))  # 6 minutes default
+    CHUNK_TASK_MAX_RETRIES = int(os.getenv('CHUNK_TASK_MAX_RETRIES', '2'))  # Reduced: fail faster
+    CHUNK_TASK_RETRY_DELAY = int(os.getenv('CHUNK_TASK_RETRY_DELAY', '5'))  # Increased: give API time
+    CHORD_WATCHDOG_SECONDS = int(os.getenv('CHORD_WATCHDOG_SECONDS', '180'))  # 3 min - faster recovery
+    CHUNK_WATCHDOG_SECONDS = int(os.getenv('CHUNK_WATCHDOG_SECONDS', '300'))  # 5 min - aggressive heal
     # If a chunk remains 'processing' longer than this, it's likely stuck
-    CHUNK_STUCK_THRESHOLD_SECONDS = int(os.getenv('CHUNK_STUCK_THRESHOLD_SECONDS', '900'))  # 15 minutes default
+    CHUNK_STUCK_THRESHOLD_SECONDS = int(os.getenv('CHUNK_STUCK_THRESHOLD_SECONDS', '360'))  # 6 minutes
     # Finalization Configuration
-    FINALIZE_MAX_RETRIES = int(os.getenv('FINALIZE_MAX_RETRIES', '10'))
-    FINALIZE_RETRY_DELAY = int(os.getenv('FINALIZE_RETRY_DELAY', '30'))  # 30 seconds between retries
+    FINALIZE_MAX_RETRIES = int(os.getenv('FINALIZE_MAX_RETRIES', '5'))  # Reduced: fail faster
+    FINALIZE_RETRY_DELAY = int(os.getenv('FINALIZE_RETRY_DELAY', '20'))  # Faster checks
+    
+    # LLM Call Timeout (prevent indefinite hangs)
+    GEMINI_CALL_TIMEOUT_SECONDS = int(os.getenv('GEMINI_CALL_TIMEOUT_SECONDS', '180'))  # 3 min max per call
