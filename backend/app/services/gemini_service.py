@@ -114,6 +114,7 @@ class GeminiService:
             "═══════════════════════════════════════════════════════════════",
             "",
             f"ABSOLUTE RULE: Every output sentence MUST be a complete, independent, grammatically correct sentence with {self.min_sentence_length}-{self.sentence_length_limit} words.",
+            f"ABSOLUTE HARD LIMIT: No output sentence may contain more than {self.sentence_length_limit} words. If necessary, rewrite into multiple sentences each not exceeding this limit.",
             "Each sentence must be linguistically complete.",
             min_length_rule,
             "Your task is to extract and process every single sentence from the entire document. Do not skip content.",
@@ -249,6 +250,31 @@ class GeminiService:
         ])
 
         return "\n".join(sections)
+
+    def _split_long_sentence(self, sentence: str) -> List[str]:
+        """Ask the model to rewrite a single long sentence into multiple sentences
+        each within the configured word limit. Returns normalized sentences.
+        This is a targeted repair for sentences that exceed sentence_length_limit.
+        """
+        if not sentence or not str(sentence).strip():
+            return []
+
+        max_words = self.sentence_length_limit
+        repair_prompt = (
+            f"Rewrite the following French sentence into one or more short, independent, "
+            f"grammatically complete sentences. Each output sentence must contain at most {max_words} words. "
+            "Return ONLY a JSON object: {\"sentences\": [\"Sentence 1.\", \"Sentence 2.\"]}."
+        )
+
+        try:
+            resp = self._call_gemini_api(sentence, repair_prompt, self.MODEL_PREFERENCE_MAP.get('balanced') or self.model_name)
+            # resp['sentences'] is a list of {"normalized": s, "original": s}
+            sentences = [item.get('normalized') if isinstance(item, dict) else str(item) for item in resp.get('sentences', [])]
+            # Ensure returned strings are stripped and non-empty
+            return [s.strip() for s in sentences if s and str(s).strip()]
+        except Exception as e:
+            current_app.logger.warning('Long-sentence repair failed: %s; sentence=%r', e, sentence[:200])
+            return []
     
     def build_minimal_prompt(self) -> str:
         """Build a minimal prompt that only asks for JSON sentence list.
@@ -444,6 +470,21 @@ class GeminiService:
 
                 if not chunk:
                     continue
+
+                # If this chunk exceeds configured length, attempt targeted repair
+                try:
+                    word_count = len(chunk.split())
+                except Exception:
+                    word_count = len(str(chunk).split())
+
+                if word_count > self.sentence_length_limit:
+                    repaired = self._split_long_sentence(chunk)
+                    if repaired:
+                        # Re-run post-processing on repaired pieces before continuing
+                        for r in repaired:
+                            processed.append(r)
+                        # Skip the normal handling for this original chunk
+                        continue
                 
                 # Check for fragments and log warnings
                 if self._is_likely_fragment(chunk):
@@ -604,12 +645,19 @@ class GeminiService:
                         return True
             return False
         
-        # Very short sentences are often fragments (unless they're valid imperatives or exclamations)
+        # Very short sentences are often fragments (unless they're valid imperatives,
+        # exclamations, or interrogatives with a conjugated verb).
         if len(words) < 2:
             # Allow single-word imperatives, exclamations, or dialogue
             if sentence.endswith(('!', '?', '.')) or self._looks_like_dialogue(sentence):
                 return False
             return True
+
+        # If sentence is a question ending with '?' and contains a conjugated verb,
+        # consider it a valid sentence (e.g., "Où est-il ?"). This reduces false positives
+        # from the fragment detector for short interrogatives.
+        if sentence.strip().endswith('?') and _contains_conjugated_verb(words):
+            return False
         
         # Sentences ending only with comma are definite fragments
         if sentence.endswith(','):

@@ -475,6 +475,12 @@ def finalize_job_results(self, chunk_results, job_id):
     try:
         logger.info(f"Job {job_id}: finalizing {len(chunk_results)} chunk results")
         
+        # Load job and short-circuit if it's already finalized to make this idempotent
+        job = Job.query.get(job_id)
+        if job and job.status in (JOB_STATUS_COMPLETED, JOB_STATUS_FAILED):
+            logger.info(f"Job {job_id}: already finalized with status={job.status}; skipping finalization")
+            return {'status': 'already_finalized', 'job_id': job_id, 'final_status': job.status}
+
         # Load all chunks from DB to get latest state
         db_chunks = JobChunk.query.filter_by(job_id=job_id).order_by(JobChunk.chunk_id).all()
         
@@ -828,8 +834,23 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
             chord_result = chord(chunk_tasks)(callback)
             
             logger.info(f"Job {job_id}: dispatched {len(chunks)} chunks in parallel, chord_id={chord_result.id}")
-            
-            # Return early; finalize_job_results will complete the job
+
+            # Schedule a watchdog finalizer in case the chord callback fails to execute
+            # (e.g., due to result-backend/chord unlock issues or worker crashes). The
+            # watchdog will call finalize_job_results with an empty in-memory result list
+            # which will cause finalization to read chunk rows from the DB. The timeout
+            # is configurable via CHORD_WATCHDOG_SECONDS; fallback to a conservative value.
+            try:
+                from flask import current_app
+                watchdog_default = max(1800, int(len(chunks) * 60))  # at least 30 minutes or 1min/chunk
+                watchdog_seconds = int(current_app.config.get('CHORD_WATCHDOG_SECONDS', watchdog_default))
+                # Schedule a delayed finalize_job_results call as a safety net
+                finalize_job_results.apply_async(args=[[], job_id], countdown=watchdog_seconds)
+                logger.info(f"Job {job_id}: scheduled finalize watchdog in {watchdog_seconds}s")
+            except Exception as e:
+                logger.warning(f"Job {job_id}: failed to schedule finalize watchdog: {e}")
+
+            # Return early; finalize_job_results (either via chord or watchdog) will complete the job
             return {
                 'status': 'dispatched',
                 'message': f'{len(chunks)} chunks processing in parallel',
