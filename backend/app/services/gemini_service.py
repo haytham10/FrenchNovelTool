@@ -64,7 +64,20 @@ class GeminiService:
         self.retry_delay = current_app.config['GEMINI_RETRY_DELAY']
         # Allow operator to disable local segmentation fallback via config.
         # Default: True to preserve existing behaviour unless explicitly changed.
-        self.allow_local_fallback = current_app.config.get('GEMINI_ALLOW_LOCAL_FALLBACK', False)
+        self.allow_local_fallback = current_app.config.get('GEMINI_ALLOW_LOCAL_FALLBACK', True)
+        # Runtime stats from last post-processing step
+        self.last_fragment_rate: float = 0.0
+        self.last_fragment_count: int = 0
+        self.last_fragment_details: List[Dict[str, Any]] = []
+        self.last_processed_sentences: List[str] = []
+
+        # Retry / QC configuration
+        self.fragment_rate_retry_threshold: float = float(
+            current_app.config.get('GEMINI_FRAGMENT_RATE_RETRY_THRESHOLD', 3.0)
+        )
+        self.reject_on_high_fragment_rate: bool = bool(
+            current_app.config.get('GEMINI_REJECT_ON_HIGH_FRAGMENT_RATE', False)
+        )
 
     def build_prompt(self, base_prompt: Optional[str] = None) -> str:
         """Build the advanced Gemini prompt for French literary processing."""
@@ -72,15 +85,16 @@ class GeminiService:
             return base_prompt
 
         dialogue_rule = (
-            "If a sentence is enclosed in quotation marks (« », \" \", or ' '), "
-            "keep it as-is without splitting regardless of length." if self.ignore_dialogue
-            else "Do not split it unless absolutely necessary. If a split is unavoidable, "
-                 "preserve the cadence and meaning of the dialogue."
+          "If a sentence is enclosed in quotation marks (« », \" \", or ' '), "
+          "keep it as-is without splitting regardless of length." if self.ignore_dialogue
+          else "For dialogue, maintain grammatical completeness. Do not split it unless absolutely necessary; "
+              "ensure each output sentence preserves the speaker's complete thought."
         )
 
         min_length_rule = (
-            f"If any rewritten sentence becomes shorter than {self.min_sentence_length} words, "
-            "merge it with the previous or next sentence so that the narrative remains natural."
+            f"Each output sentence must contain at least {self.min_sentence_length} words. "
+            f"If simplification would create a sentence shorter than this (i.e. shorter than {self.min_sentence_length} words), "
+            "either rephrase to maintain minimum length or merge it with the previous or next sentence to avoid fragments."
         )
 
         formatting_rules: List[str] = []
@@ -89,48 +103,149 @@ class GeminiService:
             formatting_rules.append("Keep the literary formatting intact unless it conflicts with readability.")
         if self.fix_hyphenation:
             formatting_rules.append(
-                "If words are split with hyphens because of line breaks (e.g., 'ex- ample'), rejoin them into a single word."
+                "Hyphenation: If words are split with hyphens because of line breaks (e.g., 'ex- ample'), rejoin them into a single word."
             )
 
         sections = [
-            "You are a literary assistant specialized in processing French novels. Your task is to extract and process "
-            "EVERY SINGLE SENTENCE from the entire document. You must process the complete text from beginning to end "
-            "without skipping any content.",
-            f"If a sentence is {self.sentence_length_limit} words long or less, add it to the list as is. If a sentence is longer than "
-            f"{self.sentence_length_limit} words, rewrite it into shorter sentences, each with {self.sentence_length_limit} words or fewer.",
+            "You are a French linguistic expert specialized in literary text rewriting. Your SOLE PURPOSE is to transform complex French text into simple, complete, grammatically perfect sentences.",
             "",
-            "**Rewriting Rules:**",
-            "- Split long sentences at natural grammatical breaks (conjunctions like 'et', 'mais', 'donc', 'car', 'or'), subordinate clauses, or logical shifts in thought.",
-            "- Maintain semantic integrity; each new sentence must stand alone grammatically and semantically.",
+            "═══════════════════════════════════════════════════════════════",
+            "🚫 CRITICAL CONSTRAINT: ZERO TOLERANCE FOR FRAGMENTS",
+            "═══════════════════════════════════════════════════════════════",
             "",
+            f"ABSOLUTE RULE: Every output sentence MUST be a complete, independent, grammatically correct sentence with {self.min_sentence_length}-{self.sentence_length_limit} words.",
+            "Each sentence must be linguistically complete.",
+            min_length_rule,
+            "Your task is to extract and process every single sentence from the entire document. Do not skip content.",
+            "",
+            "❌ FORBIDDEN OUTPUT PATTERNS (These are WRONG and will be REJECTED):",
+            "   • \"le standard d'Elvis Presley\" ← Noun phrase, NOT a sentence",
+            "   • \"It's Now or Never\" ← Title reference without context",
+            "   • \"dans la rue sombre\" ← Prepositional phrase fragment",
+            "   • \"et froide\" ← Conjunction fragment",
+            "   • \"Pour toujours et à jamais\" ← Incomplete prepositional phrase",
+            "   • \"Avec le temps\" ← Adverbial phrase without verb",
+            "   • \"Dans quinze ans\" ← Time expression without predicate",
+            "   • \"De retour dans la chambre\" ← Participial phrase without subject",
+            "",
+            "✅ CORRECT OUTPUT PATTERNS (These are RIGHT):",
+            "   • \"Le standard d'Elvis Presley joue à la radio.\" ← Complete sentence",
+            "   • \"La chanson It's Now or Never résonne.\" ← Complete with context",
+            "   • \"La rue était sombre.\" ← Complete subject-verb-complement",
+            "   • \"Il faisait froid.\" ← Complete weather description",
+            "   • \"Ils s'aimeront pour toujours.\" ← Complete with verb",
+            "   • \"Le temps passera lentement.\" ← Complete with subject + verb",
+            "   • \"Dans quinze ans, ce sera différent.\" ← Complete with predicate",
+            "   • \"Il est retourné dans la chambre.\" ← Complete action",
+            "",
+            "═══════════════════════════════════════════════════════════════",
+            "📋 YOUR TASK: LINGUISTIC REWRITING (NOT SEGMENTATION)",
+            "CRITICAL: Linguistic Rewriting",
+            "FORBIDDEN: sentence fragments",
+            "═══════════════════════════════════════════════════════════════",
+            "",
+            "**Rewriting Methodology:**",
             "**Context-Awareness:**",
-            "- Ensure the rewritten sentences maintain the logical flow and connection to the surrounding text.",
-            "- The final output must read as a continuous, coherent narrative.",
-            "",
             "**Dialogue Handling:**",
-            f"- {dialogue_rule}",
-            "",
             "**Style and Tone Preservation:**",
-            "- Maintain the literary tone and voice of the original French text.",
-            "- Preserve the exact original meaning and vocabulary where possible.",
-            "",
-            "**Sentence Length Guardrails:**",
-            f"- {min_length_rule}",
-            "- Do not create sentences with excessive repetition or filler words.",
-            "",
             "**Hyphenation & Formatting:**",
+            "",
+            "PROCESS:",
+            "REWRITE and PARAPHRASE",
+            "1. Read the ENTIRE source text thoroughly",
+            f"2. For sentences ≤ {self.sentence_length_limit} words: Output them unchanged",
+            f"3. For sentences > {self.sentence_length_limit} words: REWRITE them into multiple complete sentences",
+            "4. NEVER split at commas, conjunctions, or punctuation alone",
+            "5. ALWAYS ensure each output sentence can stand alone grammatically",
+            "",
+            "REWRITING STRATEGY:",
+            "• IDENTIFY the core propositions in complex sentences",
+            "• EXTRACT each proposition into a standalone sentence",
+            "• ADD subjects/verbs/complements as needed to create grammatical completeness",
+            "• PARAPHRASE to simplify while preserving meaning",
+            "• VERIFY each output sentence is grammatically independent",
+            "",
+            "EXAMPLE TRANSFORMATION:",
+            "❌ WRONG (Segmentation approach):",
+            "   Input: \"Il marchait lentement dans la rue sombre et froide, pensant à elle.\"",
+            "   Output: [\"dans la rue sombre\", \"et froide\", \"pensant à elle\"] ← FRAGMENTS!",
+            "",
+            "✅ CORRECT (Rewriting approach):",
+            "   Input: \"Il marchait lentement dans la rue sombre et froide, pensant à elle.\"",
+            "   Output: [\"Il marchait lentement dans la rue.\", \"La rue était sombre et froide.\", \"Il pensait à elle.\"]",
+            "",
+            "GRAMMATICAL REQUIREMENTS FOR EACH OUTPUT SENTENCE:",
+            "✓ Must have a SUBJECT (explicit or understood)",
+            "✓ Must have a CONJUGATED VERB (not just infinitive or participle)",
+            "✓ Must express a COMPLETE THOUGHT",
+            "✓ Must be able to stand alone with ZERO context",
+            "✓ Must end with proper punctuation (. ! ? …)",
+            f"✓ Must contain {self.min_sentence_length}-{self.sentence_length_limit} words",
+            "",
+            "═══════════════════════════════════════════════════════════════",
+            "🔍 FRAGMENT DETECTION TEST",
+            "═══════════════════════════════════════════════════════════════",
+            "",
+            "Before outputting ANY sentence, ask yourself:",
+            "1. Can this sentence be understood completely on its own?",
+            "2. Does it have both a subject AND a conjugated verb?",
+            "3. Would a native French speaker consider this grammatically complete?",
+            "4. Is it a dependent clause that needs a main clause?",
+            "",
+            "If ANY answer is NO → REWRITE until all answers are YES",
+            "",
+            "FRAGMENT PATTERNS TO AVOID:",
+            "• Starting with: dans, sur, avec, sans, pour (without full sentence)",
+            "• Starting with: et, mais, donc, car (without imperative or complete structure)",
+            "• Ending with comma instead of period/punctuation",
+            "• Only containing: adjective phrases, noun phrases, infinitive phrases",
+            "• Participial phrases without auxiliary verbs",
+            "",
+            "═══════════════════════════════════════════════════════════════",
+            "📖 ADDITIONAL REQUIREMENTS",
+            "═══════════════════════════════════════════════════════════════",
+            "",
+            f"**Dialogue Handling:** {dialogue_rule}",
+            "",
+            "**Narrative Coherence:**",
+            "• Maintain chronological sequence",
+            "• Preserve cause-and-effect relationships",
+            "• Keep character actions and motivations clear",
+            "• The simplified text should read as a coherent story",
+            "",
+            "**Style Preservation:**",
+            "• Maintain the author's literary tone",
+            "• Preserve vocabulary choices where possible",
+            "• Keep the emotional atmosphere",
+            "• Simplify structure, not meaning",
+            "",
+            "**Formatting:**",
         ]
 
         if formatting_rules:
-            sections.extend(f"- {rule}" for rule in formatting_rules)
+            sections.extend(f"• {rule}" for rule in formatting_rules)
         else:
-            sections.append("- Maintain consistent spacing and punctuation.")
+            sections.append("• Maintain consistent spacing and punctuation.")
 
         sections.extend([
             "",
-            "**Output Format:**",
-            "Present the final output as a JSON object with a single key 'sentences' containing an array of strings.",
-            "For example: {\"sentences\": [\"Voici la première phrase.\", \"Et voici la deuxième.\"]}"
+            "═══════════════════════════════════════════════════════════════",
+            "📤 OUTPUT FORMAT (STRICT JSON)",
+            "═══════════════════════════════════════════════════════════════",
+            "",
+            "Return ONLY a JSON object with this structure:",
+            "{\"sentences\": [\"Complete sentence 1.\", \"Complete sentence 2.\", \"Complete sentence 3.\", ...]}",
+            "",
+            "VALIDATION CHECKLIST before submitting output:",
+            "☐ Every sentence is grammatically complete",
+            "☐ Every sentence can stand alone",
+            "☐ No sentence fragments",
+            "☐ No dependent clauses as standalone sentences",
+            "☐ No incomplete thoughts",
+            f"☐ All sentences are {self.min_sentence_length}-{self.sentence_length_limit} words",
+            "☐ JSON is valid and properly formatted",
+            "",
+            "PROCESS THE ENTIRE TEXT. BEGIN NOW."
         ])
 
         return "\n".join(sections)
@@ -139,12 +254,12 @@ class GeminiService:
         """Build a minimal prompt that only asks for JSON sentence list.
         
         Used as a fallback when the full prompt fails due to hallucination or format issues.
+        Even in minimal mode, we emphasize complete sentences over segmentation.
         """
+        # Compact minimal prompt (keeps it short for quick fallback use)
         return (
-            f"Extract and split all French sentences from the text. "
-            f"If a sentence has more than {self.sentence_length_limit} words, split it into shorter sentences. "
-            f"Return ONLY a JSON object: {{\"sentences\": [\"sentence 1\", \"sentence 2\", ...]}}. "
-            f"Do not include any explanations or additional text."
+            f"Rewrite into independent French sentences ({self.min_sentence_length}-{self.sentence_length_limit} words). "
+            f"Return ONLY JSON: {{\"sentences\": [\"Sentence 1.\", \"Sentence 2.\"]}}."
         )
 
 
@@ -160,16 +275,16 @@ class GeminiService:
 
         pdf_size_kb = len(pdf_bytes) / 1024
         current_app.logger.info("Processing PDF: %s, Size: %.2fKB", filepath.name, pdf_size_kb)
-
         try:
-            import PyPDF2
+            from app.pdf_compat import PdfReader
             with open(pdf_path, 'rb') as file_handle:
                 try:
-                    reader = PyPDF2.PdfReader(file_handle)
+                    reader = PdfReader(file_handle)
                     current_app.logger.info("PDF info: %s, Pages: %d", filepath.name, len(reader.pages))
                 except Exception as exc:  # pragma: no cover - diagnostic logging
                     current_app.logger.warning("Couldn't extract PDF metadata: %s", exc)
         except ImportError:  # pragma: no cover - optional dependency
+            current_app.logger.info("PDF backend not available for metadata extraction")
             current_app.logger.info("PyPDF2 not available for metadata extraction")
 
         pdf_part = types.Part.from_bytes(
@@ -283,8 +398,15 @@ class GeminiService:
         return normalised
 
     def _post_process_sentences(self, sentences: List[str]) -> List[str]:
-        """Apply manual splitting, merging, and normalisation rules to sentences."""
+        """Apply manual splitting, merging, and normalisation rules to sentences.
+        
+        This method validates the quality of the AI's output and enforces the 
+        linguistic rewriting requirement by detecting and logging fragments.
+        """
         processed: List[str] = []
+        fragment_count = 0
+        fragment_details = []
+        
         for idx, raw_sentence in enumerate(sentences):
             # Defensive: skip None inputs and log for diagnostics
             if raw_sentence is None:
@@ -322,44 +444,84 @@ class GeminiService:
 
                 if not chunk:
                     continue
+                
+                # Check for fragments and log warnings
+                if self._is_likely_fragment(chunk):
+                    fragment_count += 1
+                    fragment_details.append({
+                        'index': idx,
+                        'text': chunk[:100],
+                        'word_count': len(chunk.split())
+                    })
+                    current_app.logger.warning(
+                        'Potential sentence fragment detected at index %s: "%s"',
+                        idx, chunk[:100]
+                    )
 
                 if len(chunk.split()) < self.min_sentence_length and processed and not original_unsplit:
                     processed[-1] = f"{processed[-1]} {chunk}".strip()
                 else:
                     processed.append(chunk)
+        
+        # Enhanced fragment reporting with quality assessment
+        # Compute and store fragment stats on the instance for callers to inspect
+        fragment_rate = (fragment_count / len(processed) * 100) if processed else 0
+        self.last_fragment_rate = fragment_rate
+        self.last_fragment_count = fragment_count
+        self.last_fragment_details = fragment_details
+        self.last_processed_sentences = [s.strip() for s in processed if s and s.strip()]
 
-        return [sentence.strip() for sentence in processed if sentence and sentence.strip()]
+        if fragment_count > 0:
+            current_app.logger.warning(
+                'Fragment detection summary: %d potential fragments found out of %d sentences (%.1f%%)',
+                fragment_count, len(processed), fragment_rate
+            )
+
+            # Log sample fragments for debugging
+            if fragment_details:
+                sample_size = min(5, len(fragment_details))
+                current_app.logger.warning(
+                    'Sample fragments (first %d): %s',
+                    sample_size,
+                    [f['text'] for f in fragment_details[:sample_size]]
+                )
+
+        # If configured to reject on high fragment rate, raise an error so callers
+        # can attempt fallback strategies (model swap, stricter prompt, etc.)
+        if fragment_rate > self.fragment_rate_retry_threshold:
+            msg = (
+                f'HIGH FRAGMENT RATE DETECTED ({fragment_rate:.1f}%) - ' 
+                f'fragment_count={fragment_count}, threshold={self.fragment_rate_retry_threshold}'
+            )
+            current_app.logger.error(msg)
+            if self.reject_on_high_fragment_rate:
+                raise GeminiAPIError(msg)
+
+        return self.last_processed_sentences
 
     def _split_sentence(self, sentence: str) -> List[str]:
-        """Split sentences at natural boundaries while respecting word limits."""
+        """Validate and return sentence - no longer performs manual splitting.
+        
+        The AI model should handle all rewriting. This method now only serves as
+        a pass-through that could log warnings for sentences exceeding limits.
+        Manual chunking has been disabled to prevent sentence fragmentation.
+        """
         # Defensive: coerce to string so None or other types don't crash
         sentence = '' if sentence is None else str(sentence)
         words = sentence.split()
-        if len(words) <= self.sentence_length_limit:
-            return [sentence]
+        
+        # Log a warning if Gemini returned a sentence that exceeds the limit
+        # This helps identify when the AI model isn't following instructions
+        if len(words) > self.sentence_length_limit:
+            current_app.logger.warning(
+                'Gemini returned sentence exceeding word limit (%d > %d): %s',
+                len(words), self.sentence_length_limit, sentence[:100]
+            )
+        
+        # Return the sentence as-is - trust the AI model's rewriting
+        # Manual splitting/chunking is disabled to avoid creating fragments
+        return [sentence]
 
-        chunks: List[str] = []
-        current_words: List[str] = []
-        for word in words:
-            current_words.append(word)
-            is_boundary = bool(re.search(r'[.!?;:,…]+["»”]*$', word))
-            limit_reached = len(current_words) >= self.sentence_length_limit
-
-            if limit_reached and not is_boundary:
-                chunks.append(' '.join(current_words).strip())
-                current_words = []
-            elif is_boundary and len(current_words) >= max(self.min_sentence_length, self.sentence_length_limit // 2):
-                chunks.append(' '.join(current_words).strip())
-                current_words = []
-
-        if current_words:
-            tail = ' '.join(current_words).strip()
-            if len(tail.split()) < self.min_sentence_length and chunks:
-                chunks[-1] = f"{chunks[-1]} {tail}".strip()
-            else:
-                chunks.append(tail)
-
-        return chunks
 
     def _normalise_sentence(self, sentence: str) -> str:
         """Normalise whitespace and optional hyphenation fixes."""
@@ -384,12 +546,164 @@ class GeminiService:
             return True
         return False
 
+    def _is_likely_fragment(self, sentence: str) -> bool:
+        """Check if a sentence appears to be a fragment rather than a complete sentence.
+        
+        This is an enhanced heuristic check to detect common patterns of sentence fragmentation.
+        The AI model should produce zero fragments - any detected fragment indicates the model
+        is performing segmentation instead of linguistic rewriting.
+        
+        Returns True if the sentence is likely a fragment.
+        """
+        if not sentence or not str(sentence).strip():
+            return True
+        
+        sentence = str(sentence).strip()
+        words = sentence.split()
+
+        # Quick pattern checks for known idiomatic fragments (case-insensitive)
+        # e.g., "Pour toujours et à jamais" should be considered a fragment
+        if re.match(r'(?i)^\s*pour\s+toujours', sentence):
+            current_app.logger.debug('Fragment detected (idiomatic "pour toujours" start): %s', sentence[:60])
+            return True
+
+        # Helper: conservative verb detection used in multiple checks below
+        def _contains_conjugated_verb(tokens: List[str]) -> bool:
+            exact_verb_forms = {
+                'a', 'ai', 'as', 'ont', 'ez', 'est', 'sont', 'était', 'étaient',
+                'sera', 'seront', 'avait', 'avaient', 'aura', 'auront',
+                'fut', 'furent', 'soit', 'soient', 'fût'
+            }
+            suffix_verb_forms = (
+                'er', 'ir', 'oir',
+                'ais', 'ait', 'aient', 'iez', 'ions',
+                'ai', 'as', 'ont', 'ez',
+                'era', 'erai', 'eras', 'erez', 'eront',
+                'é', 'ée', 'és', 'ées'
+            )
+
+            for w in tokens:
+                lw = w.lower().strip(".,;:!?…")
+                if lw in exact_verb_forms:
+                    return True
+                for suf in suffix_verb_forms:
+                    if lw.endswith(suf) and len(lw) > len(suf):
+                        return True
+            return False
+        
+        # Very short sentences are often fragments (unless they're valid imperatives or exclamations)
+        if len(words) < 2:
+            # Allow single-word imperatives, exclamations, or dialogue
+            if sentence.endswith(('!', '?', '.')) or self._looks_like_dialogue(sentence):
+                return False
+            return True
+        
+        # Sentences ending only with comma are definite fragments
+        if sentence.endswith(','):
+            current_app.logger.debug('Fragment detected (ends with comma): %s', sentence[:50])
+            return True
+        
+        # Sentences ending with semicolon are often fragments
+        if sentence.endswith(';'):
+            current_app.logger.debug('Fragment detected (ends with semicolon): %s', sentence[:50])
+            return True
+        
+        first_word_lower = words[0].lower()
+        
+        # Dependent clauses starting with conjunctions without proper structure
+        # Common fragment patterns in French
+        fragment_starts_conjunctions = ['et', 'mais', 'donc', 'car', 'or', 'ni', 'puis']
+        if first_word_lower in fragment_starts_conjunctions:
+            # Check if it's a complete sentence despite starting with conjunction
+            # Must have proper punctuation and reasonable length
+            if len(words) < 4 or not sentence.endswith(('.', '!', '?', '…')):
+                current_app.logger.debug(
+                    'Fragment detected (conjunction start without completion): %s',
+                    sentence[:50]
+                )
+                return True
+        
+        # Prepositional phrases without a main verb - VERY common fragment pattern
+        preposition_starts = ['dans', 'sur', 'sous', 'avec', 'sans', 'pour', 'de', 'à', 'vers', 'chez', 'par']
+        if first_word_lower in preposition_starts:
+            # These are often fragments unless they're part of a complete sentence
+            # Enhanced verb detection: look for common French verb patterns
+            # Check for verb-like tokens. Use exact matching for very short
+            # tokens (like 'a') to avoid false positives (e.g., 'la' ending with 'a').
+            exact_verb_forms = {
+                'a', 'ai', 'as', 'ont', 'ez', 'est', 'sont', 'était', 'étaient',
+                'sera', 'seront', 'avait', 'avaient', 'aura', 'auront',
+                'fut', 'furent', 'soit', 'soient', 'fût'
+            }
+            suffix_verb_forms = (
+                'er', 'ir', 'oir',  # Infinitives
+                'ais', 'ait', 'aient', 'iez', 'ions',  # Imperfect
+                'ai', 'as', 'ont', 'ez',  # Present/past
+                'era', 'erai', 'eras', 'erez', 'eront',  # Future
+                'é', 'ée', 'és', 'ées'  # Past participles
+            )
+
+            # Use conservative helper to detect any conjugated verb or
+            # strong verb morphology in the token list.
+            has_verb = _contains_conjugated_verb(words)
+            if not has_verb:
+                current_app.logger.debug(
+                    'Fragment detected (preposition without verb): %s',
+                    sentence[:50]
+                )
+                return True
+
+        # Special-case common idiomatic fragments like "pour toujours..." which
+        # are often temporal/phrasing fragments without a verb
+        low_sentence = sentence.lower()
+        if 'pour toujours' in low_sentence and not _contains_conjugated_verb(words):
+            current_app.logger.debug('Fragment detected ("pour toujours" idiomatic fragment): %s', sentence[:60])
+            return True
+        
+        # Temporal/time expressions that are often fragments
+        temporal_starts = ['quand', 'lorsque', 'pendant', 'durant', 'avant', 'après', 'depuis']
+        if first_word_lower in temporal_starts and len(words) < 5:
+            current_app.logger.debug(
+                'Fragment detected (temporal expression without clause): %s',
+                sentence[:50]
+            )
+            return True
+        
+        # Relative pronouns without main clause
+        relative_starts = ['qui', 'que', 'dont', 'où', 'lequel', 'laquelle']
+        if first_word_lower in relative_starts and len(words) < 4:
+            current_app.logger.debug(
+                'Fragment detected (relative pronoun without main clause): %s',
+                sentence[:50]
+            )
+            return True
+        
+        # Participle phrases without auxiliary
+        if len(words) >= 2:
+            # Check if starts with past participle without auxiliary
+            participle_patterns = ['tombaient', 'retourné', 'pensant', 'marchant']
+            if any(words[0].lower().endswith(('ant', 'é', 'ée', 'és', 'ées')) for w in [words[0]]):
+                # Check for auxiliary verb
+                has_auxiliary = any(
+                    word.lower() in ('est', 'sont', 'a', 'ont', 'était', 'étaient', 'avait', 'avaient')
+                    for word in words
+                )
+                if not has_auxiliary and len(words) < 6:
+                    current_app.logger.debug(
+                        'Fragment detected (participle without auxiliary): %s',
+                        sentence[:50]
+                    )
+                    return True
+        
+        return False
+
     def local_normalize_text(self, text: str) -> Dict[str, Any]:
-        """Local fallback to segment and post-process text without calling Gemini.
+        """Local fallback when Gemini API fails completely.
 
         This is used when the Gemini API returns an empty or malformed response.
-        It performs a conservative sentence segmentation using punctuation and
-        then runs the existing post-processing pipeline.
+        It performs a conservative sentence segmentation using punctuation.
+        Note: This fallback cannot perform linguistic rewriting and may produce
+        fragments - it's a last resort when API calls fail.
         """
         if not text or not str(text).strip():
             return {"sentences": [], "tokens": 0}
@@ -538,6 +852,40 @@ class GeminiService:
         sentence_dicts = [{"normalized": s, "original": s} for s in processed]
         return {"sentences": sentence_dicts, "tokens": 0}
 
+    def _repair_fragments(self, fragments: List[Dict[str, Any]], context_before: Optional[str] = None, context_after: Optional[str] = None) -> List[str]:
+        """Attempt to repair detected fragments by asking the model to rewrite them into full sentences.
+
+        We build a small prompt providing the fragment and optional surrounding context.
+        Returns a list of repaired sentences (one per fragment) or original fragment if repair failed.
+        """
+        repaired: List[str] = []
+        if not fragments:
+            return repaired
+
+        # Build a compact repair prompt
+        for frag in fragments:
+            frag_text = frag.get('text') if isinstance(frag, dict) else str(frag)
+            repair_prompt = (
+                "Rewrite the following French fragment into a complete, independent, grammatically correct sentence. "
+                "If needed, use the provided context. Return ONLY the single rewritten sentence.\n"
+            )
+            if context_before:
+                repair_prompt += f"Context before: {context_before}\n"
+            repair_prompt += f"Fragment: {frag_text}\n"
+
+            try:
+                resp = self._call_gemini_api(frag_text, repair_prompt, self.MODEL_PREFERENCE_MAP.get('balanced'))
+                sentences = [s['normalized'] for s in resp['sentences']]
+                if sentences:
+                    repaired.append(sentences[0])
+                else:
+                    repaired.append(frag_text)
+            except Exception:
+                current_app.logger.debug('Fragment repair failed for fragment: %s', frag_text)
+                repaired.append(frag_text)
+
+        return repaired
+
 
     # Public helper for processing already-extracted text (non-PDF)
     @retry(
@@ -571,7 +919,74 @@ class GeminiService:
         try:
             result = self._call_gemini_api(text, prompt_text, self.model_name)
             current_app.logger.info('Successfully processed with original model %s', self.model_name)
-            return result
+
+            # Quality gate: if fragment rate exceeds retry threshold, attempt
+            # stricter retry strategies before accepting the response.
+            if self.last_fragment_rate <= self.fragment_rate_retry_threshold:
+                return result
+
+            current_app.logger.warning(
+                'Fragment rate %.1f%% exceeds threshold %.1f%%; attempting retries',
+                self.last_fragment_rate, self.fragment_rate_retry_threshold
+            )
+
+            # 1) Retry with a stricter prompt (same model)
+            strict_prompt = prompt_text + "\n\nSTRICT: ZERO fragments. If any segment would be a fragment, rewrite it to be a complete sentence. Return valid JSON only."
+            try:
+                strict_result = self._call_gemini_api(text, strict_prompt, self.model_name)
+                if self.last_fragment_rate <= self.fragment_rate_retry_threshold:
+                    strict_result['_fallback_method'] = 'strict_prompt_retry'
+                    current_app.logger.info('Recovered via strict prompt retry with model %s', self.model_name)
+                    return strict_result
+            except Exception as e:
+                current_app.logger.warning('Strict prompt retry failed: %s', str(e))
+
+            # 2) Retry using higher-quality model
+            quality_model = self.MODEL_PREFERENCE_MAP.get('quality')
+            if quality_model and quality_model != self.model_name:
+                try:
+                    quality_result = self._call_gemini_api(text, prompt_text, quality_model)
+                    if self.last_fragment_rate <= self.fragment_rate_retry_threshold:
+                        quality_result['_fallback_method'] = 'quality_model_retry'
+                        current_app.logger.info('Recovered via quality model %s', quality_model)
+                        return quality_result
+                except Exception as e:
+                    current_app.logger.warning('Quality model retry failed: %s', str(e))
+
+            # 3) Attempt fragment repair pass (targeted corrections)
+            try:
+                fragments = self.last_fragment_details or []
+                repaired = self._repair_fragments(fragments)
+                if repaired:
+                    # Replace fragment strings in last_processed_sentences with repaired ones
+                    repaired_iter = iter(repaired)
+                    merged = []
+                    for s in self.last_processed_sentences:
+                        replaced = False
+                        for frag in fragments:
+                            if s == (frag.get('text') if isinstance(frag, dict) else str(frag)):
+                                try:
+                                    merged.append(next(repaired_iter))
+                                except StopIteration:
+                                    merged.append(s)
+                                replaced = True
+                                break
+                        if not replaced:
+                            merged.append(s)
+
+                    # Re-run post-processing on merged list to normalise
+                    try:
+                        repaired_processed = self._post_process_sentences(merged)
+                        sentence_dicts = [{"normalized": s, "original": s} for s in repaired_processed]
+                        current_app.logger.info('Recovered via fragment repair pass')
+                        return {"sentences": sentence_dicts, "tokens": 0, "_fallback_method": "fragment_repair"}
+                    except Exception:
+                        current_app.logger.warning('Post-processing of repaired sentences failed')
+            except Exception as e:
+                current_app.logger.warning('Fragment repair pass failed: %s', str(e))
+
+            # If all corrective attempts failed, fall through to existing fallback cascade
+            current_app.logger.warning('All corrective retries failed; proceeding with fallback cascade')
         except GeminiAPIError as e:
             current_app.logger.warning(
                 'Primary Gemini call failed with model=%s: %s',

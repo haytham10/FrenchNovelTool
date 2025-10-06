@@ -29,22 +29,101 @@ class TestPhase1PromptImprovements:
 
     @patch('google.genai.Client')
     def test_prompt_includes_grammatical_rules(self, mock_client, app_context):
-        """Test that prompt includes specific grammatical splitting rules"""
+        """Test that prompt includes linguistic rewriting requirements"""
         with app_context.test_request_context():
             prompt = GeminiService(sentence_length_limit=8).build_prompt()
 
-            # Verify key components are present
-            assert "literary assistant" in prompt
-            assert "grammatical breaks" in prompt
-            assert "conjunctions" in prompt
-            assert "'et', 'mais', 'donc'" in prompt
-            assert "Context-Awareness" in prompt
-            assert "Dialogue Handling" in prompt
-            assert "quotation marks" in prompt
-            assert "Style and Tone Preservation" in prompt
-            assert "literary tone" in prompt
+            # Verify key components for linguistic rewriting (not segmentation)
+            assert "French linguistic expert" in prompt
+            assert "ZERO TOLERANCE FOR FRAGMENTS" in prompt
+            assert "REWRITE and PARAPHRASE" in prompt
+            assert "linguistically complete" in prompt
+            assert "FORBIDDEN OUTPUT PATTERNS" in prompt
+            assert "sentence fragments" in prompt
+            assert "dependent clauses" in prompt
+            assert "incomplete thoughts" in prompt
+            assert "REWRITING STRATEGY" in prompt
+            assert "IDENTIFY the core propositions" in prompt
+            assert "EXTRACT each proposition" in prompt
+            assert "ADD subjects/verbs/complements" in prompt
+            assert "PARAPHRASE to simplify" in prompt
+            assert "VERIFY each output sentence is grammatically independent" in prompt
+            assert "GRAMMATICAL REQUIREMENTS" in prompt
+            assert "Must have a SUBJECT" in prompt
+            assert "Must have a CONJUGATED VERB" in prompt
+            assert "Must express a COMPLETE THOUGHT" in prompt
+            assert "Must be able to stand alone with ZERO context" in prompt
+            assert "FRAGMENT DETECTION TEST" in prompt
             assert "JSON object" in prompt
-            assert "For example:" in prompt
+            assert "VALIDATION CHECKLIST" in prompt
+
+    @patch('google.genai.Client')
+    def test_prompt_forbids_segmentation(self, mock_client, app_context):
+        """Test that prompt explicitly forbids simple splitting/segmentation"""
+        with app_context.test_request_context():
+            prompt = GeminiService(sentence_length_limit=8).build_prompt()
+
+            # Verify anti-segmentation instructions
+            assert "NEVER split at commas, conjunctions, or punctuation alone" in prompt
+            assert "FORBIDDEN OUTPUT PATTERNS" in prompt
+            assert "CORRECT OUTPUT PATTERNS" in prompt
+            
+            # Verify explicit examples of forbidden fragments
+            assert '"le standard d\'Elvis Presley"' in prompt
+            assert '"dans la rue sombre"' in prompt
+            assert '"et froide"' in prompt
+            assert "Pour toujours et à jamais" in prompt
+            assert "Avec le temps" in prompt
+            
+            # Verify examples of correct complete sentences
+            assert "Le standard d'Elvis Presley joue à la radio" in prompt
+            assert "La rue était sombre" in prompt
+            
+            # Verify transformation examples
+            assert "WRONG (Segmentation approach)" in prompt
+            assert "CORRECT (Rewriting approach)" in prompt
+
+    @patch('google.genai.Client')
+    def test_fragment_detection(self, mock_client, app_context):
+        """Test that the service can detect sentence fragments"""
+        with app_context.test_request_context():
+            service = GeminiService(sentence_length_limit=8)
+            
+            # Test cases: fragments that should be detected
+            fragments = [
+                "le standard d'Elvis Presley,",  # Ends with comma
+                "et froide",  # Conjunction start without completion
+                "dans la rue sombre",  # Prepositional phrase without verb
+                "It's Now or Never,",  # Fragment ending with comma
+                "Pour toujours et à jamais",  # Prepositional phrase
+                "Avec le temps",  # Prepositional phrase without verb
+                "Dans quinze ans",  # Temporal expression without verb
+                "De retour dans la chambre",  # Participial phrase
+                "mais sans elle",  # Conjunction + prepositional phrase
+                "sur le fauteuil",  # Prepositional phrase
+                "dans sa collection",  # Prepositional phrase
+                "avec son iPod",  # Prepositional phrase
+            ]
+            
+            for fragment in fragments:
+                assert service._is_likely_fragment(fragment), \
+                    f"Should detect as fragment: {fragment}"
+            
+            # Test cases: complete sentences that should NOT be flagged
+            complete_sentences = [
+                "Il marchait lentement dans la rue.",
+                "La rue était sombre et froide.",
+                "Elvis chante une chanson.",
+                "C'est maintenant ou jamais !",
+                "Le standard d'Elvis Presley joue.",
+                "Il est retourné dans la chambre.",
+                "Le temps passera lentement.",
+                "Dans quinze ans, ce sera différent.",
+            ]
+            
+            for sentence in complete_sentences:
+                assert not service._is_likely_fragment(sentence), \
+                    f"Should NOT detect as fragment: {sentence}"
 
     @patch('google.genai.Client')
     def test_json_output_validation(self, mock_client, app_context, tmp_path):

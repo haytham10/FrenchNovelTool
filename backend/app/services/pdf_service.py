@@ -58,9 +58,9 @@ class PDFService:
                 snippet = out[:char_limit]
                 # Fallback page_count via PyPDF2 if caller needs it
                 try:
-                    import PyPDF2
+                    from app.pdf_compat import PdfReader, errors as pdf_errors
                     with open(self.temp_file_path, 'rb') as f:
-                        reader = PyPDF2.PdfReader(f)
+                        reader = PdfReader(f)
                         page_count = len(reader.pages)
                 except Exception:
                     page_count = -1
@@ -73,10 +73,10 @@ class PDFService:
 
         # Fallback: use PyPDF2 (slower but pure-Python)
         try:
-            import PyPDF2
+            from app.pdf_compat import PdfReader
             text = ''
             with open(self.temp_file_path, 'rb') as f:
-                reader = PyPDF2.PdfReader(f)
+                reader = PdfReader(f)
                 for page in reader.pages:
                     try:
                         text += (page.extract_text() or '') + '\n'
@@ -110,7 +110,7 @@ class PDFService:
             RuntimeError: If PDF is invalid or corrupted
         """
         try:
-            import PyPDF2
+            from app.pdf_compat import PdfReader, errors as pdf_errors
             
             # Use provided stream or the instance file
             stream = file_stream if file_stream else self.file
@@ -132,8 +132,8 @@ class PDFService:
                 else:
                     file_size = 0
             
-            # Get page count using PyPDF2 (metadata-only, no text extraction)
-            reader = PyPDF2.PdfReader(stream)
+            # Get page count using PdfReader (metadata-only, no text extraction)
+            reader = PdfReader(stream)
             page_count = len(reader.pages)
             
             # Optionally estimate image count by inspecting /XObject resources
@@ -160,9 +160,8 @@ class PDFService:
                 'image_count': image_count
             }
             
-        except PyPDF2.errors.PdfReadError as e:
-            raise RuntimeError(f'Invalid or corrupted PDF file: {e}')
         except Exception as e:
+            # Normalize PdfReadError and other backend-specific exceptions
             raise RuntimeError(f'Failed to read PDF metadata: {e}')
 
     def delete_temp_file(self):
