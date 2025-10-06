@@ -65,6 +65,19 @@ class GeminiService:
         # Allow operator to disable local segmentation fallback via config.
         # Default: True to preserve existing behaviour unless explicitly changed.
         self.allow_local_fallback = current_app.config.get('GEMINI_ALLOW_LOCAL_FALLBACK', False)
+        # Runtime stats from last post-processing step
+        self.last_fragment_rate: float = 0.0
+        self.last_fragment_count: int = 0
+        self.last_fragment_details: List[Dict[str, Any]] = []
+        self.last_processed_sentences: List[str] = []
+
+        # Retry / QC configuration
+        self.fragment_rate_retry_threshold: float = float(
+            current_app.config.get('GEMINI_FRAGMENT_RATE_RETRY_THRESHOLD', 3.0)
+        )
+        self.reject_on_high_fragment_rate: bool = bool(
+            current_app.config.get('GEMINI_REJECT_ON_HIGH_FRAGMENT_RATE', False)
+        )
 
     def build_prompt(self, base_prompt: Optional[str] = None) -> str:
         """Build the advanced Gemini prompt for French literary processing."""
@@ -443,13 +456,19 @@ class GeminiService:
                     processed.append(chunk)
         
         # Enhanced fragment reporting with quality assessment
+        # Compute and store fragment stats on the instance for callers to inspect
+        fragment_rate = (fragment_count / len(processed) * 100) if processed else 0
+        self.last_fragment_rate = fragment_rate
+        self.last_fragment_count = fragment_count
+        self.last_fragment_details = fragment_details
+        self.last_processed_sentences = [s.strip() for s in processed if s and s.strip()]
+
         if fragment_count > 0:
-            fragment_rate = (fragment_count / len(processed) * 100) if processed else 0
             current_app.logger.warning(
                 'Fragment detection summary: %d potential fragments found out of %d sentences (%.1f%%)',
                 fragment_count, len(processed), fragment_rate
             )
-            
+
             # Log sample fragments for debugging
             if fragment_details:
                 sample_size = min(5, len(fragment_details))
@@ -458,20 +477,19 @@ class GeminiService:
                     sample_size,
                     [f['text'] for f in fragment_details[:sample_size]]
                 )
-            
-            # Quality threshold: warn if fragment rate is high
-            # This indicates the AI is performing segmentation instead of rewriting
-            if fragment_rate > 5.0:  # More than 5% fragments is concerning
-                current_app.logger.error(
-                    '⚠️  HIGH FRAGMENT RATE DETECTED (%.1f%%) - AI may be performing SEGMENTATION instead of REWRITING',
-                    fragment_rate
-                )
-                current_app.logger.error(
-                    'Expected: Complete, independent sentences. Got: %d fragments that cannot stand alone.',
-                    fragment_count
-                )
 
-        return [sentence.strip() for sentence in processed if sentence and sentence.strip()]
+        # If configured to reject on high fragment rate, raise an error so callers
+        # can attempt fallback strategies (model swap, stricter prompt, etc.)
+        if fragment_rate > self.fragment_rate_retry_threshold:
+            msg = (
+                f'HIGH FRAGMENT RATE DETECTED ({fragment_rate:.1f}%) - ' 
+                f'fragment_count={fragment_count}, threshold={self.fragment_rate_retry_threshold}'
+            )
+            current_app.logger.error(msg)
+            if self.reject_on_high_fragment_rate:
+                raise GeminiAPIError(msg)
+
+        return self.last_processed_sentences
 
     def _split_sentence(self, sentence: str) -> List[str]:
         """Validate and return sentence - no longer performs manual splitting.
@@ -799,6 +817,40 @@ class GeminiService:
         sentence_dicts = [{"normalized": s, "original": s} for s in processed]
         return {"sentences": sentence_dicts, "tokens": 0}
 
+    def _repair_fragments(self, fragments: List[Dict[str, Any]], context_before: Optional[str] = None, context_after: Optional[str] = None) -> List[str]:
+        """Attempt to repair detected fragments by asking the model to rewrite them into full sentences.
+
+        We build a small prompt providing the fragment and optional surrounding context.
+        Returns a list of repaired sentences (one per fragment) or original fragment if repair failed.
+        """
+        repaired: List[str] = []
+        if not fragments:
+            return repaired
+
+        # Build a compact repair prompt
+        for frag in fragments:
+            frag_text = frag.get('text') if isinstance(frag, dict) else str(frag)
+            repair_prompt = (
+                "Rewrite the following French fragment into a complete, independent, grammatically correct sentence. "
+                "If needed, use the provided context. Return ONLY the single rewritten sentence.\n"
+            )
+            if context_before:
+                repair_prompt += f"Context before: {context_before}\n"
+            repair_prompt += f"Fragment: {frag_text}\n"
+
+            try:
+                resp = self._call_gemini_api(frag_text, repair_prompt, self.MODEL_PREFERENCE_MAP.get('balanced'))
+                sentences = [s['normalized'] for s in resp['sentences']]
+                if sentences:
+                    repaired.append(sentences[0])
+                else:
+                    repaired.append(frag_text)
+            except Exception:
+                current_app.logger.debug('Fragment repair failed for fragment: %s', frag_text)
+                repaired.append(frag_text)
+
+        return repaired
+
 
     # Public helper for processing already-extracted text (non-PDF)
     @retry(
@@ -832,7 +884,74 @@ class GeminiService:
         try:
             result = self._call_gemini_api(text, prompt_text, self.model_name)
             current_app.logger.info('Successfully processed with original model %s', self.model_name)
-            return result
+
+            # Quality gate: if fragment rate exceeds retry threshold, attempt
+            # stricter retry strategies before accepting the response.
+            if self.last_fragment_rate <= self.fragment_rate_retry_threshold:
+                return result
+
+            current_app.logger.warning(
+                'Fragment rate %.1f%% exceeds threshold %.1f%%; attempting retries',
+                self.last_fragment_rate, self.fragment_rate_retry_threshold
+            )
+
+            # 1) Retry with a stricter prompt (same model)
+            strict_prompt = prompt_text + "\n\nSTRICT: ZERO fragments. If any segment would be a fragment, rewrite it to be a complete sentence. Return valid JSON only."
+            try:
+                strict_result = self._call_gemini_api(text, strict_prompt, self.model_name)
+                if self.last_fragment_rate <= self.fragment_rate_retry_threshold:
+                    strict_result['_fallback_method'] = 'strict_prompt_retry'
+                    current_app.logger.info('Recovered via strict prompt retry with model %s', self.model_name)
+                    return strict_result
+            except Exception as e:
+                current_app.logger.warning('Strict prompt retry failed: %s', str(e))
+
+            # 2) Retry using higher-quality model
+            quality_model = self.MODEL_PREFERENCE_MAP.get('quality')
+            if quality_model and quality_model != self.model_name:
+                try:
+                    quality_result = self._call_gemini_api(text, prompt_text, quality_model)
+                    if self.last_fragment_rate <= self.fragment_rate_retry_threshold:
+                        quality_result['_fallback_method'] = 'quality_model_retry'
+                        current_app.logger.info('Recovered via quality model %s', quality_model)
+                        return quality_result
+                except Exception as e:
+                    current_app.logger.warning('Quality model retry failed: %s', str(e))
+
+            # 3) Attempt fragment repair pass (targeted corrections)
+            try:
+                fragments = self.last_fragment_details or []
+                repaired = self._repair_fragments(fragments)
+                if repaired:
+                    # Replace fragment strings in last_processed_sentences with repaired ones
+                    repaired_iter = iter(repaired)
+                    merged = []
+                    for s in self.last_processed_sentences:
+                        replaced = False
+                        for frag in fragments:
+                            if s == (frag.get('text') if isinstance(frag, dict) else str(frag)):
+                                try:
+                                    merged.append(next(repaired_iter))
+                                except StopIteration:
+                                    merged.append(s)
+                                replaced = True
+                                break
+                        if not replaced:
+                            merged.append(s)
+
+                    # Re-run post-processing on merged list to normalise
+                    try:
+                        repaired_processed = self._post_process_sentences(merged)
+                        sentence_dicts = [{"normalized": s, "original": s} for s in repaired_processed]
+                        current_app.logger.info('Recovered via fragment repair pass')
+                        return {"sentences": sentence_dicts, "tokens": 0, "_fallback_method": "fragment_repair"}
+                    except Exception:
+                        current_app.logger.warning('Post-processing of repaired sentences failed')
+            except Exception as e:
+                current_app.logger.warning('Fragment repair pass failed: %s', str(e))
+
+            # If all corrective attempts failed, fall through to existing fallback cascade
+            current_app.logger.warning('All corrective retries failed; proceeding with fallback cascade')
         except GeminiAPIError as e:
             current_app.logger.warning(
                 'Primary Gemini call failed with model=%s: %s',

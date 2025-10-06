@@ -1,4 +1,12 @@
+import sys
+import os
 from flask import Flask
+
+# Ensure backend package is importable when running from repository root
+HERE = os.path.dirname(os.path.abspath(__file__))
+BACKEND_DIR = os.path.abspath(os.path.join(HERE, '..', 'backend'))
+sys.path.insert(0, BACKEND_DIR)
+
 from app.services.gemini_service import GeminiService
 
 app = Flask(__name__)
