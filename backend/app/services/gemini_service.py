@@ -64,7 +64,7 @@ class GeminiService:
         self.retry_delay = current_app.config['GEMINI_RETRY_DELAY']
         # Allow operator to disable local segmentation fallback via config.
         # Default: True to preserve existing behaviour unless explicitly changed.
-        self.allow_local_fallback = current_app.config.get('GEMINI_ALLOW_LOCAL_FALLBACK', True)
+        self.allow_local_fallback = current_app.config.get('GEMINI_ALLOW_LOCAL_FALLBACK', False)
         # Runtime stats from last post-processing step
         self.last_fragment_rate: float = 0.0
         self.last_fragment_count: int = 0
@@ -531,8 +531,21 @@ class GeminiService:
         if self.fix_hyphenation:
             text = re.sub(r'(\w)-\s+(\w)', r'\1\2', text)
         text = re.sub(r'\s+', ' ', text)
+        # Remove guillemets and smart quotes — we never want these characters
+        # in the normalized output. Treat dialogue as normal sentences and
+        # let the rewriting logic handle speaker attribution / content.
+        text = re.sub(r'[«»“”]', '', text)
+
+        # If the whole sentence is wrapped in ASCII quotes, remove them so
+        # the model output will not include surrounding quotation marks.
+        text = re.sub(r'^[\"\']\s*(.*?)\s*[\"\']$', r'\1', text)
+
+        # Optionally preserve other formatting; at this point guillemets have
+        # been removed regardless of preserve_formatting to satisfy user preference.
         if not self.preserve_formatting:
+            # Keep minimal adjustments for spacing around any remaining markers
             text = text.replace('« ', '«').replace(' »', '»')
+
         return text.strip()
 
     def _looks_like_dialogue(self, sentence: str) -> bool:
