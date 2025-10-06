@@ -790,6 +790,66 @@ def chunk_watchdog(self, job_id: int, chunk_id: int):
         return {'status': 'error', 'error': str(exc)}
 
 
+@get_celery().task(bind=True, name='app.tasks.reconcile_stuck_chunks')
+def reconcile_stuck_chunks(self, age_seconds: Optional[int] = None, limit: int = 100):
+    """Scan JobChunk rows for long-running 'processing' states and heal them.
+    If age_seconds is None, use CHUNK_STUCK_THRESHOLD_SECONDS from config.
+    Returns a summary dict of actions taken.
+    """
+    db = get_db()
+    from app.models import JobChunk, Job
+    from flask import current_app
+    import time
+
+    try:
+        threshold = int(age_seconds or current_app.config.get('CHUNK_STUCK_THRESHOLD_SECONDS', 900))
+        cutoff = datetime.utcnow().timestamp() - int(threshold)
+
+        # Find stuck chunks
+        stuck = db.session.execute(
+            "SELECT id, job_id, chunk_id, status, attempts, updated_at FROM job_chunks WHERE status = 'processing' ORDER BY updated_at LIMIT :limit",
+            {'limit': limit}
+        ).fetchall()
+
+        actions = []
+        for row in stuck:
+            chunk_id_db, job_id_db, chunk_num, status, attempts, updated_at = row
+            # Compute age
+            age = (datetime.utcnow() - updated_at).total_seconds() if updated_at else None
+            if age is None or age < threshold:
+                continue
+
+            # Load ORM object to modify
+            chunk = JobChunk.query.get(chunk_id_db)
+            if not chunk:
+                continue
+
+            # If retry remains, schedule a retry (similar logic as chunk_watchdog)
+            max_retries = int(current_app.config.get('CHUNK_TASK_MAX_RETRIES', 3))
+            if chunk.attempts < chunk.max_retries and chunk.attempts < max_retries:
+                chunk.status = 'retry_scheduled'
+                chunk.updated_at = datetime.utcnow()
+                db.session.add(chunk)
+                safe_db_commit(db)
+                from app.tasks import process_chunk as process_chunk_task
+                process_chunk_task.apply_async(args=[chunk.get_chunk_metadata(), chunk.job.user_id, (chunk.job.processing_settings or {})], countdown=5)
+                actions.append({'chunk_id': chunk.chunk_id, 'job_id': chunk.job_id, 'action': 'retry_scheduled'})
+            else:
+                chunk.status = 'failed'
+                chunk.last_error = 'Reconciler: marked stuck chunk failed'
+                chunk.last_error_code = 'RECONCILE_FAIL'
+                chunk.updated_at = datetime.utcnow()
+                db.session.add(chunk)
+                safe_db_commit(db)
+                actions.append({'chunk_id': chunk.chunk_id, 'job_id': chunk.job_id, 'action': 'marked_failed'})
+
+        logger.info('Reconciled stuck chunks: %s', actions)
+        return {'status': 'ok', 'actions': actions}
+    except Exception as e:
+        logger.exception('reconcile_stuck_chunks: failed: %s', e)
+        return {'status': 'error', 'error': str(e)}
+
+
 @get_celery().task(bind=True, name='app.tasks.process_pdf_async')
 def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings: dict, file_b64: Optional[str] = None):
     """
