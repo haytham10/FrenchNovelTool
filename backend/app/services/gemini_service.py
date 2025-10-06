@@ -65,17 +65,27 @@ class GeminiService:
         # Allow operator to disable local segmentation fallback via config.
         # Default: True to preserve existing behaviour unless explicitly changed.
         self.allow_local_fallback = current_app.config.get('GEMINI_ALLOW_LOCAL_FALLBACK', False)
+        # Repair controls (to limit additional Gemini API calls which can be slow)
+        # Enable / disable the targeted long-sentence repair step
+        self.enable_repair = bool(current_app.config.get('GEMINI_ENABLE_REPAIR', True))
+        # Only attempt repair if sentence length > sentence_length_limit * repair_multiplier
+        self.repair_multiplier = float(current_app.config.get('GEMINI_REPAIR_MULTIPLIER', 1.5))
+        # Maximum repair attempts per unique chunk within a single request
+        self.max_repair_attempts = int(current_app.config.get('GEMINI_MAX_REPAIR_ATTEMPTS', 1))
+        # Simple in-request cache to avoid repeating repairs for identical chunks
+        self._repair_cache = {}
+
         # Runtime stats from last post-processing step
-        self.last_fragment_rate: float = 0.0
-        self.last_fragment_count: int = 0
-        self.last_fragment_details: List[Dict[str, Any]] = []
-        self.last_processed_sentences: List[str] = []
+        self.last_fragment_rate = 0.0
+        self.last_fragment_count = 0
+        self.last_fragment_details = []
+        self.last_processed_sentences = []
 
         # Retry / QC configuration
-        self.fragment_rate_retry_threshold: float = float(
+        self.fragment_rate_retry_threshold = float(
             current_app.config.get('GEMINI_FRAGMENT_RATE_RETRY_THRESHOLD', 3.0)
         )
-        self.reject_on_high_fragment_rate: bool = bool(
+        self.reject_on_high_fragment_rate = bool(
             current_app.config.get('GEMINI_REJECT_ON_HIGH_FRAGMENT_RATE', False)
         )
 
@@ -478,7 +488,33 @@ class GeminiService:
                     word_count = len(str(chunk).split())
 
                 if word_count > self.sentence_length_limit:
-                    repaired = self._split_long_sentence(chunk)
+                    # Decide whether to attempt a repair. Repairing every slightly-overlong
+                    # chunk causes many extra API calls and high latency. Use configuration
+                    # to limit attempts.
+                    repaired = []
+                    if not self.enable_repair:
+                        current_app.logger.debug('Repair disabled for chunk (len=%d): %s', word_count, chunk[:80])
+                    else:
+                        # Only attempt repair if chunk is significantly over the limit
+                        if word_count < int(self.sentence_length_limit * self.repair_multiplier):
+                            current_app.logger.debug(
+                                'Skipping repair for slightly-overlong chunk (len=%d, threshold=%s): %s',
+                                word_count, self.sentence_length_limit * self.repair_multiplier, chunk[:80]
+                            )
+                        else:
+                            # Use cache to avoid duplicate repairs in the same request
+                            cached = self._repair_cache.get(chunk)
+                            if cached is not None:
+                                repaired = cached
+                            else:
+                                try:
+                                    repaired = self._split_long_sentence(chunk)
+                                except Exception as e:
+                                    current_app.logger.warning('Exception during long-sentence repair: %s', e)
+                                    repaired = []
+                                # Store whatever we got (including empty list) to avoid retry storms
+                                self._repair_cache[chunk] = repaired
+
                     if repaired:
                         # Re-run post-processing on repaired pieces before continuing
                         for r in repaired:
