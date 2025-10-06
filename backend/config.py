@@ -132,6 +132,7 @@ class Config:
     CHUNK_TASK_MAX_RETRIES = int(os.getenv('CHUNK_TASK_MAX_RETRIES', '3'))
     CHUNK_TASK_RETRY_DELAY = int(os.getenv('CHUNK_TASK_RETRY_DELAY', '2'))
     CHORD_WATCHDOG_SECONDS = int(os.getenv('CHORD_WATCHDOG_SECONDS', '300'))  # 5 minutes default
+    CHUNK_WATCHDOG_SECONDS = int(os.getenv('CHUNK_WATCHDOG_SECONDS', '1800'))  # 30 minutes default for long chunks
     
     # Finalization Configuration
     FINALIZE_MAX_RETRIES = int(os.getenv('FINALIZE_MAX_RETRIES', '10'))

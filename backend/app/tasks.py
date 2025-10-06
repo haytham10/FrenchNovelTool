@@ -144,6 +144,23 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
                 chunk_db_record.attempts += 1
                 chunk_db_record.updated_at = datetime.utcnow()
                 safe_db_commit(db)
+                # Schedule a per-chunk watchdog to detect stuck processing tasks.
+                try:
+                    from flask import current_app
+                    watchdog_seconds = int(current_app.config.get('CHUNK_WATCHDOG_SECONDS', 1800))
+                    # Use delayed call to chunk_watchdog which will check DB state
+                    # and either schedule a retry or mark the chunk failed.
+                    try:
+                        chunk_watchdog.apply_async(args=[chunk_db_record.job_id, chunk_db_record.chunk_id], countdown=watchdog_seconds)
+                        logger.info(
+                            "Scheduled chunk_watchdog for job %s chunk %s in %ss",
+                            chunk_db_record.job_id, chunk_db_record.chunk_id, watchdog_seconds
+                        )
+                    except Exception as _e:
+                        logger.warning("Failed to schedule chunk_watchdog for job %s chunk %s: %s", chunk_db_record.job_id, chunk_db_record.chunk_id, _e)
+                except Exception:
+                    # Non-fatal if config or scheduler not available
+                    pass
         except Exception as e:
             logger.warning(f"Failed to load/update JobChunk for job={job_id} chunk={chunk_id}: {e}")
     
@@ -706,6 +723,71 @@ def finalize_job_results(self, chunk_results, job_id):
             pass
         
         raise
+
+
+@get_celery().task(bind=True, name='app.tasks.chunk_watchdog')
+def chunk_watchdog(self, job_id: int, chunk_id: int):
+    """Watchdog for individual chunk processing. If a chunk remains in
+    'processing' state beyond the configured timeout, this task will either
+    schedule a retry (if attempts < max_retries) or mark the chunk as failed
+    so that finalization won't hang indefinitely.
+
+    This task is scheduled from `process_chunk` when the chunk DB record is
+    updated to 'processing'.
+    """
+    db = get_db()
+    from app.models import JobChunk
+    from flask import current_app
+
+    try:
+        chunk = JobChunk.query.filter_by(job_id=job_id, chunk_id=chunk_id).first()
+        if not chunk:
+            logger.warning("chunk_watchdog: chunk not found job=%s chunk=%s", job_id, chunk_id)
+            return {'status': 'not_found'}
+
+        # Only act if still in a non-terminal processing state
+        if chunk.status not in ('processing', 'pending', 'retry_scheduled'):
+            logger.info("chunk_watchdog: chunk %s/%s in terminal state '%s', no action", job_id, chunk_id, chunk.status)
+            return {'status': 'ok', 'reason': 'terminal_state'}
+
+        # Determine retry policy
+        max_retries = int(current_app.config.get('CHUNK_TASK_MAX_RETRIES', 3))
+        retry_delay = int(current_app.config.get('CHUNK_TASK_RETRY_DELAY', 2))
+
+        if chunk.attempts < chunk.max_retries and chunk.attempts < max_retries:
+            # Schedule a retry by marking the chunk for retry and dispatching process_chunk
+            try:
+                chunk.status = 'retry_scheduled'
+                chunk.updated_at = datetime.utcnow()
+                db.session.add(chunk)
+                safe_db_commit(db)
+
+                # Dispatch a retry attempt
+                from app.tasks import process_chunk as process_chunk_task
+                process_chunk_task.apply_async(args=[chunk.get_chunk_metadata(), chunk.job.user_id, (chunk.job.processing_settings or {})], countdown=retry_delay)
+
+                logger.info("chunk_watchdog: scheduled retry for job %s chunk %s (attempts=%s)", job_id, chunk_id, chunk.attempts)
+                return {'status': 'retry_scheduled'}
+            except Exception as e:
+                logger.error("chunk_watchdog: failed to schedule retry for job %s chunk %s: %s", job_id, chunk_id, e)
+                # Fall through to marking failed
+
+        # No retries left or scheduling failed: mark as failed so finalizer can proceed
+        try:
+            chunk.status = 'failed'
+            chunk.last_error = 'Chunk stuck in processing - watchdog marked failed'
+            chunk.last_error_code = 'WATCHDOG_FORCED_FAIL'
+            chunk.updated_at = datetime.utcnow()
+            db.session.add(chunk)
+            safe_db_commit(db)
+            logger.error("chunk_watchdog: marked job %s chunk %s as failed (no retries left)", job_id, chunk_id)
+            return {'status': 'failed_marked'}
+        except Exception as e:
+            logger.error("chunk_watchdog: failed to mark chunk as failed for job %s chunk %s: %s", job_id, chunk_id, e)
+            return {'status': 'error', 'error': str(e)}
+    except Exception as exc:
+        logger.exception("chunk_watchdog: unexpected error for job %s chunk %s: %s", job_id, chunk_id, exc)
+        return {'status': 'error', 'error': str(exc)}
 
 
 @get_celery().task(bind=True, name='app.tasks.process_pdf_async')
