@@ -25,6 +25,11 @@ This full-stack application provides a seamless workflow for literary analysis, 
 - 🤖 **AI-Powered Normalization**: Utilizes Google Gemini to intelligently split long sentences while preserving their original meaning and context.
 - 📊 **Google Sheets Export**: Export processed sentences directly to a new Google Sheet, with automatic header formatting.
 - 📁 **Google Drive Integration**: Organize exported spreadsheets into user-specified folders in Google Drive.
+- 📚 **Vocabulary Coverage Tool** *(New)*: Analyze sentences based on high-frequency vocabulary lists for optimized language learning:
+    - **Filter Mode**: Find sentences with ≥95% common words (4-8 words) for drilling - perfect for rapid vocabulary acquisition
+    - **Coverage Mode**: Select minimal sentence set covering all target words for comprehensive learning
+    - **Word List Management**: Upload/manage custom word lists (CSV), with French 2K global default
+    - **spaCy NLP**: Intelligent lemmatization handles plurals, conjugations, and elisions (l', d')
 
 ### Credit & Job Tracking System
 - 💳 **Monthly Credit Allocation**: Users receive a monthly grant of credits for processing documents.
