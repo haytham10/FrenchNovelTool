@@ -22,7 +22,6 @@ import {
 import {
   PlayArrow as PlayIcon,
   Upload as UploadIcon,
-  Download as DownloadIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -31,7 +30,7 @@ import {
   createCoverageRun,
   getCoverageRun,
   type WordList,
-  type CoverageRun as CoverageRunType,
+  type CoverageAssignment,
 } from '@/lib/api';
 
 export default function CoveragePage() {
@@ -56,9 +55,12 @@ export default function CoveragePage() {
     queryKey: ['coverageRun', currentRunId],
     queryFn: () => getCoverageRun(currentRunId!),
     enabled: !!currentRunId,
-    refetchInterval: (data) => {
-      // Poll if still processing
-      if (data?.coverage_run?.status === 'processing' || data?.coverage_run?.status === 'pending') {
+    refetchInterval: () => {
+      // Poll if still processing - use queryClient to read current cached data to avoid incorrect typing of the callback param
+      if (!currentRunId) return false;
+      const cached = queryClient.getQueryData(['coverageRun', currentRunId]) as { coverage_run?: { status?: string } } | undefined;
+      const status = cached?.coverage_run?.status;
+      if (status === 'processing' || status === 'pending') {
         return 2000; // Poll every 2 seconds
       }
       return false; // Stop polling when complete
@@ -131,6 +133,16 @@ export default function CoveragePage() {
   const wordlists = wordListsData?.wordlists || [];
   const coverageRun = runData?.coverage_run;
   const assignments = runData?.assignments || [];
+
+  // Helper to safely read numeric stats from unknown stats_json
+  const getNumberStat = (key: string): number | null => {
+    const stats = coverageRun?.stats_json as Record<string, unknown> | undefined;
+    if (!stats) return null;
+    const v = stats[key];
+    if (typeof v === 'number') return v;
+    if (typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Number(v))) return Number(v);
+    return null;
+  };
   
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
@@ -275,7 +287,7 @@ export default function CoveragePage() {
       </Paper>
       
       {/* Results Panel */}
-      {coverageRun && (
+      {(loadingRun || coverageRun) && (
         <Paper sx={{ p: 3 }}>
           <Typography variant="h5" gutterBottom>
             Results
@@ -284,108 +296,119 @@ export default function CoveragePage() {
           <Stack spacing={2}>
             {/* Status */}
             <Box>
-              <Typography variant="subtitle2">Status:</Typography>
-              <Chip
-                label={coverageRun.status}
-                color={
-                  coverageRun.status === 'completed' ? 'success' :
-                  coverageRun.status === 'failed' ? 'error' :
-                  'default'
-                }
-                sx={{ mt: 0.5 }}
-              />
-              {coverageRun.status === 'processing' && (
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+              {loadingRun && !coverageRun && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
                   <CircularProgress size={20} />
-                  <Typography variant="body2">
-                    Processing... {coverageRun.progress_percent}%
-                  </Typography>
+                  <Typography variant="body2">Loading run...</Typography>
                 </Box>
               )}
-            </Box>
-            
-            {/* Stats */}
-            {coverageRun.status === 'completed' && coverageRun.stats_json && (
-              <>
-                <Divider />
-                <Box>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Statistics:
-                  </Typography>
-                  {mode === 'filter' ? (
-                    <Stack spacing={1}>
+
+              {coverageRun ? (
+                <>
+                  <Typography variant="subtitle2">Status:</Typography>
+                  <Chip
+                    label={coverageRun.status}
+                    color={
+                      coverageRun.status === 'completed' ? 'success' :
+                      coverageRun.status === 'failed' ? 'error' :
+                      'default'
+                    }
+                    sx={{ mt: 0.5 }}
+                  />
+                  {coverageRun.status === 'processing' && (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+                      <CircularProgress size={20} />
                       <Typography variant="body2">
-                        Total sentences: {coverageRun.stats_json.total_sentences}
+                        Processing... {coverageRun.progress_percent}%
                       </Typography>
-                      <Typography variant="body2">
-                        Passed filter: {coverageRun.stats_json.candidates_passed_filter}
-                      </Typography>
-                      <Typography variant="body2">
-                        Selected: {coverageRun.stats_json.selected_count}
-                      </Typography>
-                      <Typography variant="body2">
-                        Acceptance ratio: {(coverageRun.stats_json.filter_acceptance_ratio * 100).toFixed(1)}%
-                      </Typography>
-                    </Stack>
-                  ) : (
-                    <Stack spacing={1}>
-                      <Typography variant="body2">
-                        Total words: {coverageRun.stats_json.words_total}
-                      </Typography>
-                      <Typography variant="body2">
-                        Covered: {coverageRun.stats_json.words_covered}
-                      </Typography>
-                      <Typography variant="body2">
-                        Uncovered: {coverageRun.stats_json.words_uncovered}
-                      </Typography>
-                      <Typography variant="body2">
-                        Selected sentences: {coverageRun.stats_json.selected_sentence_count}
-                      </Typography>
-                    </Stack>
-                  )}
-                </Box>
-                
-                {/* Sample Results */}
-                {assignments.length > 0 && (
-                  <>
-                    <Divider />
-                    <Box>
-                      <Typography variant="subtitle2" gutterBottom>
-                        Sample Results (first 10):
-                      </Typography>
-                      <Stack spacing={1}>
-                        {assignments.slice(0, 10).map((assignment, idx) => (
-                          <Paper key={idx} variant="outlined" sx={{ p: 1.5 }}>
-                            <Typography variant="body2" fontWeight="medium">
-                              {assignment.sentence_text}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {mode === 'coverage' 
-                                ? `Word: ${assignment.word_key}`
-                                : `Score: ${assignment.sentence_score?.toFixed(2)}`
-                              }
-                            </Typography>
-                          </Paper>
-                        ))}
-                      </Stack>
-                      
-                      {assignments.length > 10 && (
-                        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                          ... and {assignments.length - 10} more results
-                        </Typography>
-                      )}
                     </Box>
-                  </>
-                )}
-              </>
-            )}
-            
-            {/* Error */}
-            {coverageRun.status === 'failed' && coverageRun.error_message && (
-              <Alert severity="error">
-                {coverageRun.error_message}
-              </Alert>
-            )}
+                  )}
+
+                  {/* Stats */}
+                  {coverageRun.status === 'completed' && coverageRun.stats_json && (
+                    <>
+                      <Divider />
+                      <Box>
+                        <Typography variant="subtitle2" gutterBottom>
+                          Statistics:
+                        </Typography>
+                        {mode === 'filter' ? (
+                          <Stack spacing={1}>
+                            <Typography variant="body2">
+                              Total sentences: {getNumberStat('total_sentences') ?? 'N/A'}
+                            </Typography>
+                            <Typography variant="body2">
+                              Passed filter: {getNumberStat('candidates_passed_filter') ?? 'N/A'}
+                            </Typography>
+                            <Typography variant="body2">
+                              Selected: {getNumberStat('selected_count') ?? 'N/A'}
+                            </Typography>
+                            <Typography variant="body2">
+                              Acceptance ratio: {((getNumberStat('filter_acceptance_ratio') ?? 0) * 100).toFixed(1)}%
+                            </Typography>
+                          </Stack>
+                        ) : (
+                          <Stack spacing={1}>
+                            <Typography variant="body2">
+                              Total words: {getNumberStat('words_total') ?? 'N/A'}
+                            </Typography>
+                            <Typography variant="body2">
+                              Covered: {getNumberStat('words_covered') ?? 'N/A'}
+                            </Typography>
+                            <Typography variant="body2">
+                              Uncovered: {getNumberStat('words_uncovered') ?? 'N/A'}
+                            </Typography>
+                            <Typography variant="body2">
+                              Selected sentences: {getNumberStat('selected_sentence_count') ?? 'N/A'}
+                            </Typography>
+                          </Stack>
+                        )}
+                      </Box>
+
+                      {/* Sample Results */}
+                      {assignments.length > 0 && (
+                        <>
+                          <Divider />
+                          <Box>
+                            <Typography variant="subtitle2" gutterBottom>
+                              Sample Results (first 10):
+                            </Typography>
+                            <Stack spacing={1}>
+                              {assignments.slice(0, 10).map((assignment: CoverageAssignment, idx: number) => (
+                                <Paper key={idx} variant="outlined" sx={{ p: 1.5 }}>
+                                  <Typography variant="body2" fontWeight="medium">
+                                    {assignment.sentence_text}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {mode === 'coverage' 
+                                      ? `Word: ${assignment.word_key}`
+                                      : `Score: ${assignment.sentence_score ? assignment.sentence_score.toFixed(2) : 'N/A'}`
+                                    }
+                                  </Typography>
+                                </Paper>
+                              ))}
+                            </Stack>
+
+                            {assignments.length > 10 && (
+                              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                                ... and {assignments.length - 10} more results
+                              </Typography>
+                            )}
+                          </Box>
+                        </>
+                      )}
+                    </>
+                  )}
+
+                  {/* Error */}
+                  {coverageRun.status === 'failed' && coverageRun.error_message && (
+                    <Alert severity="error">
+                      {coverageRun.error_message}
+                    </Alert>
+                  )}
+                </>
+              ) : null}
+            </Box>
           </Stack>
         </Paper>
       )}

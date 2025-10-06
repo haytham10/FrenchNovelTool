@@ -676,10 +676,10 @@ export interface CoverageRun {
   source_type: 'job' | 'history';
   source_id: number;
   wordlist_id?: number;
-  config_json: Record<string, any>;
+  config_json: Record<string, unknown>;
   status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
   progress_percent: number;
-  stats_json: Record<string, any>;
+  stats_json: Record<string, unknown>;
   created_at: string;
   completed_at?: string;
   error_message?: string;
@@ -696,7 +696,7 @@ export interface CoverageAssignment {
   sentence_index: number;
   sentence_text: string;
   sentence_score?: number;
-  conflicts?: Record<string, any>;
+  conflicts?: Record<string, unknown>;
   manual_edit: boolean;
   notes?: string;
 }
@@ -784,7 +784,7 @@ export const createCoverageRun = async (params: {
   source_type: 'job' | 'history';
   source_id: number;
   wordlist_id?: number;
-  config?: Record<string, any>;
+  config?: Record<string, unknown>;
 }): Promise<{ coverage_run: CoverageRun; task_id: string }> => {
   const response = await api.post('/coverage/run', params);
   return response.data;
