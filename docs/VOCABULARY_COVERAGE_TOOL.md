@@ -1,310 +1,386 @@
-# Vocabulary Coverage Tool — Design & Implementation Plan
+# Vocabulary Coverage Tool — Complete Design & Implementation Plan
 
-Status: Planning
-Priority: High
-Estimated Effort: 4–7 days (backend 2–4, frontend 1–2, QA 1)
+Status: Ready for implementation  
+Priority: High  
+Estimated Effort: 4–7 days (MVP) + 2–4 weeks (hardening & optimization)
 
-## Executive Summary
+Purpose
+- Given a target word list (default: the supplied 2000 Most Commonly Used French Words), find a small set of sentences produced by the French Novel Automation Tool such that every target word is represented at least once, and/or filter sentences to maximize high-frequency vocabulary density. Where possible, each target word should appear in only one selected sentence. The user should be able to manage word lists in Settings, run coverage right after a Job finishes, from a History entry, or from a standalone Coverage page.
 
-Build a new tool that, given a “2000 Most Commonly Used French Words” list, selects a minimal set of sentences produced by the French Novel Automation Tool such that:
-- Every target word appears in at least one selected sentence.
-- Each target word appears in at most one selected sentence, as far as possible.
-- The selected set is small (target: < 600 sentences), prioritizing sentence quality and readability.
-- Morphology-aware matching:
-  - Nouns: singular and plural map to the same lemma and are considered covered by the same target entry.
-  - Verbs: any conjugation (any tense/person/number) maps to the verb lemma and is considered covered by the same target entry.
+## Client Vision and Tool Intersection (Critical Context)
 
-This is a constrained Set Cover optimization with uniqueness and quality heuristics. The tool must integrate seamlessly with our existing async pipeline, History data, Google Sheets, UI patterns, and deployment strategy.
+We need to solidify our understanding of the client’s complete vision before moving forward. The goal isn’t just about sentence structure; it’s about hyper‑efficient, vocabulary‑driven language learning.
 
-Word list sources (provided by product):
-- Google Sheet (primary): [2000 Most Commonly Used French Words](https://docs.google.com/spreadsheets/d/15BL8bFX5KTbXguLzF44wZ8NXluoKXdGfYSc4cHBuEj0/edit?usp=sharing)
-- CSV (snapshot file name): 2000 French Words with Parts of Speech - 2000 Words With Parts of Speech.csv
+Client Goal: Accelerated French Fluency
+- The client, Stan, has a clear, actionable plan based on Zipf’s Law and auditory repetition to achieve conversational fluency in roughly ten days.
 
----
+Learning components and tool requirements:
+- High‑Frequency Vocabulary
+  - The tool must use sentences composed almost entirely of the 2,000 to 5,000 most common French words to ensure he only learns what is immediately useful for conversation.
+- Repetition Drills
+  - The sentences must be short (4 to 8 words) and perfectly structured for repetition while walking or driving.
+- Arithmetic
+  - The final output needs to be a database of ~500 high‑quality sentences that meet the criteria, which he can then drill 50 per day.
 
-## Goals
+How our tools must intersect:
+1) Tool 1 — Current App (Sentence Rewriter)
+- Function: Linguistic Rewriting.
+- Purpose: Take complex French novel text and simplify it into a stream of complete, grammatically pure, 4–8 word sentences — ideal for repeatable drills.
+- Status: The recent chunking/execution fixes ensure this foundation is structurally sound.
 
-1. Import the 2,000-word list from Google Sheets or CSV and normalize it (case, diacritics, elisions, hyphens, lemma).
-2. Perform lemma-based matching by default so singular/plural and verb conjugations are recognized as the same target word.
-3. Build an efficient coverage from the normalized sentences of a selected History (or Job) output.
-4. Optimize for:
-   - Full coverage with minimal selected sentences (< 600 when feasible).
-   - Avoid reusing words across multiple selected sentences where possible.
-   - Prefer sentences aligned with product quality heuristics (length band, clarity, optionally non-dialogue).
-5. Provide interactive UI to review assignments, swap sentences for a word, re-run local improvements, export to Google Sheets.
-6. Integrate with async tasks, WebSocket progress updates, History, and Google Sheets Service.
+2) Tool 2 — Next Tool (2000‑Word List Filter)
+- Function: Precision Vocabulary Filter on the rewritten sentences.
+- Purpose: Cross‑reference every token in each rewritten sentence against the client’s supplied common vocabulary list(s).
+- Required Output: Only those rewritten sentences that meet a minimum common‑vocabulary percentage threshold (e.g., ≥95% of tokens in the client’s common word list). Target a final curated set of ~500 sentences, optimized for drilling (50/day over ~10 days).
 
----
-
-## Word List: Schema, Normalization, and Data Quality
-
-### Schema (CSV row format)
-
-Each CSV line follows:
-- Column 1: Index (1..2000). Note: some lines include hidden/zero-width characters; sanitize to integer.
-- Column 2: French forms (string). May contain:
-  - Multiple alternatives separated by pipes `|` (e.g., `Le|La`, `Celui|Celle`)
-  - Sometimes slash variants (e.g., `Jusque/Jusqu’`)
-  - Multi-token entries (e.g., `Un temps`, `Le monde`, `Une raison`)
-- Column 3: English gloss (string). May include a pipe `|` between alternatives (e.g., `A|An`).
-- Column 4: Part of Speech (string): Determiner, Preposition, Noun, Verb, Adjective, Adverb, Pronoun, Conjunction, Number, Interjection, etc.
-
-Examples:
-- `1,Un|Une,A|An,Determiner`
-- `6,Être,Be,Verb`
-- `65,Un temps,A time, Noun`
-- `132,Jusque/Jusqu’,Until/Until,Preposition`
-
-Note: There are entries with capitalization inconsistencies, typos, duplicate lexemes (e.g., “Bien” appears as #48 and #2000), and POS/gloss mismatches (e.g., “Suffire” listed as Adverb). Do not rely on POS for lemmatization; use actual NLP tooling.
-
-### Normalization rules (targets)
-
-To create canonical “word keys” for matching:
-
-- Casefold entire entry: `casefold()`
-- Diacritics: fold accents (é→e, ç→c) using Unicode normalization/unidecode
-- Elisions: strip leading clitics (l’, d’, j’, n’, s’, t’, c’, qu’) so `l’amour` → `amour`
-- Hyphens: split and keep lexical head components as tokens; also keep original form for reference
-- Lemmatization (default): use spaCy French model (`fr_core_news_md` preferred; `sm` fallback) to derive lemma for each variant form
-- Alternatives: for `Le|La`, `Celui|Celle`, or slash variants, produce the union of normalized keys and map them to a single canonical lemma where linguistically appropriate
-- Multi-token entries (e.g., `Un temps`, `La vie`): in v1, derive the head lexical token as the target (e.g., `temps`, `vie`), while preserving the original string; determiners/prepositions are dropped from target keys by default
-  - If an entry is truly multiword content (rare), flag for review; optional v2 support for multiword coverage
-
-We will store for each entry:
-- original: as in list (“Être”, “Un temps”)
-- surface_variants: split by `|` and `/`
-- key: canonical normalized key (lemma-based token)
-- lemma: the spaCy-derived lemma for the head token
-- pos_hint: the POS from the sheet for reference only (not authoritative)
-
-Deduplication:
-- Deduplicate by `key` (canonical lemma) across the full list
-- Keep the lowest index row as the primary; record alias-to-primary mapping
-- Produce a `wordlist_report` in the run stats with:
-  - duplicates found, alias chains, corrections applied
-  - typos/unknown tokens flagged by NLP (optional)
-
-Data anomalies (to be handled or flagged):
-- Duplicates (e.g., Bien #48 and #2000)
-- Mis-typed entries (e.g., “Un disours” → “Un discours”)
-- POS mismatches (e.g., “Suffire” marked as Adverb)
-- Mixed casing in ENG glosses, irrelevant for matching
-- Numbering anomalies (e.g., line `1​772` with zero-width character)
-
-We will:
-- Sanitize index column
-- Normalize French forms as above
-- Ignore English gloss for matching (kept for export only)
-- Do not fail hard on anomalies; warn and continue with best-effort normalization
+Conclusion:
+- The output of Tool 1 (Rewriting) is the input for Tool 2 (Vocabulary Filtering). The structural integrity we just fixed is critical because fragmented sentences cannot be accurately filtered. Our next technical focus is the high‑stakes vocabulary filtering (Tool 2), while retaining the Coverage mode for set‑cover use cases.
 
 ---
 
-## Matching Requirements (Confirmed)
+## Operating Modes
 
-- Singular/plural nouns both satisfy the same target word (lemma-level match).
-- Any verb conjugation in any tense/person/number satisfies the verb entry (lemma-level match).
-- Determiners, pronouns, prepositions, conjunctions in the list are single-token targets; they will match identically normalized tokens in sentences (lemma or surface-mode if more appropriate).
-- Default mode: lemma-based matching to meet morphology acceptance; surface-only mode remains available via config if desired.
+This tool supports two complementary modes that operate on the rewritten sentences produced by Tool 1:
 
----
+1) Coverage Mode (Set Cover)
+- Goal: Select a minimal set of sentences such that each target word (from a chosen word list) appears at least once, with strong preference for per‑word uniqueness across sentences.
+- Primary user: Teachers, linguists, or users aiming to guarantee presence of the entire list.
 
-## Architecture Overview
+2) Filter Mode (Precision Vocabulary Filter)
+- Goal: Return the subset of rewritten sentences whose tokens are predominantly from a chosen high‑frequency list (e.g., ≥95% in‑list), enforce a short length band (4–8 words), and rank to produce ~500 top sentences optimized for drilling.
+- Primary user: Stan and learners seeking high‑efficiency auditory repetition, driven by Zipf’s Law.
 
-- Backend: Flask + Celery, SQLAlchemy models, Marshmallow schemas
-- Frontend: Next.js 15 (App Router) + React Query v5 + MUI
-- Data Source: Sentences from an existing History entry (preferred) or completed Job
-- Word Source: Google Sheet URL/ID (primary) or CSV upload (fallback)
-- Processing: Async Celery task with WebSocket progress events
-- Output: CoverageRun + CoverageAssignment; export to Google Sheets
-
-New/Updated Components:
-- WordListService (new): imports & normalizes the 2,000 words
-- CoverageService (new): indexing, scoring, greedy cover, uniqueness post-process
-- Linguistics utils (new): tokenization + lemmatization + normalization rules
-- GoogleSheets integration (existing): read sheet (readonly), export results
+Both modes share the same ingestion, normalization, and matching pipeline (lemma‑first), but apply different selection criteria and ranking.
 
 ---
 
-## Data Model
+## Acceptance Criteria (High Level)
 
-1) CoverageRun
-- id (PK), user_id (FK)
-- source_type: 'history' | 'job'; source_id
-- wordlist_source: 'google_sheet' | 'csv'
-- wordlist_ref: string (sheet URL/ID or uploaded file name)
-- config_json: JSON (normalize_mode='lemma' default, ignore_diacritics=true, handle_elisions=true, target_sentence_length, max_sentences, alpha, beta, gamma, prefer_non_dialogue, multiword_policy='headword', etc.)
+General
+- Word list management in Settings (upload CSV or import Google Sheet) and ability to set per‑user default; support multiple lists (e.g., 2K, 3K, 5K).
+- Executable from Job‑finish CTA, from a History entry, and from a standalone Coverage page; the run records which word list was used.
+
+Coverage Mode
+- Lemma‑based matching handles singular/plural nouns and any verb conjugation; alternatives and elisions normalized.
+- Selects a compact sentence set; for typical novels, targets < 600 sentences when feasible.
+- Per‑word uniqueness enforced “as far as possible,” with diagnostics for duplicates and uncovered words.
+
+Filter Mode (Vocabulary Filter)
+- Enforces sentence length band (default 4–8 tokens, configurable).
+- Enforces minimum in‑list token ratio per sentence (default ≥95%, configurable).
+- Outputs ~500 highest‑quality sentences (configurable target count) for drilling; ranked by frequency, clarity, and diversity (low repetition).
+- Exportable to Google Sheets; includes fields suitable for spaced‑repetition or audio drill apps.
+
+Ingestion Reporting
+- Lists duplicates, suspected typos, multi‑token decisions, zero‑width character anomalies.
+- Does not fail on anomalies; warns and continues with best‑effort normalization.
+
+---
+
+## High‑Level Architecture
+
+- Backend: Flask app, Celery workers, SQLAlchemy, Marshmallow schemas.
+- Frontend: Next.js (App Router), React Query, Zustand (or current store), MUI.
+- NLP: spaCy `fr_core_news_md` (preferred) with diacritic folding; plus inflection/conjugation table generation; curated irregulars map.
+- External: Google Sheets API for import/export with user OAuth.
+- Persistence: WordList, CoverageRun, CoverageAssignment, and UserSettings.
+
+---
+
+## Data Models
+
+WordList (new)
+- id (PK)
+- owner_user_id (nullable; NULL = global/default)
+- name (e.g., “French 2K Default”, “French 5K (user)”)
+- source_type: 'google_sheet' | 'csv' | 'manual'
+- source_ref: string (Sheet ID/URL or file name)
+- normalized_count: int
+- canonical_samples: JSON (small sample of normalized keys)
+- is_global_default: bool
+- created_at, updated_at
+
+CoverageRun (updated)
+- id, user_id
+- mode: 'coverage' | 'filter'
+- source_type: 'job' | 'history'
+- source_id: int
+- wordlist_id: FK WordList.id (nullable; default to user/global)
+- config_json: JSON
+  - normalize_mode ('lemma' default), ignore_diacritics (true), handle_elisions (true)
+  - coverage: alpha, beta, gamma, target_sentence_length, max_sentences, prefer_non_dialogue, topK_per_word_for_ILP
+  - filter: min_in_list_ratio (default 0.95), len_min (4), len_max (8), target_count (500), frequency_weighting, diversity_penalty
 - status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled'
 - progress_percent: int
-- stats_json: JSON
-  - words_total, words_deduped, duplicates_detected
-  - words_covered, words_uncovered
-  - sentences_selected, runtime_ms
-  - wordlist_report (anomalies, aliases)
-- timestamps, error_message
+- stats_json: JSON (ingestion_report, words_total/deduped/covered/uncovered, selected_count, runtime_ms, filter_acceptance_ratio, diversity metrics)
+- created_at, completed_at, error_message
 
-2) CoverageAssignment
-- id (PK), coverage_run_id (FK, indexed)
-- word_original: string
-- word_key: string (canonical key; lemma-based)
-- lemma: string (lemma; typically equals `word_key` unless policy differs)
-- matched_surface: string (actual surface token found, e.g., “étais” for lemma “être”)
-- sentence_index: int
-- sentence_text: text (snapshot)
-- sentence_score: float
-- conflicts: JSON (other target words in same sentence; diagnostic)
-- notes: text
-- UNIQUE(coverage_run_id, word_key)
+CoverageAssignment
+- id, coverage_run_id (FK)
+- word_original, word_key, lemma
+- matched_surface
+- sentence_index, sentence_text, sentence_score
+- conflicts: JSON
+- manual_edit: bool
+- notes
+
+UserSettings (extend)
+- default_wordlist_id: FK WordList.id (nullable)
+- coverage_defaults_json (including default mode, thresholds)
 
 ---
 
-## Algorithm (Greedy Set Cover with Uniqueness and Quality)
+## Word List Ingestion Policy
 
-Outline:
-1) Load sentences (History/Job), normalize tokens per sentence (lemma-based).
-2) Build inverted index: `word_key -> [sentence indices]`.
-3) Precompute sentence quality score (length, clarity, optionally non-dialogue).
-4) Greedy selection with objective:
-   - score = gain(uncovered words) − α·duplicate_penalty + β·quality − γ·length_penalty
-5) Assign newly covered words to the chosen sentence (first-assignment wins).
-6) Post-process to reduce duplicates (reassign words among selected sentences if it improves uniqueness without losing coverage).
-7) Persist assignments, stats, and reports.
-
-Defaults:
-- alpha=1.0, beta=0.3, gamma=0.1
-- target_sentence_length=12
-- max_sentences=600
-- prefer_non_dialogue=true
+Inputs
+- CSV upload or Google Sheet URL/ID (single column by default; configurable tab/column).
+Normalization
+- Trim, remove zero‑width chars, split `|` and `/` variants.
+- Unicode casefold; fold diacritics (configurable).
+- Handle elisions (l’, d’, j’, n’, s’, t’, c’, qu’) → lexical head.
+- For multi‑token entries (“Un temps”), default policy extracts head lexical token; flag in report.
+- Lemmatize to canonical `word_key`; build alias map (surface → key).
+Deduplication
+- Deduplicate by `word_key`; keep alias chains; build ingestion_report (duplicates, typos via fuzzy detect, anomalies).
+Persistence
+- Store WordList metadata and sample keys; optionally persist full normalized list for user lists.
 
 ---
 
-## Backend Implementation Plan (unchanged, refined)
+## Normalization & Matching Strategy
 
-- Add spaCy + unidecode to requirements; prefer `fr_core_news_md` model.
-- WordListService:
-  - load_from_google_sheet(url_or_id) using Sheets API (readonly) or public CSV export fallback
-  - load_from_csv(file_stream)
-  - normalize_words(words, config):
-    - split alternatives on `|` and `/`
-    - strip determiners/prepositions for multi-token entries; take head lexical token (configurable)
-    - diacritics/elision handling
-    - lemmatize to derive canonical `word_key`
-    - dedupe; build alias map and anomaly report
+Default: lemma‑based matching to satisfy singular/plural and verb conjugations.
+- Tokenize sentences with spaCy; fold diacritics if enabled; handle elisions; map tokens → lemma → canonical `word_key` via alias map.
+
+Multi‑pass fallback (for robustness)
+- Pass 1: lemma lookup (fast).
+- Pass 2: inflection table lookup (generated conjugations/plurals).
+- Pass 3: conservative fuzzy surface matching (Levenshtein threshold) on remaining words; log confidence.
+- Pass 4: human‑in‑the‑loop assignment for any residual.
+
+Confidence & audit trail
+- Each match carries source (“lemma”, “inflection”, “fuzzy”) and confidence for later review.
+
+---
+
+## Candidate Generation & Scoring
+
+Sentence constraints (shared)
+- Quality filters: length band, non‑dialogue preference, punctuation heuristics.
+- Quality score: length proximity to target, clarity/readability, optional metadata (e.g., avoid quoted dialogue if configured).
+
+Coverage Mode scoring
+- Gain = number of uncovered target words sentence covers.
+- Objective: score = gain − α·duplicate_penalty + β·quality − γ·length_penalty.
+
+Filter Mode scoring
+- In‑list ratio r = tokens_in_list / tokens_total.
+- Accept sentence if r ≥ min_in_list_ratio (default 0.95) and len_min ≤ tokens_total ≤ len_max (default 4–8).
+- Rank accepted sentences by:
+  - r (higher is better),
+  - frequency weighting (favor higher Zipf‑frequency tokens),
+  - diversity penalty (reduce near‑duplicate sentences),
+  - clarity/quality score.
+- Select top N (default 500; configurable). Provide stable ordering and seed for reproducibility.
+
+---
+
+## Selection Algorithms
+
+Coverage Mode
+- Stage 1: Greedy set‑cover (heap + lazy updates).
+- Stage 2: Optional ILP (OR‑Tools/pulp) over pruned top‑K candidates per word to minimize selected count and reduce duplicates; time‑capped; fallback to greedy if timeout.
+- Stage 3: Uniqueness post‑process; reassign to reduce duplicates; local swaps/hill‑climb.
+
+Filter Mode
+- Filter candidates via threshold (min ratio, length band).
+- Rank by composite score (ratio + frequency + diversity + quality).
+- Pick top N (default 500). Ensure minimal repetition by applying diversity penalty or clustering.
+
+---
+
+## APIs
+
+WordList management
+- GET /api/v1/wordlists — list global + user lists
+- POST /api/v1/wordlists — create (CSV upload or Sheet URL)
+- GET /api/v1/wordlists/:id — detail + ingestion report
+- PATCH /api/v1/wordlists/:id — rename/update (owner only)
+- DELETE /api/v1/wordlists/:id — delete (owner only)
+
+User settings
+- GET /api/v1/user/settings — returns default_wordlist_id, defaults
+- PATCH /api/v1/user/settings — update default_wordlist_id, defaults
+
+Coverage runs
+- POST /api/v1/coverage/run
+  - body: { mode: 'coverage'|'filter', source_type:'job'|'history', source_id:int, wordlist_id?:int, config?:{…} }
+  - behavior: use provided wordlist_id, else user default, else global default
+- GET /api/v1/coverage/runs/:id — status + summary + paginated assignments
+- POST /api/v1/coverage/runs/:id/swap — { word_key, new_sentence_index } (Coverage Mode) or swap/blacklist (Filter Mode)
+- POST /api/v1/coverage/runs/:id/reoptimize — local improvements (mode‑specific)
+- POST /api/v1/coverage/runs/:id/export — export to Google Sheets (summary + assignments)
+
+Integration hooks
+- Job finish CTA → POST /coverage/run with mode, job_id, chosen wordlist
+- History page CTA → similar, bound to history_id
+- Standalone Coverage page → choose mode, wordlist, and source
+
+---
+
+## Backend Implementation Notes
+
+Models & migrations
+- Create WordList; seed canonical “French 2K” as global default.
+- Add `mode` and `wordlist_id` to CoverageRun.
+- Extend UserSettings with `default_wordlist_id` and defaults JSON.
+
+Services
+- WordListService: ingestion, normalization, alias map, ingestion_report, store samples.
 - CoverageService:
-  - tokenize_and_normalize sentences using same pipeline (lemma mode default)
-  - build inverted index and scores
-  - greedy cover + post-process
-  - assemble assignments and stats
-- Endpoints:
-  - POST /api/v1/coverage/run (start async)
-  - GET /api/v1/coverage/runs/:id (status/results)
-  - POST /api/v1/coverage/runs/:id/swap
-  - POST /api/v1/coverage/runs/:id/reoptimize
-  - POST /api/v1/coverage/runs/:id/export (Google Sheets)
-- Celery task coverage_build_async(run_id):
-  - read & normalize word list (Sheet/CSV) → store stats/aliases
-  - load source sentences → normalize (lemma-based)
-  - build coverage → persist → emit WS progress
+  - Coverage Mode: indexing, greedy, optional ILP, post‑process.
+  - Filter Mode: ratio calculation, ranking, diversity, top‑N selection.
+- Linguistics utils: spaCy tokenization/lemmatization, diacritic folding, elisions; conjugation/plural generators; curated irregulars.
+- GoogleSheetsService: import/export helpers.
 
-Error handling:
-- Do not fail on list anomalies; warn and continue
-- 422 for empty/invalid list after normalization (e.g., all entries filtered out)
+Celery task
+- coverage_build_async(run_id): load WordList, normalize sentences, run selected mode, persist assignments and stats, stream progress via WebSocket, handle errors gracefully.
+
+Performance & caching
+- Cache normalized keys for WordList; cache sentence tokenization per run (hash).
+- Parallelize tokenization; use efficient data structures (sets/bitsets).
+- Time‑cap ILP; record approximate flag if fallback used.
 
 ---
 
-## Frontend Plan (unchanged, refined)
+## Frontend Implementation Notes
 
-- Start Coverage UI:
-  - Source selection (History or Job)
-  - Word list source: paste Google Sheet URL/ID or upload CSV
-  - Explain morphology support (singular/plural, verb conjugations via lemma)
-  - Settings (weights, max sentences)
-  - Submit and track progress
-- Results UI:
-  - KPIs (covered/total, selected sentences, uncovered)
-  - Assignments table: Word (original) | Lemma/Key | Matched Surface | Sentence | Score | Actions (Swap)
-  - Filters (uncovered only, search)
-  - Swap with candidate suggestions
-  - Export to Google Sheets
-- Hooks (React Query) for start, fetch, swap, reoptimize, export
+Settings page (Vocabulary Coverage)
+- WordList management: list global + user lists, upload CSV, import Sheet, set default.
+- Show ingestion preview/report before saving.
+- Defaults editor: mode, thresholds (min ratio, len band, target count).
 
----
+Standalone Coverage page (/coverage)
+- Mode selector: Coverage | Filter.
+- WordList selector (global + user); import/upload affordance.
+- Source selector: recent Jobs, History search, or direct ID entry.
+- Settings panel: mode‑specific.
+- Start Run → progress → results view.
 
-## Testing & Validation (include list ingestion QA)
+Job finish / History CTAs
+- Compact modal with mode, wordlist preview, quick settings; default to Filter Mode for Stan’s flow.
 
-Backend:
-- Word list normalization:
-  - Alternatives: `Le|La` → `le`, `la` → key `le` (determinant entries may remain separate targets; configurable aggregation)
-  - Elisions: `Jusque/Jusqu’` → `jusque` key
-  - Multi-token entries: `Un temps` → headword `temps` (and note choice)
-  - Deduplication: detect and collapse duplicates (e.g., “Bien” occurring twice)
-  - Typos: flag unknown tokens (e.g., “disours”) for report; allow manual correction path in future
-- Morphology:
-  - Noun plurals map to lemma (chevaux→cheval)
-  - Verb conjugations map to lemma (étais/seront→être)
-- Coverage on small fixture:
-  - Deterministic greedy outcome with fixed config
-  - Post-process reduces duplicates without losing coverage
-- End-to-end:
-  - Start run with the provided 2,000-word sheet; ensure stats align with expectations (deduped size, anomalies reported)
-
-Frontend:
-- Start dialog validates Sheet URL/CSV presence
-- Results render; swap updates stats; export yields valid sheet link
+Results UI
+- Summary KPIs; ingestion report link.
+- Coverage Mode: assignments table per word with swap/reassign.
+- Filter Mode: ranked sentence list (4–8 words, ≥95% in‑list), diversity indicators, blacklist/swap options.
+- Export to Sheets with tabs: Summary, Selected Sentences (filter) or Assignments (coverage).
 
 ---
 
-## Performance & Observability
+## Optimization & Hardening (Toward “Bulletproof”)
 
-- Cache sentence tokenization per run; consider cross-run cache (keyed by sentence hash + config)
+- Ensemble morphology: spaCy + generated inflections + curated irregulars.
+- Multi‑pass matching with confidence scoring.
+- Candidate pruning + ILP (Coverage) with time cap + fallback.
+- Diversity controls (Filter) to avoid near‑duplicates; optional clustering.
+- Human‑in‑the‑loop UI to reach 100% when corpus coverage exists.
+- Extensive tests around normalization, ratios, and solver behavior.
+
+---
+
+## Testing Strategy
+
+Backend unit tests
+- Ingestion normalization: `|` and `/`, diacritics, elisions, multi‑token headword policy, duplicates, zero‑width chars.
+- Morphology: plural nouns and verb conjugations → lemma mapping.
+- Coverage Mode: greedy correctness on fixtures; ILP feasibility within caps.
+- Filter Mode: ratio computation, ranking stability, diversity penalty behavior.
+Backend integration
+- WordList CRUD; Settings default; run creation with/without explicit wordlist_id; CTAs.
+- End‑to‑end small corpus tests (both modes); export works.
+Frontend tests
+- Settings flows (upload/import/default).
+- Standalone Coverage page flows (modes).
+- Results interactions: swap, blacklist, reoptimize, export.
+
+---
+
+## Observability & Metrics
+
 - Metrics:
-  - coverage_runs_total{status}
-  - coverage_build_duration_seconds
-  - words_total, words_deduped, words_covered, words_uncovered
-  - sentences_selected
+  - `wordlists_total{owner=global|user}`
+  - `coverage_runs_total{status,mode}`
+  - `coverage_build_duration_seconds{mode}`
+  - `coverage_sentences_selected` (coverage) / `filter_sentences_selected` (filter)
+  - `filter_acceptance_ratio` (accepted/total)
 - Logs:
-  - Wordlist anomalies report (duplicates, typos, multi-token resolutions)
-  - Top-gain sentences during greedy
+  - Ingestion reports, unmatched words, solver timeouts, diversity stats
+- Alerts:
+  - Repeated failures/timeouts, low acceptance ratio for filter (< threshold), ingestion anomalies spike
+
+---
+
+## Security & Governance
+
+- JWT on all endpoints; ownership checks for WordList CRUD.
+- User WordLists private; global lists admin‑managed.
+- Rate limits on uploads and runs; sanitize uploads.
+- Google OAuth for Sheet access; store only IDs/URLs, not content.
+
+---
+
+## Performance & Scaling
+
+- Typical corpus 5k–15k sentences; word lists up to 5k keys.
+- Coverage: greedy + pruned ILP runs within seconds to tens of seconds.
+- Filter: linear pass for ratios + ranking; fast; scalable to large corpora with streaming candidates and partial sort.
 
 ---
 
 ## Rollout Plan
 
-1) Backend
-   - Models + migration
-   - WordListService and CoverageService
-   - Async task + WS integration
-2) Frontend
-   - Start dialog + results + swap + export
-3) QA
-   - Validate with the provided 2,000-word sheet and representative History
-   - Tune defaults (alpha/beta/gamma, max sentences)
-4) Production
-   - Feature flag `VOCAB_COVERAGE_ENABLED`
-   - Monitor metrics and logs
+1) MVP (≈1 week)
+- WordList model + seed global 2K.
+- CSV upload + normalization and Settings default.
+- POST /coverage/run with modes ('coverage' initial + 'filter' basic).
+- Standalone page, CTAs, basic results, export.
+
+2) Harden (2–3 weeks)
+- Inflection tables; multi‑pass matching with confidence.
+- ILP optimization for Coverage; diversity/clustering for Filter.
+- Ingestion report UI; robust tests and monitoring.
+
+3) Production polish (≈1 week)
+- Quotas, retention policies; admin tools for global lists.
+- Feature flag rollout and performance tuning.
 
 ---
 
-## Acceptance Criteria
+## Deliverables
 
-- User can select a History (or Job), link the provided Google Sheet (or upload CSV), and run coverage.
-- Matching respects morphological variants (singular/plural nouns; any verb conjugations) via lemma-based normalization.
-- The tool covers as many of the 2,000 targets as possible with minimal sentences, ideally < 600.
-- Each word is assigned to at most one sentence when feasible; duplicates minimized.
-- Word list anomalies are handled gracefully and reported (dedupes, typos, multi-token rule decisions).
-- Users can swap assignments and export results to Google Sheets.
-- Documentation and tests are updated accordingly.
+- Alembic migrations (WordList, CoverageRun updates, UserSettings extension).
+- Python services (WordListService, CoverageService, Linguistics utils), Celery task.
+- REST endpoints & Marshmallow schemas.
+- Frontend Settings page, Standalone Coverage, Job/History CTAs, Results UI.
+- Tests (unit/integration/frontend) and dashboards.
+- Documentation: user guide (Settings, Coverage vs Filter), API docs.
+
+---
+
+## Risk Summary & Mitigations
+
+- Lemmatizer misses edge cases → ensemble morphology + curated irregulars + tests.
+- Solver runtime spikes → prune candidates + time caps + heuristic fallback.
+- Data anomalies → ingestion report + user confirmation step.
+- UX complexity → clear defaults (Filter Mode for Stan), concise CTAs, progressive disclosure.
 
 ---
 
-## Notes on the Provided 2,000-Word List
+## Notes on Client‑Driven Defaults (Stan’s Flow)
 
-- Expect multiple-form entries (`|` and `/`) and multi-token entries with articles or function words (e.g., “Un temps”, “Le monde”).
-  - V1 policy: target the head lexical token (temps, monde) while keeping original text in reports.
-- Duplicates exist (e.g., “Bien” appears at least twice); we will deduplicate by canonical key.
-- Some rows contain typos and POS inconsistencies; POS will not be used for lemmatization.
-- Hidden/zero-width characters appear around some indices; indices will be sanitized.
-- Gloss capitalization is irrelevant for matching and retained only for export.
-
-These decisions ensure robust ingestion and consistency with our lemma-based matching requirement.
-
----
+- Default Mode: Filter.
+- Default List: French 2K global (user can pick 3K/5K).
+- Default Thresholds: min_in_list_ratio = 0.95; len_min = 4; len_max = 8; target_count = 500.
+- Default Ranking: frequency‑weighted with diversity penalty to avoid near‑duplicates.
+- Daily Drill Plan: export 500 sentences; user drills 50/day for ~10 days (supports spreadsheet tabs or tags for batching).
