@@ -22,3 +22,5 @@ psycopg2-binary==2.9.9
 PyPDF2==3.0.1
 eventlet==0.35.2
 python-socketio==5.11.2
+spacy==3.7.2
+unicodedata2==15.1.0

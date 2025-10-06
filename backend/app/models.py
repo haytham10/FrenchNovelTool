@@ -106,6 +106,12 @@ class UserSettings(db.Model):
     preserve_formatting = db.Column(db.Boolean, default=True)
     fix_hyphenation = db.Column(db.Boolean, default=True)
     min_sentence_length = db.Column(db.Integer, default=2)
+    # Vocabulary coverage defaults
+    default_wordlist_id = db.Column(db.Integer, db.ForeignKey('word_lists.id'), nullable=True)
+    coverage_defaults_json = db.Column(db.JSON, nullable=True)  # Default mode, thresholds
+    
+    # Relationships
+    default_wordlist = db.relationship('WordList', foreign_keys=[default_wordlist_id])
     
     def __repr__(self):
         return f'<UserSettings user_id={self.user_id} sentence_length_limit={self.sentence_length_limit}>'
@@ -117,7 +123,9 @@ class UserSettings(db.Model):
             'ignore_dialogue': self.ignore_dialogue,
             'preserve_formatting': self.preserve_formatting,
             'fix_hyphenation': self.fix_hyphenation,
-            'min_sentence_length': self.min_sentence_length
+            'min_sentence_length': self.min_sentence_length,
+            'default_wordlist_id': self.default_wordlist_id,
+            'coverage_defaults': self.coverage_defaults_json or {}
         }
 
 
@@ -342,4 +350,138 @@ class JobChunk(db.Model):
             'end_page': self.end_page,
             'page_count': self.page_count,
             'has_overlap': self.has_overlap,
+        }
+
+
+class WordList(db.Model):
+    """Model for storing vocabulary word lists (e.g., French 2K, 5K)"""
+    __tablename__ = 'word_lists'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    owner_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
+    name = db.Column(db.String(255), nullable=False)
+    source_type = db.Column(db.String(50), nullable=False)  # 'google_sheet', 'csv', 'manual'
+    source_ref = db.Column(db.String(512), nullable=True)  # Sheet ID/URL or file name
+    normalized_count = db.Column(db.Integer, nullable=False, default=0)
+    canonical_samples = db.Column(db.JSON, nullable=True)  # Small sample of normalized keys
+    is_global_default = db.Column(db.Boolean, default=False, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    owner = db.relationship('User', backref='word_lists', foreign_keys=[owner_user_id])
+    coverage_runs = db.relationship('CoverageRun', backref='wordlist', lazy='dynamic', 
+                                   cascade='all, delete-orphan')
+    
+    __table_args__ = (
+        Index('idx_wordlist_owner_name', 'owner_user_id', 'name'),
+    )
+    
+    def __repr__(self):
+        return f'<WordList id={self.id} name={self.name} owner={self.owner_user_id}>'
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'owner_user_id': self.owner_user_id,
+            'name': self.name,
+            'source_type': self.source_type,
+            'source_ref': self.source_ref,
+            'normalized_count': self.normalized_count,
+            'canonical_samples': self.canonical_samples or [],
+            'is_global_default': self.is_global_default,
+            'created_at': self.created_at.isoformat() + 'Z',
+            'updated_at': self.updated_at.isoformat() + 'Z' if self.updated_at else None
+        }
+
+
+class CoverageRun(db.Model):
+    """Model for tracking vocabulary coverage analysis runs"""
+    __tablename__ = 'coverage_runs'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    mode = db.Column(db.String(20), nullable=False, index=True)  # 'coverage' or 'filter'
+    source_type = db.Column(db.String(20), nullable=False)  # 'job' or 'history'
+    source_id = db.Column(db.Integer, nullable=False, index=True)
+    wordlist_id = db.Column(db.Integer, db.ForeignKey('word_lists.id'), nullable=True, index=True)
+    config_json = db.Column(db.JSON, nullable=True)
+    status = db.Column(db.String(20), nullable=False, default='pending', index=True)
+    progress_percent = db.Column(db.Integer, default=0)
+    stats_json = db.Column(db.JSON, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    completed_at = db.Column(db.DateTime, nullable=True)
+    error_message = db.Column(db.String(512), nullable=True)
+    celery_task_id = db.Column(db.String(155), nullable=True, index=True)
+    
+    # Relationships
+    user = db.relationship('User', backref='coverage_runs')
+    assignments = db.relationship('CoverageAssignment', backref='coverage_run', lazy='dynamic',
+                                 cascade='all, delete-orphan')
+    
+    __table_args__ = (
+        Index('idx_coverage_run_user_status', 'user_id', 'status'),
+        Index('idx_coverage_run_source', 'source_type', 'source_id'),
+    )
+    
+    def __repr__(self):
+        return f'<CoverageRun id={self.id} mode={self.mode} status={self.status}>'
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'mode': self.mode,
+            'source_type': self.source_type,
+            'source_id': self.source_id,
+            'wordlist_id': self.wordlist_id,
+            'config_json': self.config_json or {},
+            'status': self.status,
+            'progress_percent': self.progress_percent,
+            'stats_json': self.stats_json or {},
+            'created_at': self.created_at.isoformat() + 'Z',
+            'completed_at': self.completed_at.isoformat() + 'Z' if self.completed_at else None,
+            'error_message': self.error_message,
+            'celery_task_id': self.celery_task_id
+        }
+
+
+class CoverageAssignment(db.Model):
+    """Model for storing word-to-sentence assignments in coverage runs"""
+    __tablename__ = 'coverage_assignments'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    coverage_run_id = db.Column(db.Integer, db.ForeignKey('coverage_runs.id'), nullable=False, index=True)
+    word_original = db.Column(db.String(255), nullable=True)  # Original word from list
+    word_key = db.Column(db.String(255), nullable=False, index=True)  # Normalized key
+    lemma = db.Column(db.String(255), nullable=True)  # Lemmatized form
+    matched_surface = db.Column(db.String(255), nullable=True)  # Surface form found in sentence
+    sentence_index = db.Column(db.Integer, nullable=False)  # Index in source sentences
+    sentence_text = db.Column(db.Text, nullable=False)
+    sentence_score = db.Column(db.Float, nullable=True)  # Quality/ranking score
+    conflicts = db.Column(db.JSON, nullable=True)  # Conflict information
+    manual_edit = db.Column(db.Boolean, default=False)
+    notes = db.Column(db.Text, nullable=True)
+    
+    __table_args__ = (
+        Index('idx_coverage_assignment_run_word', 'coverage_run_id', 'word_key'),
+    )
+    
+    def __repr__(self):
+        return f'<CoverageAssignment run_id={self.coverage_run_id} word={self.word_key}>'
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'coverage_run_id': self.coverage_run_id,
+            'word_original': self.word_original,
+            'word_key': self.word_key,
+            'lemma': self.lemma,
+            'matched_surface': self.matched_surface,
+            'sentence_index': self.sentence_index,
+            'sentence_text': self.sentence_text,
+            'sentence_score': self.sentence_score,
+            'conflicts': self.conflicts or {},
+            'manual_edit': self.manual_edit,
+            'notes': self.notes
         }

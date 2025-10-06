@@ -919,3 +919,124 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
             pass
         except Exception:
             pass
+
+
+@get_celery().task(bind=True, name='app.tasks.coverage_build_async')
+def coverage_build_async(self, run_id: int):
+    """
+    Asynchronously build vocabulary coverage analysis.
+    
+    Args:
+        run_id: CoverageRun ID to process
+    """
+    from app.models import CoverageRun, CoverageAssignment, WordList, History, Job
+    from app.services.coverage_service import CoverageService
+    from app.services.wordlist_service import WordListService
+    
+    db = get_db()
+    logger.info(f"Starting coverage build for run_id={run_id}")
+    
+    try:
+        # Get the coverage run
+        coverage_run = CoverageRun.query.get(run_id)
+        if not coverage_run:
+            logger.error(f"CoverageRun {run_id} not found")
+            return
+        
+        # Update status
+        coverage_run.status = 'processing'
+        coverage_run.celery_task_id = self.request.id
+        safe_db_commit(db)
+        
+        # Load word list
+        wordlist_id = coverage_run.wordlist_id
+        if not wordlist_id:
+            # Use global default
+            wordlist = WordListService.get_global_default_wordlist()
+            if not wordlist:
+                raise ValueError("No word list specified and no global default found")
+            wordlist_id = wordlist.id
+            coverage_run.wordlist_id = wordlist_id
+            safe_db_commit(db)
+        else:
+            wordlist = WordList.query.get(wordlist_id)
+            if not wordlist:
+                raise ValueError(f"WordList {wordlist_id} not found")
+        
+        # Get sentences from source
+        sentences = []
+        if coverage_run.source_type == 'history':
+            history = History.query.get(coverage_run.source_id)
+            if not history or not history.sentences:
+                raise ValueError(f"History {coverage_run.source_id} not found or has no sentences")
+            # Extract normalized sentences
+            sentences = [s.get('normalized', s.get('original', '')) for s in history.sentences]
+        elif coverage_run.source_type == 'job':
+            job = Job.query.get(coverage_run.source_id)
+            if not job or not job.chunk_results:
+                raise ValueError(f"Job {coverage_run.source_id} not found or has no results")
+            # Extract sentences from chunk results
+            for chunk_result in job.chunk_results:
+                chunk_sentences = chunk_result.get('sentences', [])
+                sentences.extend([s.get('normalized', s.get('original', '')) for s in chunk_sentences])
+        else:
+            raise ValueError(f"Unknown source_type: {coverage_run.source_type}")
+        
+        if not sentences:
+            raise ValueError("No sentences found in source")
+        
+        logger.info(f"Processing {len(sentences)} sentences with word list '{wordlist.name}'")
+        
+        # Build word list keys (for now, use samples as proxy; in production, load full list)
+        # TODO: Store full normalized word list for efficiency
+        wordlist_keys = set(wordlist.canonical_samples or [])
+        if not wordlist_keys:
+            raise ValueError("WordList has no canonical samples")
+        
+        # Initialize coverage service
+        config = coverage_run.config_json or {}
+        coverage_service = CoverageService(wordlist_keys, config)
+        
+        # Run appropriate mode
+        if coverage_run.mode == 'coverage':
+            assignments_data, stats = coverage_service.coverage_mode_greedy(sentences)
+        elif coverage_run.mode == 'filter':
+            assignments_data, stats = coverage_service.filter_mode(sentences)
+        else:
+            raise ValueError(f"Unknown mode: {coverage_run.mode}")
+        
+        # Save assignments to database
+        for assignment_data in assignments_data:
+            assignment = CoverageAssignment(
+                coverage_run_id=run_id,
+                word_original=assignment_data.get('word_original'),
+                word_key=assignment_data['word_key'],
+                lemma=assignment_data.get('lemma'),
+                matched_surface=assignment_data.get('matched_surface'),
+                sentence_index=assignment_data['sentence_index'],
+                sentence_text=assignment_data['sentence_text'],
+                sentence_score=assignment_data.get('sentence_score')
+            )
+            db.session.add(assignment)
+        
+        # Update run with stats
+        coverage_run.stats_json = stats
+        coverage_run.status = 'completed'
+        coverage_run.progress_percent = 100
+        coverage_run.completed_at = datetime.utcnow()
+        
+        safe_db_commit(db)
+        logger.info(f"Coverage build completed for run_id={run_id}")
+        
+    except Exception as e:
+        logger.exception(f"Error in coverage_build_async for run_id={run_id}: {e}")
+        try:
+            coverage_run = CoverageRun.query.get(run_id)
+            if coverage_run:
+                coverage_run.status = 'failed'
+                coverage_run.error_message = str(e)[:512]
+                safe_db_commit(db)
+        except Exception:
+            pass
+        raise
+
