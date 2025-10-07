@@ -210,6 +210,45 @@ def update_wordlist(wordlist_id):
         return jsonify({'error': str(e)}), 500
 
 
+@coverage_bp.route('/wordlists/<int:wordlist_id>/refresh', methods=['POST'])
+@jwt_required()
+def refresh_wordlist(wordlist_id):
+    """Refresh/populate words_json from source for a wordlist"""
+    user_id = int(get_jwt_identity())
+    
+    # Get wordlist (must be owned by user or be global)
+    wordlist = WordList.query.filter(
+        db.and_(
+            WordList.id == wordlist_id,
+            db.or_(
+                WordList.owner_user_id == user_id,
+                WordList.owner_user_id.is_(None)  # Global lists
+            )
+        )
+    ).first()
+    
+    if not wordlist:
+        return jsonify({'error': 'WordList not found'}), 404
+    
+    # Get user for Google Sheets access
+    from app.models import User
+    user = User.query.get(user_id)
+    
+    try:
+        wordlist_service = WordListService()
+        refresh_report = wordlist_service.refresh_wordlist_from_source(wordlist, user)
+        db.session.commit()
+        
+        return jsonify({
+            'wordlist': wordlist.to_dict(),
+            'refresh_report': refresh_report
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        logger.exception(f"Error refreshing word list: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @coverage_bp.route('/wordlists/<int:wordlist_id>', methods=['DELETE'])
 @jwt_required()
 def delete_wordlist(wordlist_id):

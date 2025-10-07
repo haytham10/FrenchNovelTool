@@ -780,6 +780,16 @@ export const deleteWordList = async (wordlistId: number): Promise<void> => {
 };
 
 /**
+ * Refresh a word list from its source (re-populate words_json)
+ */
+export const refreshWordList = async (
+  wordlistId: number
+): Promise<{ wordlist: WordList; refresh_report: { status: string; word_count: number; source: string } }> => {
+  const response = await api.post(`/wordlists/${wordlistId}/refresh`);
+  return response.data;
+};
+
+/**
  * Create and start a coverage run
  */
 export const createCoverageRun = async (params: {

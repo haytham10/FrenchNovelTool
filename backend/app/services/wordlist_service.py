@@ -236,6 +236,92 @@ class WordListService:
         """Get the global default word list."""
         return WordList.query.filter_by(is_global_default=True).first()
     
+    def refresh_wordlist_from_source(self, wordlist: WordList, user=None) -> Dict:
+        """
+        Refresh/populate words_json for a wordlist from its original source.
+        Useful for wordlists created before words_json was added.
+        
+        Args:
+            wordlist: WordList object to refresh
+            user: User object (required if source is Google Sheets)
+            
+        Returns:
+            Dict with refresh report
+        """
+        if wordlist.words_json and len(wordlist.words_json) > 0:
+            logger.info(f"WordList {wordlist.id} already has words_json with {len(wordlist.words_json)} words")
+            return {
+                'status': 'already_populated',
+                'word_count': len(wordlist.words_json)
+            }
+        
+        words = []
+        
+        if wordlist.source_type == 'google_sheet' and wordlist.source_ref:
+            if not user or not user.google_access_token:
+                raise ValueError("Google Sheets source requires authenticated user with Google access")
+            
+            try:
+                from app.services.auth_service import AuthService
+                from app.services.google_sheets_service import GoogleSheetsService
+                
+                auth_service = AuthService()
+                creds = auth_service.get_user_credentials(user)
+                sheets_service = GoogleSheetsService()
+                
+                # Fetch from sheet (column A by default)
+                words = sheets_service.fetch_words_from_spreadsheet(
+                    creds,
+                    spreadsheet_id=wordlist.source_ref,
+                    column='A',
+                    include_header=False
+                )
+                logger.info(f"Fetched {len(words)} words from Google Sheet {wordlist.source_ref}")
+            except Exception as e:
+                logger.exception(f"Failed to refresh wordlist {wordlist.id} from Google Sheets: {e}")
+                raise ValueError(f"Failed to fetch from Google Sheet: {str(e)}")
+        
+        elif wordlist.canonical_samples:
+            # Use canonical samples as fallback
+            words = wordlist.canonical_samples
+            logger.warning(f"WordList {wordlist.id} using canonical_samples ({len(words)} words) as fallback")
+        else:
+            raise ValueError(f"WordList {wordlist.id} has no source to refresh from")
+        
+        if not words:
+            raise ValueError("No words found to refresh wordlist")
+        
+        # Re-ingest to normalize
+        normalized_keys = set()
+        for word in words:
+            if not word or not word.strip():
+                continue
+            variants = self.split_variants(word)
+            for variant in variants:
+                # Handle multi-token
+                tokens = variant.split()
+                if len(tokens) > 1:
+                    variant = self.extract_head_token(variant)
+                
+                normalized = self.normalize_word(variant, fold_diacritics=True)
+                if normalized:
+                    normalized_keys.add(normalized)
+        
+        # Update wordlist
+        wordlist.words_json = sorted(list(normalized_keys))
+        wordlist.normalized_count = len(normalized_keys)
+        if not wordlist.canonical_samples:
+            wordlist.canonical_samples = sorted(list(normalized_keys))[:20]
+        wordlist.updated_at = datetime.utcnow()
+        
+        logger.info(f"Refreshed WordList {wordlist.id} with {len(normalized_keys)} normalized words")
+        
+        return {
+            'status': 'refreshed',
+            'word_count': len(normalized_keys),
+            'source': wordlist.source_type
+        }
+    
     @staticmethod
     def delete_wordlist(wordlist_id: int, user_id: int) -> bool:
         """

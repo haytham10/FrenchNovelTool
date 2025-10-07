@@ -1218,11 +1218,30 @@ def coverage_build_async(self, run_id: int):
             # Fallback to canonical samples if full list not available
             wordlist_keys = set(wordlist.canonical_samples)
             logger.warning(f"WordList {wordlist_id} has no words_json, using {len(wordlist_keys)} canonical samples")
+            
+            # Auto-refresh wordlist if it has a Google Sheets source
+            if wordlist.source_type == 'google_sheet' and wordlist.source_ref:
+                logger.info(f"Attempting to refresh WordList {wordlist_id} from Google Sheets source")
+                try:
+                    # Get user for credentials
+                    from app.models import User
+                    user = User.query.get(coverage_run.user_id)
+                    if user and user.google_access_token:
+                        wordlist_service = WordListService()
+                        refresh_report = wordlist_service.refresh_wordlist_from_source(wordlist, user)
+                        safe_db_commit(db)
+                        if refresh_report['status'] == 'refreshed':
+                            wordlist_keys = set(wordlist.words_json)
+                            logger.info(f"Successfully refreshed WordList {wordlist_id}: {refresh_report['word_count']} words")
+                    else:
+                        logger.warning(f"Cannot refresh WordList {wordlist_id}: user has no Google access token")
+                except Exception as e:
+                    logger.warning(f"Failed to auto-refresh WordList {wordlist_id}: {e}")
         else:
             raise ValueError(f"WordList {wordlist_id} has no words_json or canonical_samples")
         
         if not wordlist_keys:
-            raise ValueError(f"WordList {wordlist_id} is empty")
+            raise ValueError(f"WordList {wordlist_id} is empty after loading")
         
         # Initialize coverage service
         config = coverage_run.config_json or {}
