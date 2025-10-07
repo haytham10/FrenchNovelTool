@@ -24,5 +24,4 @@ eventlet
 python-socketio
 spacy
 unicodedata2
-fr_core_news_md
 prometheus-client
