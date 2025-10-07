@@ -1,9 +1,13 @@
 """Service for Google Sheets and Drive API interactions"""
 import os
+import re
+import logging
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from flask import current_app
+
+logger = logging.getLogger(__name__)
 
 
 class GoogleSheetsService:
@@ -16,7 +20,7 @@ class GoogleSheetsService:
             creds: Authorized user credentials
             spreadsheet_id: The spreadsheet ID
             sheet_title: Optional specific sheet/tab title; if None, use the first sheet
-            column: Column letter to read from (default 'A')
+            column: Column letter to read from (default 'B')
             include_header: Whether to include the first row (header) in the results
 
         Returns:
@@ -36,25 +40,90 @@ class GoogleSheetsService:
                 current_app.logger.error(f'Failed to read spreadsheet metadata: {e}')
                 raise
 
-        # Read values from the specified column
-        range_name = f"{sheet_title}!{column}:{column}"
-        result = sheets_service.spreadsheets().values().get(
-            spreadsheetId=spreadsheet_id,
-            range=range_name
-        ).execute()
-        values = result.get('values', [])
+        def _read_column(col: str) -> list[list[str]]:
+            rng = f"{sheet_title}!{col}:{col}"
+            res = sheets_service.spreadsheets().values().get(
+                spreadsheetId=spreadsheet_id,
+                range=rng
+            ).execute()
+            return res.get('values', [])
+
+        # Read values from the preferred column
+        values = _read_column(column)
 
         # Flatten and clean
         words: list[str] = []
-        start_index = 0 if include_header else 1  # skip header by default
+        
+        # Optionally skip first row if it looks like a header (controlled by include_header)
+        start_index = 0
+        if not include_header and values and len(values) > 0:
+            first_cell = str(values[0][0]).strip().lower()
+            # Common header patterns
+            if first_cell in ('index', 'word', 'mot', 'term', 'french', 'uni|une', 'a|an'):
+                start_index = 1
+                logger.info(f"Skipping header row: {values[0][0]}")
+        
         for idx, row in enumerate(values):
             if idx < start_index:
                 continue
             if not row:
                 continue
+            
             cell = str(row[0]).strip()
+            if not cell:
+                continue
+
+            # Remove leading numeric indices that may be present in the same cell (e.g. "1 Un|Une")
+            # This handles cases where index and word are in the same cell
+            cell = re.sub(r'^\s*\d+\s*[-.:)\]]*\s*', '', cell)
+
+            # Skip if it's just a number (standalone index)
+            if re.match(r'^\d+$', cell):
+                continue
+            
+            # Skip common header labels (but be more conservative)
+            lower = cell.lower()
+            if lower in ('index', 'word', 'mot', 'term', 'sentence', 'sentence_text', 'word_text', 'part of speech', 'pos', 'translation', 'english'):
+                continue
+
+            # Valid word - add it (variants will be split by WordListService)
             if cell:
                 words.append(cell)
+        
+        # If almost nothing found, try fallback column (common layout: A=french, B=english)
+        if len(words) < 10 and column.upper() == 'B':
+            logger.info("Few words detected in column B, attempting fallback to column A")
+            values_a = _read_column('A')
+            words_a: list[str] = []
+            if values_a:
+                # Reuse same cleaning logic for column A
+                start_index_a = 0
+                if not include_header and values_a and len(values_a) > 0:
+                    first_cell_a = str(values_a[0][0]).strip().lower()
+                    if first_cell_a in ('index', 'word', 'mot', 'term', 'french', 'uni|une', 'a|an'):
+                        start_index_a = 1
+                        logger.info(f"Skipping header row in A: {values_a[0][0]}")
+                for idx, row in enumerate(values_a):
+                    if idx < start_index_a:
+                        continue
+                    if not row:
+                        continue
+                    cell = str(row[0]).strip()
+                    if not cell:
+                        continue
+                    cell = re.sub(r'^\s*\d+\s*[-.:)\]]*\s*', '', cell)
+                    if re.match(r'^\d+$', cell):
+                        continue
+                    lower = cell.lower()
+                    if lower in ('index', 'word', 'mot', 'term', 'sentence', 'sentence_text', 'word_text', 'part of speech', 'pos', 'translation', 'english'):
+                        continue
+                    if cell:
+                        words_a.append(cell)
+            if len(words_a) > len(words):
+                logger.info(f"Using fallback column A with {len(words_a)} words (B had {len(words)})")
+                words = words_a
+
+        logger.info(f"Extracted {len(words)} words from column {column}. Sample: {words[:5]}")
         return words
     
     def export_to_sheet(self, creds, sentences, sheet_name="French Novel Sentences", folder_id=None,

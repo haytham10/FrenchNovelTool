@@ -6,6 +6,7 @@ from typing import Dict, List, Set, Tuple, Optional
 from datetime import datetime
 from app import db
 from app.models import WordList, CoverageRun, UserSettings
+from app.utils.metrics import wordlists_created_total, wordlist_ingestion_errors_total
 
 logger = logging.getLogger(__name__)
 
@@ -21,33 +22,42 @@ class WordListService:
     def normalize_word(word: str, fold_diacritics: bool = True) -> str:
         """
         Normalize a single word to its canonical form.
-        
+
         Args:
             word: Input word to normalize
             fold_diacritics: Whether to remove diacritics (default True)
-            
+
         Returns:
             Normalized word key
         """
         if not word:
             return ""
-        
+
         # Trim whitespace
         word = word.strip()
-        
+
         # Remove zero-width characters
         word = re.sub(r'[\u200b-\u200f\ufeff]', '', word)
+
+        # Remove surrounding quotes and apostrophes which often appear in spreadsheets
+        word = word.strip('"' + "'" + ' ')
         
-        # Handle elisions (l', d', j', n', s', t', c', qu')
+        # Remove leading numbers and punctuation (e.g. "1. avoir" -> "avoir")
+        word = re.sub(r'^\d+[.:\-)]?\s*', '', word)
+
+        # Handle elisions BEFORE removing apostrophes (l', d', j', n', s', t', c', qu')
         # Extract the lexical head after elision
         elision_pattern = r"^(?:l'|d'|j'|n'|s'|t'|c'|qu')\s*(.+)$"
         match = re.match(elision_pattern, word, re.IGNORECASE)
         if match:
             word = match.group(1)
-        
+        else:
+            # Remove internal apostrophes only if not an elision (aujourd'hui -> aujourdhui)
+            word = word.replace("'", "")
+
         # Unicode casefold for case-insensitive matching
         word = word.casefold()
-        
+
         # Fold diacritics if requested
         if fold_diacritics:
             # Decompose and remove combining marks
@@ -55,29 +65,31 @@ class WordListService:
                 c for c in unicodedata.normalize('NFD', word)
                 if unicodedata.category(c) != 'Mn'
             )
-        
+
         return word.strip()
     
     @staticmethod
     def split_variants(word: str) -> List[str]:
         """
         Split a word on | and / to get variants.
+        Also handles comma-separated variants.
         
         Args:
-            word: Input word potentially containing variants
+            word: Input word potentially containing variants (e.g. "Un|Une", "avoir/être")
             
         Returns:
             List of variant words
         """
-        # Split on | or /
-        variants = re.split(r'[|/]', word)
+        # Split on |, /, or comma (with optional spaces)
+        variants = re.split(r'\s*[|/,]\s*', word)
         return [v.strip() for v in variants if v.strip()]
     
     @staticmethod
     def extract_head_token(phrase: str) -> str:
         """
         For multi-token entries, extract the head lexical token.
-        Default policy: return first token.
+        Improved policy: skip common determiners/possessives/articles and return
+        the first lexical token. If all tokens are determiners, return the last token.
         
         Args:
             phrase: Multi-token phrase
@@ -86,7 +98,25 @@ class WordListService:
             Head token
         """
         tokens = phrase.split()
-        return tokens[0] if tokens else phrase
+        if not tokens:
+            return phrase
+
+        # Common French determiners/possessives/articles to skip when choosing head
+        skip = {
+            'le', 'la', 'les', 'l', "l'", 'un', 'une', 'des', 'du', 'de',
+            'mon', 'ma', 'mes', 'ton', 'ta', 'tes', 'son', 'sa', 'ses',
+            'notre', 'nos', 'votre', 'vos', 'leur', 'leurs',
+            'ce', 'cette', 'ces', 'cet', "d'", "j'"
+        }
+
+        for t in tokens:
+            t_clean = t.strip().lower().rstrip("'").strip()
+            # If token is not an article/determiner, return it as head
+            if t_clean not in skip and t_clean != '':
+                return t
+
+        # Fallback: return last token if all tokens were skip-words
+        return tokens[-1]
     
     def ingest_word_list(
         self,
@@ -186,6 +216,9 @@ class WordListService:
         db.session.add(wordlist)
         db.session.flush()  # Get the ID without committing
         
+        # Update metrics
+        wordlists_created_total.labels(source_type=source_type).inc()
+        
         logger.info(f"Ingested word list '{name}' with {len(normalized_keys)} normalized words")
         
         return wordlist, ingestion_report
@@ -269,12 +302,11 @@ class WordListService:
                 creds = auth_service.get_user_credentials(user)
                 sheets_service = GoogleSheetsService()
                 
-                # Fetch from sheet (column A by default)
+                # Fetch from sheet (auto-detect A/B with fallback)
                 words = sheets_service.fetch_words_from_spreadsheet(
                     creds,
                     spreadsheet_id=wordlist.source_ref,
-                    column='A',
-                    include_header=False
+                    include_header=True
                 )
                 logger.info(f"Fetched {len(words)} words from Google Sheet {wordlist.source_ref}")
             except Exception as e:

@@ -81,12 +81,16 @@ class LinguisticsUtils:
                 if unicodedata.category(c) != 'Mn'
             )
         
+        # Strip apostrophes which can cause matching issues
+        text = text.replace("'", "")
+        
         return text
     
     @staticmethod
     def handle_elision(word: str) -> str:
         """
         Handle French elisions (l', d', etc.) by extracting the lexical head.
+        This is a simple implementation; a more robust solution might use POS tagging.
         
         Args:
             word: Input word potentially with elision
@@ -94,10 +98,14 @@ class LinguisticsUtils:
         Returns:
             Word with elision removed
         """
-        elision_pattern = r"^(?:l'|d'|j'|n'|s'|t'|c'|qu')\s*(.+)$"
-        match = re.match(elision_pattern, word, re.IGNORECASE)
-        if match:
-            return match.group(1)
+        # Elision prefixes in French (case-insensitive)
+        elision_prefixes = ["l'", "d'", "j'", "n'", "s'", "t'", "c'", "qu'"]
+        
+        word_lower = word.lower()
+        for prefix in elision_prefixes:
+            if word_lower.startswith(prefix):
+                return word[len(prefix):]
+        
         return word
     
     @staticmethod
@@ -128,16 +136,27 @@ class LinguisticsUtils:
                 continue
             
             surface = token.text
-            lemma = getattr(token, 'lemma_', token.text).lower()
             
-            # Handle elisions if requested
+            # Handle elisions on the surface form *before* lemmatization
             if handle_elisions:
-                surface = LinguisticsUtils.handle_elision(surface)
-                lemma = LinguisticsUtils.handle_elision(lemma)
-            
-            # Normalize
+                surface_for_lemma = LinguisticsUtils.handle_elision(surface)
+            else:
+                surface_for_lemma = surface
+
+            # Get lemma from the (potentially elision-handled) surface form
+            # We create a temporary doc to get the lemma of the modified surface form
+            temp_doc = nlp(surface_for_lemma)
+            lemma = temp_doc[0].lemma_.lower() if temp_doc and len(temp_doc) > 0 else surface_for_lemma.lower()
+
+            # Normalize the final lemma
             normalized = LinguisticsUtils.normalize_text(lemma, fold_diacritics=fold_diacritics)
             
+            if not normalized:
+                logger.debug(f"Skipping empty normalized token from lemma '{lemma}'")
+                continue
+
+            logger.debug(f"Token: surface='{surface}', lemma='{lemma}', normalized='{normalized}'")
+
             tokens.append({
                 'surface': surface,
                 'lemma': lemma,

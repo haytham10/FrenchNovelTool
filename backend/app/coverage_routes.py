@@ -123,10 +123,21 @@ def create_wordlist():
                 creds = auth_service.get_user_credentials(user)
 
                 sheets_service = GoogleSheetsService()
-                # Default: first sheet, column A, skip header
-                words = sheets_service.fetch_words_from_spreadsheet(creds, spreadsheet_id=source_ref, column='A', include_header=False)
+                # Respect include_header flag from request (default True)
+                include_header = True
+                if request.json:
+                    include_header = request.json.get('include_header', True)
+                elif request.form:
+                    include_header = request.form.get('include_header', 'true').lower() == 'true'
+
+                # Default: first sheet, auto-detect A/B with fallback
+                words = sheets_service.fetch_words_from_spreadsheet(
+                    creds,
+                    spreadsheet_id=source_ref,
+                    include_header=include_header
+                )
                 if not words:
-                    return jsonify({'error': 'No words found in the Google Sheet (column A)'}), 400
+                    return jsonify({'error': 'No words found in the Google Sheet (column B)'}), 400
             except Exception as e:
                 logger.exception(f"Failed to fetch words from Google Sheets: {e}")
                 return jsonify({'error': f'Failed to read Google Sheet: {str(e)}'}), 400

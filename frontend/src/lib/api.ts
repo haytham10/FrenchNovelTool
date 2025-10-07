@@ -741,7 +741,8 @@ export const createWordListFromWords = async (
   words: string[],
   sourceType: 'manual' | 'google_sheet' = 'manual',
   sourceRef?: string,
-  foldDiacritics: boolean = true
+  foldDiacritics: boolean = true,
+  includeHeader: boolean = true
 ): Promise<{ wordlist: WordList; ingestion_report: IngestionReport }> => {
   const response = await api.post('/wordlists', {
     name,
@@ -749,6 +750,7 @@ export const createWordListFromWords = async (
     source_ref: sourceRef,
     words,
     fold_diacritics: foldDiacritics,
+    include_header: includeHeader,
   });
   return response.data;
 };

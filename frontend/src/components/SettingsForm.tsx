@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Box, TextField, Typography, CircularProgress, Paper, Divider, Alert, AlertTitle, Select, MenuItem, FormControl, InputLabel, Button as MuiButton, Stack, Chip, Tabs, Tab, IconButton } from '@mui/material';
+import { Box, TextField, Typography, CircularProgress, Paper, Divider, Alert, AlertTitle, Select, MenuItem, FormControl, InputLabel, Button as MuiButton, Stack, Chip, Tabs, Tab, IconButton, Checkbox, FormControlLabel } from '@mui/material';
 import { Button } from './ui';
 import { useSettings, useUpdateSettings } from '@/lib/queries';
 import { useAuth } from './AuthContext';
@@ -26,6 +26,7 @@ export default function SettingsForm() {
   const [uploadMethod, setUploadMethod] = useState<'csv' | 'sheets'>('csv');
   const [sheetsUrl, setSheetsUrl] = useState<string>('');
   const [sheetsName, setSheetsName] = useState<string>('');
+  const [includeHeader, setIncludeHeader] = useState<boolean>(true);
   
   // Load word lists
   const { data: wordListsData } = useQuery({
@@ -54,7 +55,7 @@ export default function SettingsForm() {
 
   // Upload word list from Google Sheets mutation
   const sheetsMutation = useMutation({
-    mutationFn: async (data: { url: string; name: string }) => {
+    mutationFn: async (data: { url: string; name: string; includeHeader?: boolean }) => {
       // Extract sheet ID from URL
       const match = data.url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
       if (!match) {
@@ -69,7 +70,8 @@ export default function SettingsForm() {
         [], // Empty array - backend should fetch from sheet
         'google_sheet',
         sheetId,
-        true
+        true,
+        data.includeHeader ?? true
       );
     },
     onSuccess: (data) => {
@@ -143,6 +145,7 @@ export default function SettingsForm() {
       sheetsMutation.mutate({
         url: sheetsUrl,
         name: sheetsName,
+        includeHeader,
       });
     }
   };
@@ -429,6 +432,16 @@ export default function SettingsForm() {
                 onChange={(e) => setSheetsName(e.target.value)}
                 placeholder="e.g., French 3K"
                 helperText="Choose a name for this word list"
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={includeHeader}
+                    onChange={(e) => setIncludeHeader(e.target.checked)}
+                    size="small"
+                  />
+                }
+                label="Include first row (header)"
               />
               <MuiButton
                 variant="contained"

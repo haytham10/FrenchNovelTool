@@ -20,18 +20,30 @@ class CoverageService:
         """
         self.wordlist_keys = wordlist_keys
         self.config = config or {}
-        
+        logger.info(f"CoverageService initialized with {len(wordlist_keys)} wordlist keys. Sample: {list(wordlist_keys)[:10]}")
+
         # Coverage mode defaults
         self.alpha = self.config.get('alpha', 0.5)  # Duplicate penalty weight
         self.beta = self.config.get('beta', 0.3)   # Quality weight
         self.gamma = self.config.get('gamma', 0.2)  # Length penalty weight
-        
+
         # Filter mode defaults
-        self.min_in_list_ratio = self.config.get('min_in_list_ratio', 0.95)
-        self.len_min = self.config.get('len_min', 4)
-        self.len_max = self.config.get('len_max', 8)
+        self.len_min = self.config.get('len_min', 3)
+        self.len_max = self.config.get('len_max', 10)
         self.target_count = self.config.get('target_count', 500)
-        
+
+        # Scaled min_in_list_ratio: high for short sentences, lower for longer ones
+        # A dict mapping token_count -> min_ratio
+        self.scaled_min_ratios = self.config.get('scaled_min_ratios', {
+            3: 0.99,
+            4: 0.99,
+            5: 0.9,
+            6: 0.8,
+            7: 0.7,
+            8: 0.65
+        })
+        self.default_min_ratio = self.config.get('default_min_ratio', 0.6)
+
         # Normalization settings
         self.fold_diacritics = self.config.get('fold_diacritics', True)
         self.handle_elisions = self.config.get('handle_elisions', True)
@@ -188,7 +200,12 @@ class CoverageService:
             token_count = info['token_count']
             ratio = info['in_list_ratio']
             
-            if token_count == 4 and ratio >= self.min_in_list_ratio:
+            # Use scaled ratio based on token count
+            min_ratio = self.scaled_min_ratios.get(token_count, self.default_min_ratio)
+
+            logger.debug(f"Sentence {idx}: '{info['text']}' token_count={token_count} ratio={ratio:.2f} min_ratio={min_ratio:.2f}")
+
+            if token_count == 4 and ratio >= min_ratio:
                 score = ratio * 10.0 + (1.0 / token_count) * 0.5
                 pass_1_candidates.append({
                     'sentence_index': idx,
@@ -219,7 +236,12 @@ class CoverageService:
                 token_count = info['token_count']
                 ratio = info['in_list_ratio']
                 
-                if token_count == 3 and ratio >= self.min_in_list_ratio:
+                # Use scaled ratio
+                min_ratio = self.scaled_min_ratios.get(token_count, self.default_min_ratio)
+
+                logger.debug(f"Sentence {idx}: '{info['text']}' token_count={token_count} ratio={ratio:.2f} min_ratio={min_ratio:.2f}")
+
+                if token_count == 3 and ratio >= min_ratio:
                     score = ratio * 10.0 + (1.0 / token_count) * 0.5
                     pass_2_candidates.append({
                         'sentence_index': idx,
@@ -251,10 +273,15 @@ class CoverageService:
                 token_count = info['token_count']
                 ratio = info['in_list_ratio']
                 
+                # Use scaled ratio
+                min_ratio = self.scaled_min_ratios.get(token_count, self.default_min_ratio)
+
+                logger.debug(f"Sentence {idx}: '{info['text']}' token_count={token_count} ratio={ratio:.2f} min_ratio={min_ratio:.2f}")
+
                 # Accept sentences in the configured range, excluding 3 and 4 words (already processed)
                 if (self.len_min <= token_count <= self.len_max and 
                     token_count not in [3, 4] and 
-                    ratio >= self.min_in_list_ratio):
+                    ratio >= min_ratio):
                     score = ratio * 10.0 + (1.0 / token_count) * 0.5
                     pass_3_candidates.append({
                         'sentence_index': idx,
@@ -282,7 +309,8 @@ class CoverageService:
             'candidates_passed_filter': total_candidates,
             'selected_count': len(selected),
             'filter_acceptance_ratio': total_candidates / len(sentences) if sentences else 0.0,
-            'min_in_list_ratio': self.min_in_list_ratio,
+            'scaled_min_ratios': self.scaled_min_ratios,
+            'default_min_ratio': self.default_min_ratio,
             'len_min': self.len_min,
             'len_max': self.len_max,
             'target_count': self.target_count,
