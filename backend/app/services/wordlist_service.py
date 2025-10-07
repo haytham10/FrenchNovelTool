@@ -88,7 +88,8 @@ class WordListService:
     def extract_head_token(phrase: str) -> str:
         """
         For multi-token entries, extract the head lexical token.
-        Default policy: return first token.
+        Improved policy: skip common determiners/possessives/articles and return
+        the first lexical token. If all tokens are determiners, return the last token.
         
         Args:
             phrase: Multi-token phrase
@@ -97,7 +98,25 @@ class WordListService:
             Head token
         """
         tokens = phrase.split()
-        return tokens[0] if tokens else phrase
+        if not tokens:
+            return phrase
+
+        # Common French determiners/possessives/articles to skip when choosing head
+        skip = {
+            'le', 'la', 'les', 'l', "l'", 'un', 'une', 'des', 'du', 'de',
+            'mon', 'ma', 'mes', 'ton', 'ta', 'tes', 'son', 'sa', 'ses',
+            'notre', 'nos', 'votre', 'vos', 'leur', 'leurs',
+            'ce', 'cette', 'ces', 'cet', "d'", "j'"
+        }
+
+        for t in tokens:
+            t_clean = t.strip().lower().rstrip("'").strip()
+            # If token is not an article/determiner, return it as head
+            if t_clean not in skip and t_clean != '':
+                return t
+
+        # Fallback: return last token if all tokens were skip-words
+        return tokens[-1]
     
     def ingest_word_list(
         self,
