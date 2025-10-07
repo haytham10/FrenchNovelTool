@@ -26,6 +26,8 @@ import {
   ListItemButton,
   ListItemText,
   InputAdornment,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import {
   PlayArrow as PlayIcon,
@@ -50,6 +52,8 @@ import {
 } from '@/lib/api';
 import RouteGuard from '@/components/RouteGuard';
 import Breadcrumbs from '@/components/Breadcrumbs';
+import CoverageResultsTable from '@/components/CoverageResultsTable';
+import FilterResultsTable from '@/components/FilterResultsTable';
 import { useSettings } from '@/lib/queries';
 
 export default function CoveragePage() {
@@ -283,6 +287,16 @@ export default function CoveragePage() {
     if (typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Number(v))) return Number(v);
     return null;
   };
+
+  // Tab state for better organization
+  const [activeTab, setActiveTab] = useState<'config' | 'results'>(0);
+  
+  // Auto-switch to results tab when run completes
+  useEffect(() => {
+    if (coverageRun?.status === 'completed' && activeTab === 0) {
+      setActiveTab(1);
+    }
+  }, [coverageRun?.status, activeTab]);
   
   return (
     <RouteGuard>
@@ -601,28 +615,20 @@ export default function CoveragePage() {
                           <Divider />
                           <Box>
                             <Typography variant="subtitle2" gutterBottom>
-                              Sample Results (first 10):
+                              {mode === 'coverage' ? 'Word Assignments' : 'Top Sentences'}
                             </Typography>
-                            <Stack spacing={1}>
-                              {assignments.slice(0, 10).map((assignment: CoverageAssignment, idx: number) => (
-                                <Paper key={idx} variant="outlined" sx={{ p: 1.5 }}>
-                                  <Typography variant="body2" fontWeight="medium">
-                                    {assignment.sentence_text}
-                                  </Typography>
-                                  <Typography variant="caption" color="text.secondary">
-                                    {mode === 'coverage' 
-                                      ? `Word: ${assignment.word_key}`
-                                      : `Score: ${assignment.sentence_score ? assignment.sentence_score.toFixed(2) : 'N/A'}`
-                                    }
-                                  </Typography>
-                                </Paper>
-                              ))}
-                            </Stack>
-
-                            {assignments.length > 10 && (
-                              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                                ... and {assignments.length - 10} more results
-                              </Typography>
+                            
+                            {/* Use dedicated table components */}
+                            {mode === 'coverage' ? (
+                              <CoverageResultsTable
+                                assignments={assignments}
+                                loading={false}
+                              />
+                            ) : (
+                              <FilterResultsTable
+                                assignments={assignments}
+                                loading={false}
+                              />
                             )}
                           </Box>
                         </>
