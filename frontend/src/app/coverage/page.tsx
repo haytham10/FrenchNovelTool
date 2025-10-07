@@ -26,8 +26,6 @@ import {
   ListItemButton,
   ListItemText,
   InputAdornment,
-  Tabs,
-  Tab,
 } from '@mui/material';
 import {
   PlayArrow as PlayIcon,
@@ -48,7 +46,6 @@ import {
   exportCoverageRun,
   downloadCoverageRunCSV,
   type WordList,
-  type CoverageAssignment,
 } from '@/lib/api';
 import RouteGuard from '@/components/RouteGuard';
 import Breadcrumbs from '@/components/Breadcrumbs';
@@ -289,12 +286,12 @@ export default function CoveragePage() {
   };
 
   // Tab state for better organization
-  const [activeTab, setActiveTab] = useState<'config' | 'results'>(0);
-  
+  const [activeTab, setActiveTab] = useState<'config' | 'results'>('config');
+
   // Auto-switch to results tab when run completes
   useEffect(() => {
-    if (coverageRun?.status === 'completed' && activeTab === 0) {
-      setActiveTab(1);
+    if (coverageRun?.status === 'completed' && activeTab === 'config') {
+      setActiveTab('results');
     }
   }, [coverageRun?.status, activeTab]);
   

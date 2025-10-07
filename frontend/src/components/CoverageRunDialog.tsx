@@ -11,7 +11,6 @@ import {
   DialogActions,
   Button,
   Typography,
-  Box,
   FormControl,
   InputLabel,
   Select,
@@ -22,7 +21,7 @@ import {
   SelectChangeEvent,
   CircularProgress,
 } from '@mui/material';
-import { PlayArrow, BookOpen } from '@mui/icons-material';
+import { PlayArrow, MenuBook } from '@mui/icons-material';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useSnackbar } from 'notistack';
@@ -122,7 +121,7 @@ export default function CoverageRunDialog({
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>
         <Stack direction="row" alignItems="center" spacing={1}>
-          <BookOpen />
+          <MenuBook />
           <Typography variant="h6">Run Vocabulary Coverage</Typography>
         </Stack>
       </DialogTitle>

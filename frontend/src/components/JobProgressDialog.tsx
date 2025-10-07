@@ -15,7 +15,7 @@ import {
   Chip,
   Stack,
 } from '@mui/material';
-import { CheckCircle, Error as ErrorIcon, Cancel, HourglassEmpty, WifiOff, BookOpen } from '@mui/icons-material';
+import { CheckCircle, Error as ErrorIcon, Cancel, HourglassEmpty, WifiOff, MenuBook } from '@mui/icons-material';
 import { Job, cancelJob } from '@/lib/api';
 import { useJobWebSocket } from '@/lib/useJobWebSocket';
 import CoverageRunDialog from './CoverageRunDialog';
@@ -216,7 +216,7 @@ export default function JobProgressDialog({
             onClick={() => setShowCoverageDialog(true)}
             color="primary"
             variant="outlined"
-            startIcon={<BookOpen />}
+            startIcon={<MenuBook />}
           >
             Run Vocabulary Coverage
           </Button>
