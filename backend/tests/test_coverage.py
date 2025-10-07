@@ -7,13 +7,14 @@ from app.services.coverage_service import CoverageService
 from app.utils.linguistics import LinguisticsUtils
 
 
-@pytest.fixture
+@pytest.fixture(scope='function')
 def app():
     """Create application for testing"""
     app = create_app()
     app.config['TESTING'] = True
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
-    
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
     with app.app_context():
         db.create_all()
         yield app
@@ -187,7 +188,7 @@ class TestLinguisticsUtils:
         ratio, matched, total = LinguisticsUtils.calculate_in_list_ratio(
             sentence, wordlist_keys
         )
-        assert ratio > 0.9  # Should be high (lemmas match)
+        assert ratio == 1.0  # Should be high (lemmas match)
         
         # Partial match
         sentence = "Le chat aime le poisson"

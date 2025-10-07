@@ -16,15 +16,25 @@ def get_nlp():
     if _nlp is None:
         try:
             import spacy
-            try:
-                _nlp = spacy.load("fr_core_news_md")
-                logger.info("Loaded spaCy French model: fr_core_news_md")
-            except OSError:
-                logger.warning("fr_core_news_md not found, attempting to download...")
-                import subprocess
-                subprocess.run(["python", "-m", "spacy", "download", "fr_core_news_md"], check=True)
-                _nlp = spacy.load("fr_core_news_md")
-                logger.info("Downloaded and loaded spaCy French model")
+            # Prefer the medium French model, but fall back to the small model if the
+            # medium model isn't available. Avoid attempting an automatic download
+            # inside worker processes because network access or pip installs can
+            # fail in ephemeral environments (and was observed to produce HTTP 404
+            # errors). If neither model is available, fall back to the DummyNLP
+            # which provides a graceful degradation.
+            import os
+            preferred = os.environ.get("SPACY_MODEL", "fr_core_news_md")
+            tried = []
+            for model in (preferred, "fr_core_news_sm"):
+                if model in tried:
+                    continue
+                tried.append(model)
+                try:
+                    _nlp = spacy.load(model)
+                    logger.info("Loaded spaCy French model: %s", model)
+                    break
+                except OSError:
+                    logger.warning("spaCy model %s not found, will try next fallback", model)
         except Exception as e:
             logger.error(f"Failed to load spaCy model: {e}")
             # Return a dummy object that will cause graceful degradation
