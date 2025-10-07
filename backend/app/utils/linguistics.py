@@ -152,7 +152,10 @@ class LinguisticsUtils:
             normalized = LinguisticsUtils.normalize_text(lemma, fold_diacritics=fold_diacritics)
             
             if not normalized:
+                logger.debug(f"Skipping empty normalized token from lemma '{lemma}'")
                 continue
+
+            logger.debug(f"Token: surface='{surface}', lemma='{lemma}', normalized='{normalized}'")
 
             tokens.append({
                 'surface': surface,

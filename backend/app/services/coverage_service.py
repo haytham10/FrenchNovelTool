@@ -20,18 +20,18 @@ class CoverageService:
         """
         self.wordlist_keys = wordlist_keys
         self.config = config or {}
-        
+        logger.info(f"CoverageService initialized with {len(wordlist_keys)} wordlist keys. Sample: {list(wordlist_keys)[:10]}")
+
         # Coverage mode defaults
         self.alpha = self.config.get('alpha', 0.5)  # Duplicate penalty weight
         self.beta = self.config.get('beta', 0.3)   # Quality weight
         self.gamma = self.config.get('gamma', 0.2)  # Length penalty weight
-        
+
         # Filter mode defaults
-        self.min_in_list_ratio = self.config.get('min_in_list_ratio', 0.95)
         self.len_min = self.config.get('len_min', 3)
         self.len_max = self.config.get('len_max', 10)
         self.target_count = self.config.get('target_count', 500)
-        
+
         # Scaled min_in_list_ratio: high for short sentences, lower for longer ones
         # A dict mapping token_count -> min_ratio
         self.scaled_min_ratios = self.config.get('scaled_min_ratios', {
@@ -43,7 +43,7 @@ class CoverageService:
             8: 0.65
         })
         self.default_min_ratio = self.config.get('default_min_ratio', 0.6)
-        
+
         # Normalization settings
         self.fold_diacritics = self.config.get('fold_diacritics', True)
         self.handle_elisions = self.config.get('handle_elisions', True)
@@ -203,6 +203,8 @@ class CoverageService:
             # Use scaled ratio based on token count
             min_ratio = self.scaled_min_ratios.get(token_count, self.default_min_ratio)
 
+            logger.debug(f"Sentence {idx}: '{info['text']}' token_count={token_count} ratio={ratio:.2f} min_ratio={min_ratio:.2f}")
+
             if token_count == 4 and ratio >= min_ratio:
                 score = ratio * 10.0 + (1.0 / token_count) * 0.5
                 pass_1_candidates.append({
@@ -236,6 +238,8 @@ class CoverageService:
                 
                 # Use scaled ratio
                 min_ratio = self.scaled_min_ratios.get(token_count, self.default_min_ratio)
+
+                logger.debug(f"Sentence {idx}: '{info['text']}' token_count={token_count} ratio={ratio:.2f} min_ratio={min_ratio:.2f}")
 
                 if token_count == 3 and ratio >= min_ratio:
                     score = ratio * 10.0 + (1.0 / token_count) * 0.5
@@ -271,6 +275,8 @@ class CoverageService:
                 
                 # Use scaled ratio
                 min_ratio = self.scaled_min_ratios.get(token_count, self.default_min_ratio)
+
+                logger.debug(f"Sentence {idx}: '{info['text']}' token_count={token_count} ratio={ratio:.2f} min_ratio={min_ratio:.2f}")
 
                 # Accept sentences in the configured range, excluding 3 and 4 words (already processed)
                 if (self.len_min <= token_count <= self.len_max and 
