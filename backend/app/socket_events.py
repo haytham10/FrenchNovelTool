@@ -3,7 +3,7 @@ from flask import request
 from flask_socketio import emit, join_room, leave_room, disconnect
 from flask_jwt_extended import decode_token
 from app import socketio
-from app.models import Job
+from app.models import Job, CoverageRun
 import logging
 
 logger = logging.getLogger(__name__)
@@ -23,6 +23,18 @@ def emit_job_progress(job_id: int):
             logger.debug(f'Emitted job_progress for job {job_id}: {job.progress_percent}% - {job.current_step}')
     except Exception as e:
         logger.error(f'Error emitting job progress for job {job_id}: {e}')
+
+
+def emit_coverage_progress(run_id: int):
+    """Emit coverage run progress update to clients subscribed to this run"""
+    try:
+        run = CoverageRun.query.get(run_id)
+        if run:
+            room = f'coverage_run_{run_id}'
+            socketio.emit('coverage_progress', run.to_dict(), room=room)
+            logger.debug(f'Emitted coverage_progress for run {run_id}: {run.progress_percent}% - {run.status}')
+    except Exception as e:
+        logger.error(f'Error emitting coverage progress for run {run_id}: {e}')
 
 
 @socketio.on('connect')
@@ -96,6 +108,64 @@ def handle_join_job(data):
     except Exception as e:
         logger.error(f'Error joining job room: {e}')
         emit('error', {'message': 'Failed to join job room'})
+
+
+@socketio.on('join_coverage_run')
+def handle_join_coverage_run(data):
+    """Subscribe client to coverage-run-specific room for progress updates"""
+    try:
+        run_id = data.get('run_id')
+        token = data.get('token')
+
+        if not run_id or not token:
+            emit('error', {'message': 'Missing run_id or token'})
+            return
+
+        # Verify user owns this run
+        decoded = decode_token(token)
+        user_id = int(decoded['sub'])
+
+        run = CoverageRun.query.get(run_id)
+        if not run:
+            emit('error', {'message': f'CoverageRun {run_id} not found'})
+            return
+
+        if run.user_id != user_id:
+            emit('error', {'message': 'Unauthorized access to coverage run'})
+            return
+
+        # Join coverage-run-specific room
+        room = f'coverage_run_{run_id}'
+        join_room(room)
+
+        logger.info(f'User {user_id} joined room {room}')
+
+        # Send initial run state
+        emit('coverage_progress', run.to_dict(), room=room)
+
+    except Exception as e:
+        logger.error(f'Error joining coverage run room: {e}')
+        emit('error', {'message': 'Failed to join coverage run room'})
+
+
+@socketio.on('leave_coverage_run')
+def handle_leave_coverage_run(data):
+    """Unsubscribe client from coverage run room"""
+    try:
+        run_id = data.get('run_id')
+
+        if not run_id:
+            emit('error', {'message': 'Missing run_id'})
+            return
+
+        room = f'coverage_run_{run_id}'
+        leave_room(room)
+
+        logger.info(f'Client left room {room}')
+
+    except Exception as e:
+        logger.error(f'Error leaving coverage run room: {e}')
+        emit('error', {'message': 'Failed to leave coverage run room'})
 
 
 @socketio.on('leave_job')
