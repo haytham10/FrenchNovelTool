@@ -259,8 +259,8 @@ class CoverageService:
         Content words = NOUN, VERB, ADJ, ADV, PROPN (excludes pronouns, determiners, etc.)
         No selection cap is applied.
 
-        Scoring: score = ratio of matched words to total tokens for the sentence
-        (i.e., matched_count / token_count). Stored as a rounded float for readability.
+    No scoring: sentences are selected if they meet the content-word and
+    length criteria and returned in their original order.
 
         Args:
             sentences: List of sentence strings
@@ -314,8 +314,7 @@ class CoverageService:
                 selected.append({
                     'sentence_index': idx,
                     'sentence_text': info['text'],
-                    'sentence_score': round(ratio, 3),
-                    'in_list_ratio': ratio,
+                    'in_list_ratio': round(ratio, 3),
                     'token_count': token_count,
                     'words_in_list': list(info['words_in_list']),
                     'content_word_count': content_word_count
@@ -329,8 +328,7 @@ class CoverageService:
                 except Exception:
                     pass
 
-        # Sort by score (ratio) desc (then stable index order as tie-breaker)
-        selected.sort(key=lambda x: x['sentence_score'], reverse=True)
+    # No sorting/scoring: preserve original sentence order for selected results
 
         # Stats (preserve some keys for compatibility)
         selected_count = len(selected)
