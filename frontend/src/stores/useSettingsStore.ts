@@ -13,7 +13,7 @@ interface SettingsState extends UserSettings {
 }
 
 const defaultSettings: UserSettings = {
-  sentence_length_limit: 12,
+  sentence_length_limit: 8,
   default_folder_id: undefined,
   default_sheet_name_pattern: undefined,
 };
