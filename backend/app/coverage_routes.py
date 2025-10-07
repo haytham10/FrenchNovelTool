@@ -315,32 +315,39 @@ def import_sentences_from_sheets():
         if not user or not user.google_access_token:
             return jsonify({'error': 'Google authentication required. Please sign in with Google first.'}), 401
         
-        # Create credentials object
+        # Create credentials object using application config as fallback for client_id/secret
         from google.oauth2.credentials import Credentials
         from datetime import datetime
-        
-        creds = Credentials(
-            token=user.google_access_token,
-            refresh_token=user.google_refresh_token,
-            token_uri='https://oauth2.googleapis.com/token',
-            client_id=user.google_client_id or request.headers.get('X-Google-Client-ID'),
-            client_secret=user.google_client_secret or request.headers.get('X-Google-Client-Secret')
-        )
-        
+        from flask import current_app
+
+        client_id = current_app.config.get('GOOGLE_CLIENT_ID') or request.headers.get('X-Google-Client-ID')
+        client_secret = current_app.config.get('GOOGLE_CLIENT_SECRET') or request.headers.get('X-Google-Client-Secret')
+
+        # If user has no refresh token, we can still try with the access token (read-only short-lived)
+        creds_kwargs = {
+            'token': user.google_access_token,
+            'token_uri': 'https://oauth2.googleapis.com/token',
+        }
+        if user.google_refresh_token:
+            creds_kwargs['refresh_token'] = user.google_refresh_token
+        if client_id:
+            creds_kwargs['client_id'] = client_id
+        if client_secret:
+            creds_kwargs['client_secret'] = client_secret
+
+        creds = Credentials(**creds_kwargs)
+
         # Check if token is expired and refresh if needed
         if user.google_token_expiry and datetime.utcnow() >= user.google_token_expiry:
             auth_service = AuthService()
             try:
                 auth_service.refresh_google_token(user)
                 db.session.commit()
-                # Update creds with new token
-                creds = Credentials(
-                    token=user.google_access_token,
-                    refresh_token=user.google_refresh_token,
-                    token_uri='https://oauth2.googleapis.com/token',
-                    client_id=user.google_client_id,
-                    client_secret=user.google_client_secret
-                )
+                # Update creds with new token/refresh token
+                creds_kwargs['token'] = user.google_access_token
+                if user.google_refresh_token:
+                    creds_kwargs['refresh_token'] = user.google_refresh_token
+                creds = Credentials(**creds_kwargs)
             except Exception as e:
                 logger.error(f"Failed to refresh Google token: {e}")
                 return jsonify({'error': 'Failed to refresh Google authentication. Please sign in again.'}), 401
