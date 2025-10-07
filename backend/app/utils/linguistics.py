@@ -113,11 +113,12 @@ class LinguisticsUtils:
         tokens = []
         for token in doc:
             # Skip punctuation and whitespace
-            if token.is_punct or token.is_space:
+            # Use getattr for compatibility with DummyNLP fallback
+            if getattr(token, 'is_punct', False) or getattr(token, 'is_space', False):
                 continue
             
             surface = token.text
-            lemma = token.lemma_.lower()
+            lemma = getattr(token, 'lemma_', token.text).lower()
             
             # Handle elisions if requested
             if handle_elisions:
