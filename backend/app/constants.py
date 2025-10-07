@@ -78,13 +78,13 @@ CREDIT_REASON_ADMIN_ADJUSTMENT = 'admin_adjustment'
 
 # Pricing Configuration (v1)
 PRICING_VERSION = 'v1.0'
-MONTHLY_CREDIT_GRANT = 10000  # Default credits granted per month
+MONTHLY_CREDIT_GRANT = 50  # Default credits granted per month
 
 # Model pricing: credits per 1,000 tokens
 # Based on Gemini API pricing and mapped to user-facing model preferences
 MODEL_PRICING = {
-    'gemini-2.5-flash': 1,      # balanced - fastest, cheapest
-    'gemini-2.5-flash-lite': 1, # speed - ultra-fast, experimental
+    'gemini-2.5-flash': 3,      # balanced - fastest, cheapest
+    'gemini-2.5-flash-lite': 2, # speed - ultra-fast, experimental
     'gemini-2.5-pro': 5,        # quality - best quality, most expensive
 }
 
@@ -105,6 +105,6 @@ PAGES_TO_TOKENS_HEURISTIC = 50  # Average tokens per page for estimation
 ESTIMATE_IMAGE_WEIGHT = 5  # Additional tokens per image for estimation
 
 # Credit limits
-CREDIT_OVERDRAFT_LIMIT = -100  # Allow small negative balance to handle overruns
+CREDIT_OVERDRAFT_LIMIT = -10  # Allow small negative balance to handle overruns
 MIN_CREDITS_FOR_JOB = 1  # Minimum credits required to start a job
 

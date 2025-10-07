@@ -16,10 +16,11 @@ echo "Redis is ready!"
 echo "Running database migrations..."
 flask db upgrade
 
-# Start Celery worker
+# Start Celery worker (enable task events so Flower can inspect workers)
 exec celery -A app.celery_app:celery worker \
   --loglevel=info \
   --concurrency=4 \
   --max-tasks-per-child=50 \
+  --task-events \
   --time-limit=1800 \
   --soft-time-limit=1500
