@@ -22,33 +22,39 @@ class WordListService:
     def normalize_word(word: str, fold_diacritics: bool = True) -> str:
         """
         Normalize a single word to its canonical form.
-        
+
         Args:
             word: Input word to normalize
             fold_diacritics: Whether to remove diacritics (default True)
-            
+
         Returns:
             Normalized word key
         """
         if not word:
             return ""
-        
+
         # Trim whitespace
         word = word.strip()
-        
+
         # Remove zero-width characters
         word = re.sub(r'[\u200b-\u200f\ufeff]', '', word)
-        
+
+        # Remove surrounding quotes and apostrophes which often appear in spreadsheets
+        word = word.strip('"\'' )
+
+        # Remove internal apostrophes (aujourd'hui -> aujourdhui) to match normalization
+        word = word.replace("'", "")
+
         # Handle elisions (l', d', j', n', s', t', c', qu')
         # Extract the lexical head after elision
         elision_pattern = r"^(?:l'|d'|j'|n'|s'|t'|c'|qu')\s*(.+)$"
         match = re.match(elision_pattern, word, re.IGNORECASE)
         if match:
             word = match.group(1)
-        
+
         # Unicode casefold for case-insensitive matching
         word = word.casefold()
-        
+
         # Fold diacritics if requested
         if fold_diacritics:
             # Decompose and remove combining marks
@@ -56,7 +62,7 @@ class WordListService:
                 c for c in unicodedata.normalize('NFD', word)
                 if unicodedata.category(c) != 'Mn'
             )
-        
+
         return word.strip()
     
     @staticmethod

@@ -1,5 +1,6 @@
 """Service for Google Sheets and Drive API interactions"""
 import os
+import re
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -16,7 +17,7 @@ class GoogleSheetsService:
             creds: Authorized user credentials
             spreadsheet_id: The spreadsheet ID
             sheet_title: Optional specific sheet/tab title; if None, use the first sheet
-            column: Column letter to read from (default 'A')
+            column: Column letter to read from (default 'B')
             include_header: Whether to include the first row (header) in the results
 
         Returns:
@@ -46,13 +47,24 @@ class GoogleSheetsService:
 
         # Flatten and clean
         words: list[str] = []
-        start_index = 0 if include_header else 1  # skip header by default
+        start_index = 0 if include_header else 0  # we'll handle header detection/filtering below
         for idx, row in enumerate(values):
             if idx < start_index:
                 continue
             if not row:
                 continue
             cell = str(row[0]).strip()
+            if not cell:
+                continue
+
+            # Remove leading numeric indices that may be present in the same cell (e.g. "1 Un|Une")
+            cell = re.sub(r'^\s*\d+\s*[-.:)\]]*\s*', '', cell)
+
+            # Ignore purely-numeric cells and common header labels
+            lower = cell.lower()
+            if re.match(r'^\d+$', cell) or lower in ('index', 'word', 'mot', 'term', 'sentence', 'sentence_text', 'word_text'):
+                continue
+
             if cell:
                 words.append(cell)
         return words
