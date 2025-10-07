@@ -46,6 +46,7 @@ import {
   getProcessingHistory,
   exportCoverageRun,
   downloadCoverageRunCSV,
+  importSentencesFromSheets,
   type WordList,
   type CoverageRun as CoverageRunType,
   type CoverageAssignment,
@@ -149,6 +150,29 @@ export default function CoveragePage() {
       queryClient.invalidateQueries({ queryKey: ['wordlists'] });
       setSelectedWordListId(data.wordlist.id);
       setUploadedFile(null);
+    },
+  });
+  
+  // Import from Google Sheets mutation
+  const importSheetsMutation = useMutation({
+    mutationFn: async (sheetUrl: string) => {
+      return importSentencesFromSheets(sheetUrl);
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['history', 'forCoverage'] });
+      setSourceId(String(data.history_id));
+      setOpenSheetDialog(false);
+      setSheetUrl('');
+      enqueueSnackbar(
+        `Imported ${data.sentence_count} sentences from ${data.filename}`,
+        { variant: 'success' }
+      );
+    },
+    onError: (error: Error) => {
+      enqueueSnackbar(
+        `Failed to import from Google Sheets: ${error.message}`,
+        { variant: 'error' }
+      );
     },
   });
   
@@ -741,6 +765,46 @@ export default function CoveragePage() {
             disabled={!exportSheetName || exportMutation.isPending}
           >
             {exportMutation.isPending ? 'Exporting...' : 'Export'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Import from Sheets Dialog */}
+      <Dialog open={openSheetDialog} onClose={() => setOpenSheetDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Import Sentences from Google Sheets</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            label="Google Sheets URL"
+            value={sheetUrl}
+            onChange={(e) => setSheetUrl(e.target.value)}
+            sx={{ mt: 2 }}
+            placeholder="https://docs.google.com/spreadsheets/d/..."
+            helperText="Paste the full URL or just the spreadsheet ID"
+          />
+          <Alert severity="info" sx={{ mt: 2 }}>
+            <Typography variant="body2" gutterBottom>
+              <strong>Sheet Format:</strong>
+            </Typography>
+            <Typography variant="body2" component="div">
+              • Column A: Index (optional, e.g., 1, 2, 3...)
+              <br />
+              • Column B: Sentence (French sentences)
+              <br />
+              <br />
+              The first row will be detected as a header and skipped if it contains
+              &ldquo;Index&rdquo; or &ldquo;Sentence&rdquo;.
+            </Typography>
+          </Alert>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenSheetDialog(false)}>Cancel</Button>
+          <Button 
+            variant="contained" 
+            onClick={() => importSheetsMutation.mutate(sheetUrl)}
+            disabled={!sheetUrl || importSheetsMutation.isPending}
+          >
+            {importSheetsMutation.isPending ? 'Importing...' : 'Import'}
           </Button>
         </DialogActions>
       </Dialog>

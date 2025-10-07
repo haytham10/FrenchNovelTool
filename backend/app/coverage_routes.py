@@ -285,6 +285,159 @@ def delete_wordlist(wordlist_id):
 # Coverage Run Endpoints
 # ============================================================================
 
+@coverage_bp.route('/coverage/import-from-sheets', methods=['POST'])
+@jwt_required()
+@limiter.limit("10 per hour")
+def import_sentences_from_sheets():
+    """Import sentences from Google Sheets URL and create a temporary history entry"""
+    user_id = int(get_jwt_identity())
+    
+    try:
+        sheet_url = request.json.get('sheet_url')
+        if not sheet_url:
+            return jsonify({'error': 'sheet_url is required'}), 400
+        
+        # Extract spreadsheet ID from URL
+        # Supports formats:
+        # - https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/edit...
+        # - SPREADSHEET_ID (just the ID)
+        import re
+        match = re.search(r'/spreadsheets/d/([a-zA-Z0-9-_]+)', sheet_url)
+        if match:
+            spreadsheet_id = match.group(1)
+        elif re.match(r'^[a-zA-Z0-9-_]+$', sheet_url):
+            spreadsheet_id = sheet_url
+        else:
+            return jsonify({'error': 'Invalid Google Sheets URL format'}), 400
+        
+        # Get user credentials
+        user = User.query.get(user_id)
+        if not user or not user.google_access_token:
+            return jsonify({'error': 'Google authentication required. Please sign in with Google first.'}), 401
+        
+        # Create credentials object
+        from google.oauth2.credentials import Credentials
+        from datetime import datetime
+        
+        creds = Credentials(
+            token=user.google_access_token,
+            refresh_token=user.google_refresh_token,
+            token_uri='https://oauth2.googleapis.com/token',
+            client_id=user.google_client_id or request.headers.get('X-Google-Client-ID'),
+            client_secret=user.google_client_secret or request.headers.get('X-Google-Client-Secret')
+        )
+        
+        # Check if token is expired and refresh if needed
+        if user.google_token_expiry and datetime.utcnow() >= user.google_token_expiry:
+            auth_service = AuthService()
+            try:
+                auth_service.refresh_google_token(user)
+                db.session.commit()
+                # Update creds with new token
+                creds = Credentials(
+                    token=user.google_access_token,
+                    refresh_token=user.google_refresh_token,
+                    token_uri='https://oauth2.googleapis.com/token',
+                    client_id=user.google_client_id,
+                    client_secret=user.google_client_secret
+                )
+            except Exception as e:
+                logger.error(f"Failed to refresh Google token: {e}")
+                return jsonify({'error': 'Failed to refresh Google authentication. Please sign in again.'}), 401
+        
+        # Fetch sentences from Google Sheets
+        sheets_service = GoogleSheetsService()
+        try:
+            # Use fetch_words_from_spreadsheet but adapt it for sentences
+            # We'll read column B (sentences) and column A (index - optional)
+            from googleapiclient.discovery import build
+            
+            gs = build('sheets', 'v4', credentials=creds)
+            
+            # Get first sheet name
+            spreadsheet = gs.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+            sheets = spreadsheet.get('sheets', [])
+            if not sheets:
+                return jsonify({'error': 'Spreadsheet has no sheets'}), 400
+            
+            sheet_title = sheets[0]['properties']['title']
+            
+            # Read columns A (Index) and B (Sentence)
+            range_name = f"{sheet_title}!A:B"
+            result = gs.spreadsheets().values().get(
+                spreadsheetId=spreadsheet_id,
+                range=range_name
+            ).execute()
+            
+            values = result.get('values', [])
+            if not values:
+                return jsonify({'error': 'No data found in spreadsheet'}), 400
+            
+            # Parse sentences (skip header if present)
+            sentences = []
+            start_idx = 0
+            
+            # Check if first row is a header
+            if len(values) > 0 and len(values[0]) >= 2:
+                first_row = [str(cell).strip().lower() for cell in values[0]]
+                if 'index' in first_row or 'sentence' in first_row:
+                    start_idx = 1
+            
+            for row in values[start_idx:]:
+                if len(row) >= 2:
+                    sentence = str(row[1]).strip()
+                    if sentence:
+                        sentences.append(sentence)
+                elif len(row) == 1:
+                    # Only one column - assume it's the sentence
+                    sentence = str(row[0]).strip()
+                    # Skip if it looks like an index number
+                    if sentence and not re.match(r'^\d+$', sentence):
+                        sentences.append(sentence)
+            
+            if not sentences:
+                return jsonify({'error': 'No sentences found in spreadsheet'}), 400
+            
+            logger.info(f"Imported {len(sentences)} sentences from Google Sheets {spreadsheet_id}")
+            
+            # Create a temporary History entry to store the sentences
+            from app.models import History
+            
+            # Format sentences like the History model expects
+            formatted_sentences = [
+                {
+                    'original': sentence,
+                    'normalized': sentence  # Will be normalized during coverage analysis
+                }
+                for sentence in sentences
+            ]
+            
+            history = History(
+                user_id=user_id,
+                original_filename=f"Google Sheets Import ({spreadsheet.get('properties', {}).get('title', 'Untitled')})",
+                sentences=formatted_sentences,
+                processed_sentences_count=len(sentences)
+            )
+            
+            db.session.add(history)
+            db.session.commit()
+            
+            return jsonify({
+                'history_id': history.id,
+                'sentence_count': len(sentences),
+                'filename': history.original_filename
+            }), 201
+            
+        except Exception as e:
+            logger.exception(f"Error fetching sentences from Google Sheets: {e}")
+            return jsonify({'error': f'Failed to fetch sentences from Google Sheets: {str(e)}'}), 500
+    
+    except Exception as e:
+        db.session.rollback()
+        logger.exception(f"Error importing from Google Sheets: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @coverage_bp.route('/coverage/run', methods=['POST'])
 @jwt_required()
 @limiter.limit("20 per hour")
