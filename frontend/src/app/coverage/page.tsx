@@ -18,14 +18,19 @@ import {
   Stack,
   Divider,
   SelectChangeEvent,
-  Tabs,
-  Tab,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  List,
+  ListItemButton,
+  ListItemText,
+  InputAdornment,
 } from '@mui/material';
 import {
   PlayArrow as PlayIcon,
   Upload as UploadIcon,
-  History as HistoryIcon,
-  WorkOutline as JobIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
@@ -34,11 +39,13 @@ import {
   createWordListFromFile,
   createCoverageRun,
   getCoverageRun,
+  getProcessingHistory,
   type WordList,
   type CoverageAssignment,
 } from '@/lib/api';
 import RouteGuard from '@/components/RouteGuard';
 import Breadcrumbs from '@/components/Breadcrumbs';
+import { useSettings } from '@/lib/queries';
 
 export default function CoveragePage() {
   const queryClient = useQueryClient();
@@ -50,16 +57,20 @@ export default function CoveragePage() {
   
   // State
   const [mode, setMode] = useState<'coverage' | 'filter'>('filter');
-  const [sourceType, setSourceType] = useState<'job' | 'history'>(urlSource === 'job' ? 'job' : 'history');
+  // Source is now only from history (UI removed for Job ID)
   const [sourceId, setSourceId] = useState<string>(urlId || '');
   const [selectedWordListId, setSelectedWordListId] = useState<number | ''>('');
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [currentRunId, setCurrentRunId] = useState<number | null>(null);
+  const [historySearch, setHistorySearch] = useState<string>('');
+  const [openSheetDialog, setOpenSheetDialog] = useState<boolean>(false);
+  const [sheetUrl, setSheetUrl] = useState<string>('');
+  // Load user settings to know which default wordlist is configured
+  const { data: settings } = useSettings();
   
   // Update sourceId when URL params change
   useEffect(() => {
     if (urlSource && urlId) {
-      setSourceType(urlSource === 'job' ? 'job' : 'history');
       setSourceId(urlId);
     }
   }, [urlSource, urlId]);
@@ -85,6 +96,12 @@ export default function CoveragePage() {
       }
       return false; // Stop polling when complete
     },
+  });
+  // Load processing history for source selection
+  const { data: historyData, isLoading: loadingHistory } = useQuery({
+    queryKey: ['history', 'forCoverage'],
+    queryFn: getProcessingHistory,
+    staleTime: 1000 * 60 * 5,
   });
   
   // Upload word list mutation
@@ -117,7 +134,7 @@ export default function CoveragePage() {
       
       return createCoverageRun({
         mode,
-        source_type: sourceType,
+        source_type: 'history',
         source_id: parseInt(sourceId),
         wordlist_id: selectedWordListId || undefined,
         config,
@@ -153,6 +170,32 @@ export default function CoveragePage() {
   const wordlists = wordListsData?.wordlists || [];
   const coverageRun = runData?.coverage_run;
   const assignments = runData?.assignments || [];
+  const history = (historyData || []).slice().sort((a, b) => (
+    new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  ));
+
+  const filteredHistory = history.filter((h) => {
+    if (!historySearch) return true;
+    const q = historySearch.toLowerCase().trim();
+    return (
+      h.original_filename?.toLowerCase().includes(q) ||
+      String(h.id).includes(q) ||
+      (h.job_id ? String(h.job_id).includes(q) : false)
+    );
+  });
+
+  // Determine the default word list (user default if set, else global default)
+  const defaultWordlistId = settings?.default_wordlist_id ?? null;
+  const resolvedDefaultWordlist = defaultWordlistId
+    ? wordlists.find((wl) => wl.id === defaultWordlistId) || null
+    : wordlists.find((wl) => wl.is_global_default) || null;
+
+  // Preselect the default word list once data is available
+  useEffect(() => {
+    if (selectedWordListId === '' && resolvedDefaultWordlist?.id) {
+      setSelectedWordListId(resolvedDefaultWordlist.id);
+    }
+  }, [resolvedDefaultWordlist, selectedWordListId]);
 
   // Helper to safely read numeric stats from unknown stats_json
   const getNumberStat = (key: string): number | null => {
@@ -212,13 +255,15 @@ export default function CoveragePage() {
               onChange={(e) => setSelectedWordListId(e.target.value as number)}
               disabled={loadingWordLists}
             >
-              <MenuItem value="">
-                <em>Use default</em>
-              </MenuItem>
               {wordlists.map((wl: WordList) => (
                 <MenuItem key={wl.id} value={wl.id}>
-                  {wl.name} ({wl.normalized_count} words)
-                  {wl.is_global_default && <Chip label="Default" size="small" sx={{ ml: 1 }} />}
+                  {`${wl.name} (${wl.normalized_count} words)`}
+                  {(resolvedDefaultWordlist && wl.id === resolvedDefaultWordlist.id) && (
+                    <>
+                      {' '}
+                      (default)
+                    </>
+                  )}
                 </MenuItem>
               ))}
             </Select>
@@ -265,29 +310,71 @@ export default function CoveragePage() {
           
           <Divider />
           
-          {/* Source Selection */}
+          {/* Source Selection - From History with search */}
           <Box>
             <Typography variant="subtitle2" fontWeight={600} gutterBottom>
-              Select Source
+              Select Source (From History)
             </Typography>
-            <Tabs
-              value={sourceType}
-              onChange={(_, newValue) => setSourceType(newValue as 'job' | 'history')}
-              sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
-            >
-              <Tab icon={<HistoryIcon />} iconPosition="start" label="From History" value="history" />
-              <Tab icon={<JobIcon />} iconPosition="start" label="From Job ID" value="job" />
-            </Tabs>
-            
-            <TextField
-              fullWidth
-              label={`${sourceType === 'job' ? 'Job' : 'History Entry'} ID`}
-              value={sourceId}
-              onChange={(e) => setSourceId(e.target.value)}
-              type="number"
-              helperText={urlSource && urlId ? "Pre-filled from previous page" : `Enter the ID of the ${sourceType === 'job' ? 'job' : 'history entry'} to analyze`}
-              size="medium"
-            />
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }}>
+              <TextField
+                fullWidth
+                placeholder="Search by PDF name or ID"
+                value={historySearch}
+                onChange={(e) => setHistorySearch(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon fontSize="small" />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+              <Button
+                variant="outlined"
+                startIcon={<UploadIcon />}
+                onClick={() => setOpenSheetDialog(true)}
+              >
+                Import from Spreadsheet
+              </Button>
+            </Stack>
+
+            <Paper variant="outlined" sx={{ maxHeight: 280, overflow: 'auto' }}>
+              {loadingHistory ? (
+                <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <CircularProgress size={18} />
+                  <Typography variant="body2">Loading history…</Typography>
+                </Box>
+              ) : filteredHistory.length === 0 ? (
+                <Box sx={{ p: 2 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    No matches. Try a different search.
+                  </Typography>
+                </Box>
+              ) : (
+                <List dense disablePadding>
+                  {filteredHistory.slice(0, 100).map((h) => {
+                    const selected = String(h.id) === sourceId;
+                    const date = new Date(h.timestamp).toLocaleString();
+                    const secondary = `ID #${h.id}${h.job_id ? ` • Job #${h.job_id}` : ''} • ${date} • ${h.processed_sentences_count} sentences`;
+                    return (
+                      <ListItemButton
+                        key={h.id}
+                        selected={selected}
+                        onClick={() => setSourceId(String(h.id))}
+                        sx={{
+                          '&.Mui-selected': { bgcolor: 'action.selected' },
+                        }}
+                      >
+                        <ListItemText
+                          primary={h.original_filename || `History #${h.id}`}
+                          secondary={secondary}
+                        />
+                      </ListItemButton>
+                    );
+                  })}
+                </List>
+              )}
+            </Paper>
           </Box>
           
           {/* Run Button */}
@@ -310,6 +397,30 @@ export default function CoveragePage() {
           )}
         </Stack>
       </Paper>
+
+      {/* Import from Spreadsheet Dialog (UI stub) */}
+      <Dialog open={openSheetDialog} onClose={() => setOpenSheetDialog(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Import from Google Sheets</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Paste a Google Sheets URL that contains a single column of sentences. This feature is planned for a future backend update.
+          </Typography>
+          <TextField
+            fullWidth
+            label="Google Sheets URL"
+            placeholder="https://docs.google.com/spreadsheets/d/..."
+            value={sheetUrl}
+            onChange={(e) => setSheetUrl(e.target.value)}
+          />
+          <Alert severity="info" sx={{ mt: 2 }}>
+            Coming soon: importing sentences directly from Sheets. For now, select a history entry above.
+          </Alert>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenSheetDialog(false)}>Close</Button>
+          <Button disabled>Import</Button>
+        </DialogActions>
+      </Dialog>
       
       {/* Results Panel */}
       {(loadingRun || coverageRun) && (
