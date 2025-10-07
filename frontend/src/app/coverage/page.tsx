@@ -60,6 +60,7 @@ export default function CoveragePage() {
   // Get URL parameters for pre-filling
   const urlSource = searchParams.get('source'); // 'job' or 'history'
   const urlId = searchParams.get('id');
+  const urlRunId = searchParams.get('runId'); // Pre-existing run to view
   
   // State
   const [mode, setMode] = useState<'coverage' | 'filter'>('filter');
@@ -67,7 +68,7 @@ export default function CoveragePage() {
   const [sourceId, setSourceId] = useState<string>(urlId || '');
   const [selectedWordListId, setSelectedWordListId] = useState<number | ''>('');
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [currentRunId, setCurrentRunId] = useState<number | null>(null);
+  const [currentRunId, setCurrentRunId] = useState<number | null>(urlRunId ? parseInt(urlRunId) : null);
   const [historySearch, setHistorySearch] = useState<string>('');
   const [openSheetDialog, setOpenSheetDialog] = useState<boolean>(false);
   const [sheetUrl, setSheetUrl] = useState<string>('');
@@ -83,6 +84,13 @@ export default function CoveragePage() {
       setSourceId(urlId);
     }
   }, [urlSource, urlId]);
+  
+  // Update currentRunId when URL param changes
+  useEffect(() => {
+    if (urlRunId) {
+      setCurrentRunId(parseInt(urlRunId));
+    }
+  }, [urlRunId]);
   
   // Load word lists
   const { data: wordListsData, isLoading: loadingWordLists } = useQuery({

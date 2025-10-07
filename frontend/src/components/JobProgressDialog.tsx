@@ -15,9 +15,10 @@ import {
   Chip,
   Stack,
 } from '@mui/material';
-import { CheckCircle, Error as ErrorIcon, Cancel, HourglassEmpty, WifiOff } from '@mui/icons-material';
+import { CheckCircle, Error as ErrorIcon, Cancel, HourglassEmpty, WifiOff, BookOpen } from '@mui/icons-material';
 import { Job, cancelJob } from '@/lib/api';
 import { useJobWebSocket } from '@/lib/useJobWebSocket';
+import CoverageRunDialog from './CoverageRunDialog';
 
 interface JobProgressDialogProps {
   jobId: number | null;
@@ -35,6 +36,7 @@ export default function JobProgressDialog({
   onError,
 }: JobProgressDialogProps) {
   const [cancelling, setCancelling] = React.useState(false);
+  const [showCoverageDialog, setShowCoverageDialog] = React.useState(false);
 
   const { job, connected, error } = useJobWebSocket({
     jobId,
@@ -209,12 +211,33 @@ export default function JobProgressDialog({
             {cancelling ? 'Cancelling...' : 'Cancel Job'}
           </Button>
         )}
+        {job?.status === 'completed' && job.history_id && (
+          <Button
+            onClick={() => setShowCoverageDialog(true)}
+            color="primary"
+            variant="outlined"
+            startIcon={<BookOpen />}
+          >
+            Run Vocabulary Coverage
+          </Button>
+        )}
         {isTerminal && (
           <Button onClick={onClose} color="primary" variant="contained">
             Close
           </Button>
         )}
       </DialogActions>
+      
+      {/* Coverage Run Dialog */}
+      {job?.history_id && (
+        <CoverageRunDialog
+          open={showCoverageDialog}
+          onClose={() => setShowCoverageDialog(false)}
+          sourceType="history"
+          sourceId={job.history_id}
+          sourceName={job.original_filename}
+        />
+      )}
     </Dialog>
   );
 }
