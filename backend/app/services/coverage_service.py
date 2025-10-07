@@ -87,7 +87,8 @@ class CoverageService:
     
     def coverage_mode_greedy(
         self,
-        sentences: List[str]
+        sentences: List[str],
+        progress_callback: callable | None = None
     ) -> Tuple[List[Dict], Dict]:
         """
         Coverage Mode: Greedy set cover algorithm to select minimal sentences
@@ -103,6 +104,11 @@ class CoverageService:
         """
         # Build sentence index
         sentence_index = self.build_sentence_index(sentences)
+        if progress_callback:
+            try:
+                progress_callback(10)
+            except Exception:
+                pass
         
         # Track uncovered words
         uncovered_words = self.wordlist_keys.copy()
@@ -111,7 +117,7 @@ class CoverageService:
         assignments = []
         word_to_sentence = {}  # word_key -> sentence_index
         
-        # Greedy selection
+    # Greedy selection
         while uncovered_words:
             best_sentence_idx = None
             best_gain = 0
@@ -135,6 +141,17 @@ class CoverageService:
             for word_key in best_covered_words:
                 word_to_sentence[word_key] = best_sentence_idx
                 uncovered_words.discard(word_key)
+
+            # Emit progress based on coverage of words
+            if progress_callback:
+                try:
+                    covered = len(word_to_sentence)
+                    total = len(self.wordlist_keys) if self.wordlist_keys else 1
+                    pct = 10 + int(80 * (covered / total))
+                    pct = min(max(pct, 10), 95)
+                    progress_callback(pct)
+                except Exception:
+                    pass
         
         # Build assignments list
         for word_key, sentence_idx in word_to_sentence.items():
@@ -166,6 +183,12 @@ class CoverageService:
             'total_sentences': len(sentences)
         }
         
+        if progress_callback:
+            try:
+                progress_callback(95)
+            except Exception:
+                pass
+
         logger.info(f"Coverage mode: {stats['words_covered']}/{stats['words_total']} words covered "
                    f"with {stats['selected_sentence_count']} sentences")
         
@@ -173,37 +196,41 @@ class CoverageService:
     
     def filter_mode(
         self,
-        sentences: List[str]
+        sentences: List[str],
+        progress_callback: callable | None = None
     ) -> Tuple[List[Dict], Dict]:
         """
         Filter Mode: Select sentences with high vocabulary density and rank them.
-        Uses a multi-pass approach prioritizing ideal sentence lengths.
-        
+
         Args:
             sentences: List of sentence strings
-            
+            progress_callback: Optional callable(progress_percent: int)
+
         Returns:
             Tuple of (selected_sentences, stats)
-            - selected_sentences: List of dicts with sentence info
-            - stats: Dict with filter statistics
         """
         # Build sentence index
         sentence_index = self.build_sentence_index(sentences)
-        
+        if progress_callback:
+            try:
+                progress_callback(10)
+            except Exception:
+                pass
+
         # Multi-pass approach: prioritize 4-word sentences, then fall back to 3-word
         selected = []
         candidates_by_pass = {}
-        
+
         # Pass 1: Look for 4-word sentences first (ideal length)
         pass_1_candidates = []
         for idx, info in sentence_index.items():
             token_count = info['token_count']
             ratio = info['in_list_ratio']
-            
-            # Use scaled ratio based on token count
             min_ratio = self.scaled_min_ratios.get(token_count, self.default_min_ratio)
 
-            logger.debug(f"Sentence {idx}: '{info['text']}' token_count={token_count} ratio={ratio:.2f} min_ratio={min_ratio:.2f}")
+            logger.debug(
+                f"Sentence {idx}: '{info['text']}' token_count={token_count} ratio={ratio:.2f} min_ratio={min_ratio:.2f}"
+            )
 
             if token_count == 4 and ratio >= min_ratio:
                 score = ratio * 10.0 + (1.0 / token_count) * 0.5
@@ -215,31 +242,39 @@ class CoverageService:
                     'token_count': token_count,
                     'words_in_list': list(info['words_in_list'])
                 })
-        
+
         # Sort and select from pass 1
         pass_1_candidates.sort(key=lambda x: x['sentence_score'], reverse=True)
         selected.extend(pass_1_candidates[:self.target_count])
         candidates_by_pass['pass_1_4word'] = len(pass_1_candidates)
-        
-        logger.info(f"Filter mode pass 1 (4-word): {len(selected)}/{len(pass_1_candidates)} sentences selected")
-        
+
+        logger.info(
+            f"Filter mode pass 1 (4-word): {len(selected)}/{len(pass_1_candidates)} sentences selected"
+        )
+
+        if progress_callback:
+            try:
+                progress_callback(30)
+            except Exception:
+                pass
+
         # Pass 2: If we don't have enough, look for 3-word sentences
         if len(selected) < self.target_count:
             remaining_needed = self.target_count - len(selected)
             pass_2_candidates = []
-            
+
             for idx, info in sentence_index.items():
                 # Skip if already selected
                 if any(s['sentence_index'] == idx for s in selected):
                     continue
-                
+
                 token_count = info['token_count']
                 ratio = info['in_list_ratio']
-                
-                # Use scaled ratio
                 min_ratio = self.scaled_min_ratios.get(token_count, self.default_min_ratio)
 
-                logger.debug(f"Sentence {idx}: '{info['text']}' token_count={token_count} ratio={ratio:.2f} min_ratio={min_ratio:.2f}")
+                logger.debug(
+                    f"Sentence {idx}: '{info['text']}' token_count={token_count} ratio={ratio:.2f} min_ratio={min_ratio:.2f}"
+                )
 
                 if token_count == 3 and ratio >= min_ratio:
                     score = ratio * 10.0 + (1.0 / token_count) * 0.5
@@ -251,37 +286,47 @@ class CoverageService:
                         'token_count': token_count,
                         'words_in_list': list(info['words_in_list'])
                     })
-            
+
             # Sort and select from pass 2
             pass_2_candidates.sort(key=lambda x: x['sentence_score'], reverse=True)
             selected.extend(pass_2_candidates[:remaining_needed])
             candidates_by_pass['pass_2_3word'] = len(pass_2_candidates)
-            
-            logger.info(f"Filter mode pass 2 (3-word): {len(pass_2_candidates)} candidates found, "
-                       f"added {min(remaining_needed, len(pass_2_candidates))} sentences")
-        
+
+            logger.info(
+                f"Filter mode pass 2 (3-word): {len(pass_2_candidates)} candidates found, "
+                f"added {min(remaining_needed, len(pass_2_candidates))} sentences"
+            )
+
+            if progress_callback:
+                try:
+                    progress_callback(60)
+                except Exception:
+                    pass
+
         # Pass 3: If still not enough, use original range-based approach for remaining lengths
         if len(selected) < self.target_count:
             remaining_needed = self.target_count - len(selected)
             pass_3_candidates = []
-            
+
             for idx, info in sentence_index.items():
                 # Skip if already selected
                 if any(s['sentence_index'] == idx for s in selected):
                     continue
-                
+
                 token_count = info['token_count']
                 ratio = info['in_list_ratio']
-                
-                # Use scaled ratio
                 min_ratio = self.scaled_min_ratios.get(token_count, self.default_min_ratio)
 
-                logger.debug(f"Sentence {idx}: '{info['text']}' token_count={token_count} ratio={ratio:.2f} min_ratio={min_ratio:.2f}")
+                logger.debug(
+                    f"Sentence {idx}: '{info['text']}' token_count={token_count} ratio={ratio:.2f} min_ratio={min_ratio:.2f}"
+                )
 
                 # Accept sentences in the configured range, excluding 3 and 4 words (already processed)
-                if (self.len_min <= token_count <= self.len_max and 
-                    token_count not in [3, 4] and 
-                    ratio >= min_ratio):
+                if (
+                    self.len_min <= token_count <= self.len_max
+                    and token_count not in [3, 4]
+                    and ratio >= min_ratio
+                ):
                     score = ratio * 10.0 + (1.0 / token_count) * 0.5
                     pass_3_candidates.append({
                         'sentence_index': idx,
@@ -291,18 +336,26 @@ class CoverageService:
                         'token_count': token_count,
                         'words_in_list': list(info['words_in_list'])
                     })
-            
+
             # Sort and select from pass 3
             pass_3_candidates.sort(key=lambda x: x['sentence_score'], reverse=True)
             selected.extend(pass_3_candidates[:remaining_needed])
             candidates_by_pass['pass_3_other'] = len(pass_3_candidates)
-            
-            logger.info(f"Filter mode pass 3 (other lengths): {len(pass_3_candidates)} candidates found, "
-                       f"added {min(remaining_needed, len(pass_3_candidates))} sentences")
-        
+
+            logger.info(
+                f"Filter mode pass 3 (other lengths): {len(pass_3_candidates)} candidates found, "
+                f"added {min(remaining_needed, len(pass_3_candidates))} sentences"
+            )
+
+            if progress_callback:
+                try:
+                    progress_callback(85)
+                except Exception:
+                    pass
+
         # Calculate total candidates across all passes
         total_candidates = sum(candidates_by_pass.values())
-        
+
         # Calculate statistics
         stats = {
             'total_sentences': len(sentences),
@@ -314,10 +367,18 @@ class CoverageService:
             'len_min': self.len_min,
             'len_max': self.len_max,
             'target_count': self.target_count,
-            'candidates_by_pass': candidates_by_pass
+            'candidates_by_pass': candidates_by_pass,
         }
-        
-        logger.info(f"Filter mode complete: {len(selected)}/{total_candidates} sentences selected "
-                   f"from {len(sentences)} total (passes: {candidates_by_pass})")
-        
+
+        logger.info(
+            f"Filter mode complete: {len(selected)}/{total_candidates} sentences selected "
+            f"from {len(sentences)} total (passes: {candidates_by_pass})"
+        )
+
+        if progress_callback:
+            try:
+                progress_callback(95)
+            except Exception:
+                pass
+
         return selected, stats

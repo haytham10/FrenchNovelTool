@@ -1254,12 +1254,31 @@ def coverage_build_async(self, run_id: int):
         # Initialize coverage service
         config = coverage_run.config_json or {}
         coverage_service = CoverageService(wordlist_keys, config)
+
+        # Define a progress callback that updates the DB and emits websocket events
+        def _progress_callback(pct: int, step: str | None = None):
+            try:
+                # Refresh coverage_run from DB to avoid stale session data
+                cov = CoverageRun.query.get(run_id)
+                if not cov:
+                    return
+                cov.progress_percent = min(100, max(0, int(pct)))
+                if step:
+                    cov.current_step = step
+                safe_db_commit(db)
+                try:
+                    from app.socket_events import emit_coverage_progress
+                    emit_coverage_progress(run_id)
+                except Exception:
+                    logger.debug("Failed to emit intermediate coverage progress for run %s", run_id)
+            except Exception:
+                logger.exception("progress_callback failed for run %s", run_id)
         
         # Run appropriate mode
         if coverage_run.mode == 'coverage':
-            assignments_data, stats = coverage_service.coverage_mode_greedy(sentences)
+            assignments_data, stats = coverage_service.coverage_mode_greedy(sentences, progress_callback=_progress_callback)
         elif coverage_run.mode == 'filter':
-            assignments_data, stats = coverage_service.filter_mode(sentences)
+            assignments_data, stats = coverage_service.filter_mode(sentences, progress_callback=_progress_callback)
         else:
             raise ValueError(f"Unknown mode: {coverage_run.mode}")
         
