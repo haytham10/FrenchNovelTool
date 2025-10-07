@@ -171,7 +171,7 @@ class WordListService:
         
         ingestion_report['normalized_count'] = len(normalized_keys)
         
-        # Create WordList object
+        # Create WordList object with full normalized list
         wordlist = WordList(
             owner_user_id=owner_user_id,
             name=name,
@@ -179,6 +179,7 @@ class WordListService:
             source_ref=source_ref,
             normalized_count=len(normalized_keys),
             canonical_samples=samples,
+            words_json=sorted(list(normalized_keys)),  # Store full list
             is_global_default=False
         )
         
@@ -201,19 +202,34 @@ class WordListService:
         Returns:
             List of WordList objects
         """
-        query = WordList.query
+        query = WordListService.get_user_wordlists_query(user_id, include_global)
+        return query.all()
+    
+    @staticmethod
+    def get_user_wordlists_query(user_id: int, include_global: bool = True):
+        """
+        Get query for word lists accessible to a user.
         
+        Args:
+            user_id: User ID
+            include_global: Whether to include global lists
+            
+        Returns:
+            SQLAlchemy query object
+        """
         if include_global:
-            query = query.filter(
+            # Include user's own lists and global lists
+            query = WordList.query.filter(
                 db.or_(
                     WordList.owner_user_id == user_id,
                     WordList.owner_user_id.is_(None)
                 )
             )
         else:
-            query = query.filter(WordList.owner_user_id == user_id)
+            # Only user's own lists
+            query = WordList.query.filter_by(owner_user_id=user_id)
         
-        return query.order_by(WordList.is_global_default.desc(), WordList.name).all()
+        return query.order_by(WordList.is_global_default.desc(), WordList.created_at.desc())
     
     @staticmethod
     def get_global_default_wordlist() -> Optional[WordList]:

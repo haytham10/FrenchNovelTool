@@ -1153,7 +1153,15 @@ def coverage_build_async(self, run_id: int):
         # Update status
         coverage_run.status = 'processing'
         coverage_run.celery_task_id = self.request.id
+        coverage_run.progress_percent = 10
         safe_db_commit(db)
+        
+        # Emit progress via WebSocket
+        try:
+            from app.socket_events import emit_coverage_progress
+            emit_coverage_progress(run_id)
+        except Exception as e:
+            logger.warning(f"Failed to emit coverage progress for run {run_id}: {e}")
         
         # Load word list
         wordlist_id = coverage_run.wordlist_id
@@ -1177,7 +1185,7 @@ def coverage_build_async(self, run_id: int):
             if not history or not history.sentences:
                 raise ValueError(f"History {coverage_run.source_id} not found or has no sentences")
             # Extract normalized sentences
-            sentences = [s.get('normalized', s.get('original', '')) for s in history.sentences]
+            sentences = [s.get('normalized', s.get('original', '')) for s in history.sentences if s.get('normalized') or s.get('original')]
         elif coverage_run.source_type == 'job':
             job = Job.query.get(coverage_run.source_id)
             if not job or not job.chunk_results:
@@ -1185,79 +1193,36 @@ def coverage_build_async(self, run_id: int):
             # Extract sentences from chunk results
             for chunk_result in job.chunk_results:
                 chunk_sentences = chunk_result.get('sentences', [])
-                sentences.extend([s.get('normalized', s.get('original', '')) for s in chunk_sentences])
+                sentences.extend([s.get('normalized', s.get('original', '')) for s in chunk_sentences if s.get('normalized') or s.get('original')])
         else:
             raise ValueError(f"Unknown source_type: {coverage_run.source_type}")
         
+        # Validate sentences
         if not sentences:
             raise ValueError("No sentences found in source")
         
+        # Filter out empty sentences
+        sentences = [s.strip() for s in sentences if s and s.strip()]
+        if not sentences:
+            raise ValueError("All sentences are empty after filtering")
+        
         logger.info(f"Processing {len(sentences)} sentences with word list '{wordlist.name}'")
         
-        # Build word list keys. Prefer to build the full normalized set from the
-        # original source when possible (Google Sheet/CSV). Fall back to the
-        # small canonical_samples proxy if the full list can't be retrieved.
-        from app.services.wordlist_service import WordListService
+        # Get word list keys from stored words_json
         wordlist_keys = set()
-
-        try:
-            # If the wordlist points to a Google Sheet, try to fetch the full
-            # column of words and normalize all variants.
-            if wordlist.source_type == 'google_sheet' and wordlist.source_ref:
-                try:
-                    # wordlist.source_ref expected to be spreadsheet_id or URL
-                    sheet_id = wordlist.source_ref
-                    # If a URL was stored, attempt to extract spreadsheet id
-                    if 'docs.google.com' in str(sheet_id):
-                        # naive extraction of id from typical URL
-                        import re
-                        m = re.search(r'/d/([a-zA-Z0-9-_]+)', sheet_id)
-                        if m:
-                            sheet_id = m.group(1)
-
-                    # Use GoogleSheetsService to fetch column B by default
-                    from app.services.google_sheets_service import GoogleSheetsService
-                    gss = GoogleSheetsService()
-                    # The fetch method needs user creds; try to use system service
-                    # credentials if available via current_app (best-effort)
-                    creds = None
-                    try:
-                        from flask import current_app
-                        creds = getattr(current_app, 'google_oauth_creds', None)
-                    except Exception:
-                        creds = None
-
-                    # Attempt to fetch column B values (header may exist)
-                    fetched = []
-                    try:
-                        if creds:
-                            fetched = gss.fetch_words_from_spreadsheet(creds, sheet_id, column='B', include_header=True)
-                        else:
-                            # If no creds available in worker context, still try without creds
-                            fetched = gss.fetch_words_from_spreadsheet(None, sheet_id, column='B', include_header=True)
-                    except Exception:
-                        fetched = []
-
-                    if fetched:
-                        wls = WordListService()
-                        for cell in fetched:
-                            # Expand variants and normalize
-                            for variant in wls.split_variants(cell):
-                                normalized = wls.normalize_word(variant, fold_diacritics=True)
-                                if normalized:
-                                    wordlist_keys.add(normalized)
-                except Exception:
-                    # If any of the sheet fetching fails, ignore and fall back
-                    wordlist_keys = set()
-
-        except Exception:
-            wordlist_keys = set()
-
-        # Final fallback to canonical_samples (small proxy)
+        if wordlist.words_json:
+            # Use stored full normalized list
+            wordlist_keys = set(wordlist.words_json)
+            logger.info(f"Loaded {len(wordlist_keys)} words from stored words_json")
+        elif wordlist.canonical_samples:
+            # Fallback to canonical samples if full list not available
+            wordlist_keys = set(wordlist.canonical_samples)
+            logger.warning(f"WordList {wordlist_id} has no words_json, using {len(wordlist_keys)} canonical samples")
+        else:
+            raise ValueError(f"WordList {wordlist_id} has no words_json or canonical_samples")
+        
         if not wordlist_keys:
-            wordlist_keys = set(wordlist.canonical_samples or [])
-        if not wordlist_keys:
-            raise ValueError("WordList has no canonical samples or retrievable source words")
+            raise ValueError(f"WordList {wordlist_id} is empty")
         
         # Initialize coverage service
         config = coverage_run.config_json or {}

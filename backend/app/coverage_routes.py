@@ -4,7 +4,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from marshmallow import ValidationError
 from app import limiter, db
-from app.models import WordList, CoverageRun, CoverageAssignment, UserSettings
+from app.models import WordList, CoverageRun, CoverageAssignment, UserSettings, User
 from app.services.wordlist_service import WordListService
 from app.services.auth_service import AuthService
 from app.services.google_sheets_service import GoogleSheetsService
@@ -29,14 +29,28 @@ coverage_bp = Blueprint('coverage', __name__, url_prefix='/api/v1')
 @coverage_bp.route('/wordlists', methods=['GET'])
 @jwt_required()
 def list_wordlists():
-    """List all word lists accessible to the user (global + user's own)"""
+    """List all word lists accessible to the user (global + user's own) with pagination"""
     user_id = int(get_jwt_identity())
     
+    # Get pagination parameters
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    per_page = min(per_page, 100)  # Max 100 per page
+    
     wordlist_service = WordListService()
-    wordlists = wordlist_service.get_user_wordlists(user_id, include_global=True)
+    wordlists_query = wordlist_service.get_user_wordlists_query(user_id, include_global=True)
+    
+    # Paginate
+    paginated = wordlists_query.paginate(page=page, per_page=per_page, error_out=False)
     
     return jsonify({
-        'wordlists': [wl.to_dict() for wl in wordlists]
+        'wordlists': [wl.to_dict() for wl in paginated.items],
+        'pagination': {
+            'page': page,
+            'per_page': per_page,
+            'total': paginated.total,
+            'pages': paginated.pages
+        }
     }), 200
 
 
@@ -367,9 +381,118 @@ def export_coverage_run(run_id):
     except ValidationError as e:
         return jsonify({'errors': e.messages}), 422
     
-    # TODO: Implement Google Sheets export
-    # For now, return placeholder
-    return jsonify({
-        'message': 'Export functionality coming soon',
-        'sheet_name': data['sheet_name']
-    }), 501  # Not Implemented
+    # Get user for OAuth credentials
+    user = User.query.get(user_id)
+    if not user or not user.google_access_token:
+        return jsonify({'error': 'Google OAuth not configured. Please connect your Google account in Settings.'}), 400
+    
+    try:
+        # Get assignments
+        assignments = CoverageAssignment.query.filter_by(coverage_run_id=run_id).all()
+        
+        # Prepare data for sheets
+        if coverage_run.mode == 'coverage':
+            # Coverage mode: word-to-sentence assignments
+            rows = [['Word', 'Sentence', 'Score', 'Index']]  # Header
+            for assignment in assignments:
+                rows.append([
+                    assignment.word_key,
+                    assignment.sentence_text,
+                    assignment.sentence_score or 0.0,
+                    assignment.sentence_index
+                ])
+        else:
+            # Filter mode: ranked sentences
+            rows = [['Rank', 'Sentence', 'Score', 'Index']]  # Header
+            sorted_assignments = sorted(assignments, key=lambda a: a.sentence_score or 0.0, reverse=True)
+            for idx, assignment in enumerate(sorted_assignments, 1):
+                rows.append([
+                    idx,
+                    assignment.sentence_text,
+                    assignment.sentence_score or 0.0,
+                    assignment.sentence_index
+                ])
+        
+        # Create Google Sheets document
+        sheets_service = GoogleSheetsService()
+        sheet_name = data.get('sheet_name', f"Vocabulary Coverage - {coverage_run.id}")
+        
+        # Create spreadsheet
+        spreadsheet = sheets_service.create_spreadsheet_from_sentences(
+            user,
+            sheet_name,
+            rows
+        )
+        
+        return jsonify({
+            'message': 'Export successful',
+            'spreadsheet_id': spreadsheet.get('spreadsheetId'),
+            'spreadsheet_url': spreadsheet.get('spreadsheetUrl')
+        }), 200
+        
+    except Exception as e:
+        logger.exception(f"Error exporting coverage run to Sheets: {e}")
+        return jsonify({'error': f'Export failed: {str(e)}'}), 500
+
+
+@coverage_bp.route('/coverage/runs/<int:run_id>/download', methods=['GET'])
+@jwt_required()
+def download_coverage_run(run_id):
+    """Download coverage run results as CSV"""
+    from flask import make_response
+    import csv
+    from io import StringIO
+    
+    user_id = int(get_jwt_identity())
+    
+    coverage_run = CoverageRun.query.filter_by(id=run_id, user_id=user_id).first()
+    if not coverage_run:
+        return jsonify({'error': 'Coverage run not found'}), 404
+    
+    if coverage_run.status != 'completed':
+        return jsonify({'error': 'Coverage run not completed'}), 400
+    
+    try:
+        # Get assignments
+        assignments = CoverageAssignment.query.filter_by(coverage_run_id=run_id).all()
+        
+        # Create CSV in memory
+        output = StringIO()
+        writer = csv.writer(output)
+        
+        # Write data based on mode
+        if coverage_run.mode == 'coverage':
+            # Coverage mode: word-to-sentence assignments
+            writer.writerow(['Word', 'Sentence', 'Score', 'Index'])
+            for assignment in assignments:
+                writer.writerow([
+                    assignment.word_key,
+                    assignment.sentence_text,
+                    assignment.sentence_score or 0.0,
+                    assignment.sentence_index
+                ])
+        else:
+            # Filter mode: ranked sentences
+            writer.writerow(['Rank', 'Sentence', 'Score', 'Index'])
+            sorted_assignments = sorted(assignments, key=lambda a: a.sentence_score or 0.0, reverse=True)
+            for idx, assignment in enumerate(sorted_assignments, 1):
+                writer.writerow([
+                    idx,
+                    assignment.sentence_text,
+                    assignment.sentence_score or 0.0,
+                    assignment.sentence_index
+                ])
+        
+        # Create response
+        csv_data = output.getvalue()
+        output.close()
+        
+        response = make_response(csv_data)
+        response.headers['Content-Type'] = 'text/csv; charset=utf-8'
+        response.headers['Content-Disposition'] = f'attachment; filename=coverage_run_{run_id}.csv'
+        
+        return response
+        
+    except Exception as e:
+        logger.exception(f"Error downloading coverage run as CSV: {e}")
+        return jsonify({'error': f'Download failed: {str(e)}'}), 500

@@ -364,6 +364,7 @@ class WordList(db.Model):
     source_ref = db.Column(db.String(512), nullable=True)  # Sheet ID/URL or file name
     normalized_count = db.Column(db.Integer, nullable=False, default=0)
     canonical_samples = db.Column(db.JSON, nullable=True)  # Small sample of normalized keys
+    words_json = db.Column(db.JSON, nullable=True)  # Full normalized word list (array of strings)
     is_global_default = db.Column(db.Boolean, default=False, nullable=False, index=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
