@@ -468,7 +468,7 @@ def export_coverage_run(run_id):
         sheet_name = data.get('sheet_name', f"Vocabulary Coverage - {coverage_run.id}")
         
         # Create spreadsheet
-        spreadsheet = sheets_service.create_spreadsheet_from_sentences(
+        spreadsheet = sheets_service.create_spreadsheet_from_rows(
             user,
             sheet_name,
             rows
