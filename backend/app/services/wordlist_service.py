@@ -5,7 +5,7 @@ import unicodedata
 from typing import Dict, List, Set, Tuple, Optional
 from datetime import datetime
 from app import db
-from app.models import WordList
+from app.models import WordList, CoverageRun, UserSettings
 
 logger = logging.getLogger(__name__)
 
@@ -232,9 +232,28 @@ class WordListService:
         Returns:
             True if deleted, False if not found or not authorized
         """
+        # Only allow deletion by the owner (global lists cannot be deleted by regular users)
         wordlist = WordList.query.filter_by(id=wordlist_id, owner_user_id=user_id).first()
         if not wordlist:
             return False
-        
+
+        # Null out references in user settings that point to this wordlist
+        try:
+            UserSettings.query.filter(UserSettings.default_wordlist_id == wordlist_id).update(
+                { 'default_wordlist_id': None }, synchronize_session=False
+            )
+        except Exception:
+            # If the UserSettings model/table is not present or update fails, continue and let commit handle it
+            pass
+
+        # Null out references in coverage runs (preserve runs, just remove link)
+        try:
+            CoverageRun.query.filter(CoverageRun.wordlist_id == wordlist_id).update(
+                { 'wordlist_id': None }, synchronize_session=False
+            )
+        except Exception:
+            pass
+
+        # Now delete the wordlist itself
         db.session.delete(wordlist)
         return True
