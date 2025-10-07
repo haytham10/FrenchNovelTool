@@ -40,13 +40,16 @@ class GoogleSheetsService:
                 current_app.logger.error(f'Failed to read spreadsheet metadata: {e}')
                 raise
 
-        # Read values from the specified column
-        range_name = f"{sheet_title}!{column}:{column}"
-        result = sheets_service.spreadsheets().values().get(
-            spreadsheetId=spreadsheet_id,
-            range=range_name
-        ).execute()
-        values = result.get('values', [])
+        def _read_column(col: str) -> list[list[str]]:
+            rng = f"{sheet_title}!{col}:{col}"
+            res = sheets_service.spreadsheets().values().get(
+                spreadsheetId=spreadsheet_id,
+                range=rng
+            ).execute()
+            return res.get('values', [])
+
+        # Read values from the preferred column
+        values = _read_column(column)
 
         # Flatten and clean
         words: list[str] = []
@@ -87,6 +90,39 @@ class GoogleSheetsService:
             if cell:
                 words.append(cell)
         
+        # If almost nothing found, try fallback column (common layout: A=french, B=english)
+        if len(words) < 10 and column.upper() == 'B':
+            logger.info("Few words detected in column B, attempting fallback to column A")
+            values_a = _read_column('A')
+            words_a: list[str] = []
+            if values_a:
+                # Reuse same cleaning logic for column A
+                start_index_a = 0
+                if values_a and len(values_a) > 0:
+                    first_cell_a = str(values_a[0][0]).strip().lower()
+                    if first_cell_a in ('index', 'word', 'mot', 'term', 'french', 'uni|une', 'a|an'):
+                        start_index_a = 1
+                        logger.info(f"Skipping header row in A: {values_a[0][0]}")
+                for idx, row in enumerate(values_a):
+                    if idx < start_index_a:
+                        continue
+                    if not row:
+                        continue
+                    cell = str(row[0]).strip()
+                    if not cell:
+                        continue
+                    cell = re.sub(r'^\s*\d+\s*[-.:)\]]*\s*', '', cell)
+                    if re.match(r'^\d+$', cell):
+                        continue
+                    lower = cell.lower()
+                    if lower in ('index', 'word', 'mot', 'term', 'sentence', 'sentence_text', 'word_text', 'part of speech', 'pos', 'translation', 'english'):
+                        continue
+                    if cell:
+                        words_a.append(cell)
+            if len(words_a) > len(words):
+                logger.info(f"Using fallback column A with {len(words_a)} words (B had {len(words)})")
+                words = words_a
+
         logger.info(f"Extracted {len(words)} words from column {column}. Sample: {words[:5]}")
         return words
     

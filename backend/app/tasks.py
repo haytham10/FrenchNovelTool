@@ -1264,18 +1264,36 @@ def coverage_build_async(self, run_id: int):
             raise ValueError(f"Unknown mode: {coverage_run.mode}")
         
         # Save assignments to database
-        for assignment_data in assignments_data:
-            assignment = CoverageAssignment(
-                coverage_run_id=run_id,
-                word_original=assignment_data.get('word_original'),
-                word_key=assignment_data['word_key'],
-                lemma=assignment_data.get('lemma'),
-                matched_surface=assignment_data.get('matched_surface'),
-                sentence_index=assignment_data['sentence_index'],
-                sentence_text=assignment_data['sentence_text'],
-                sentence_score=assignment_data.get('sentence_score')
-            )
-            db.session.add(assignment)
+        if coverage_run.mode == 'coverage':
+            # Expect word-level assignments with 'word_key'
+            for assignment_data in assignments_data:
+                assignment = CoverageAssignment(
+                    coverage_run_id=run_id,
+                    word_original=assignment_data.get('word_original'),
+                    word_key=assignment_data['word_key'],
+                    lemma=assignment_data.get('lemma'),
+                    matched_surface=assignment_data.get('matched_surface'),
+                    sentence_index=assignment_data['sentence_index'],
+                    sentence_text=assignment_data['sentence_text'],
+                    sentence_score=assignment_data.get('sentence_score')
+                )
+                db.session.add(assignment)
+        else:
+            # Filter mode: store one row per selected sentence with a synthetic key
+            # (model requires non-null word_key). Key is unique per run via sentence index.
+            for assignment_data in assignments_data:
+                synthetic_key = f"filter_sentence_{assignment_data['sentence_index']}"
+                assignment = CoverageAssignment(
+                    coverage_run_id=run_id,
+                    word_original=None,
+                    word_key=synthetic_key,
+                    lemma=None,
+                    matched_surface=None,
+                    sentence_index=assignment_data['sentence_index'],
+                    sentence_text=assignment_data['sentence_text'],
+                    sentence_score=assignment_data.get('sentence_score')
+                )
+                db.session.add(assignment)
         
         # Update run with stats
         coverage_run.stats_json = stats
@@ -1288,11 +1306,11 @@ def coverage_build_async(self, run_id: int):
         # Update metrics
         status = 'completed'
         duration = time.time() - start_time
-        coverage_runs_total.labels(mode=mode, status='completed').inc()
-        coverage_build_duration_seconds.labels(mode=mode).observe(duration)
+        coverage_runs_total.labels(mode=coverage_run.mode, status='completed').inc()
+        coverage_build_duration_seconds.labels(mode=coverage_run.mode).observe(duration)
         
         logger.info(f"Coverage build completed for run_id={run_id} in {duration:.2f}s")
-        
+    
     except Exception as e:
         logger.exception(f"Error in coverage_build_async for run_id={run_id}: {e}")
         

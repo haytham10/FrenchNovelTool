@@ -123,8 +123,8 @@ def create_wordlist():
                 creds = auth_service.get_user_credentials(user)
 
                 sheets_service = GoogleSheetsService()
-                # Default: first sheet, column B (words), include all rows
-                words = sheets_service.fetch_words_from_spreadsheet(creds, spreadsheet_id=source_ref, column='B', include_header=True)
+                # Default: first sheet, auto-detect A/B with fallback
+                words = sheets_service.fetch_words_from_spreadsheet(creds, spreadsheet_id=source_ref, include_header=True)
                 if not words:
                     return jsonify({'error': 'No words found in the Google Sheet (column B)'}), 400
             except Exception as e:

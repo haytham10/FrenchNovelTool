@@ -283,11 +283,10 @@ class WordListService:
                 creds = auth_service.get_user_credentials(user)
                 sheets_service = GoogleSheetsService()
                 
-                # Fetch from sheet (now column B by default)
+                # Fetch from sheet (auto-detect A/B with fallback)
                 words = sheets_service.fetch_words_from_spreadsheet(
                     creds,
                     spreadsheet_id=wordlist.source_ref,
-                    column='B',
                     include_header=True
                 )
                 logger.info(f"Fetched {len(words)} words from Google Sheet {wordlist.source_ref}")
