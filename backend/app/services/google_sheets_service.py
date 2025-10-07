@@ -54,9 +54,9 @@ class GoogleSheetsService:
         # Flatten and clean
         words: list[str] = []
         
-        # Skip first row if it looks like a header
+        # Optionally skip first row if it looks like a header (controlled by include_header)
         start_index = 0
-        if values and len(values) > 0:
+        if not include_header and values and len(values) > 0:
             first_cell = str(values[0][0]).strip().lower()
             # Common header patterns
             if first_cell in ('index', 'word', 'mot', 'term', 'french', 'uni|une', 'a|an'):
@@ -98,7 +98,7 @@ class GoogleSheetsService:
             if values_a:
                 # Reuse same cleaning logic for column A
                 start_index_a = 0
-                if values_a and len(values_a) > 0:
+                if not include_header and values_a and len(values_a) > 0:
                     first_cell_a = str(values_a[0][0]).strip().lower()
                     if first_cell_a in ('index', 'word', 'mot', 'term', 'french', 'uni|une', 'a|an'):
                         start_index_a = 1
