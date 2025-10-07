@@ -2,7 +2,7 @@
 import json
 import base64
 from datetime import datetime
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, current_app, Response
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from marshmallow import ValidationError
 from app import limiter, db
@@ -1284,3 +1284,53 @@ def process_pdf_async_endpoint():
     except Exception as e:
         current_app.logger.exception(f'Failed to start async processing for user {user.email}')
         return jsonify({'error': str(e)}), 500
+
+
+@main_bp.route('/metrics', methods=['GET'])
+def metrics():
+    """
+    Prometheus metrics endpoint.
+    Returns metrics in Prometheus text format.
+    """
+    try:
+        from app.utils.metrics import generate_metrics, get_content_type
+        from app.models import WordList, CoverageRun, CoverageAssignment
+        from app.utils.metrics import wordlists_total, coverage_assignments_total
+        
+        # Update gauge metrics
+        # Count word lists by source type and global status
+        for source_type in ['csv', 'google_sheet', 'manual']:
+            for is_global in [True, False]:
+                count = WordList.query.filter_by(
+                    source_type=source_type,
+                    is_global_default=is_global
+                ).count()
+                wordlists_total.labels(
+                    source_type=source_type,
+                    is_global=str(is_global).lower()
+                ).set(count)
+        
+        # Count coverage assignments by mode
+        for mode in ['coverage', 'filter']:
+            # Get all completed runs for this mode
+            completed_runs = CoverageRun.query.filter_by(
+                mode=mode,
+                status='completed'
+            ).all()
+            
+            # Count total assignments across all runs
+            total_assignments = 0
+            for run in completed_runs:
+                total_assignments += CoverageAssignment.query.filter_by(
+                    coverage_run_id=run.id
+                ).count()
+            
+            coverage_assignments_total.labels(mode=mode).set(total_assignments)
+        
+        # Generate and return metrics
+        metrics_output = generate_metrics()
+        return Response(metrics_output, mimetype=get_content_type())
+        
+    except Exception as e:
+        current_app.logger.exception('Failed to generate metrics')
+        return jsonify({'error': 'Failed to generate metrics', 'details': str(e)}), 500

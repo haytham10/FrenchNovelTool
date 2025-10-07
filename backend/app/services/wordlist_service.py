@@ -6,6 +6,7 @@ from typing import Dict, List, Set, Tuple, Optional
 from datetime import datetime
 from app import db
 from app.models import WordList, CoverageRun, UserSettings
+from app.utils.metrics import wordlists_created_total, wordlist_ingestion_errors_total
 
 logger = logging.getLogger(__name__)
 
@@ -185,6 +186,9 @@ class WordListService:
         
         db.session.add(wordlist)
         db.session.flush()  # Get the ID without committing
+        
+        # Update metrics
+        wordlists_created_total.labels(source_type=source_type).inc()
         
         logger.info(f"Ingested word list '{name}' with {len(normalized_keys)} normalized words")
         

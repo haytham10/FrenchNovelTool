@@ -1,6 +1,7 @@
 """Celery tasks for asynchronous PDF processing"""
 import logging
 import os
+import time
 from datetime import datetime
 from typing import Dict, List
 from typing import Optional
@@ -1139,9 +1140,14 @@ def coverage_build_async(self, run_id: int):
     from app.models import CoverageRun, CoverageAssignment, WordList, History, Job
     from app.services.coverage_service import CoverageService
     from app.services.wordlist_service import WordListService
+    from app.utils.metrics import coverage_runs_total, coverage_build_duration_seconds
     
     db = get_db()
     logger.info(f"Starting coverage build for run_id={run_id}")
+    
+    start_time = time.time()
+    mode = None
+    status = 'failed'
     
     try:
         # Get the coverage run
@@ -1149,6 +1155,8 @@ def coverage_build_async(self, run_id: int):
         if not coverage_run:
             logger.error(f"CoverageRun {run_id} not found")
             return
+        
+        mode = coverage_run.mode
         
         # Update status
         coverage_run.status = 'processing'
@@ -1276,10 +1284,22 @@ def coverage_build_async(self, run_id: int):
         coverage_run.completed_at = datetime.utcnow()
         
         safe_db_commit(db)
-        logger.info(f"Coverage build completed for run_id={run_id}")
+        
+        # Update metrics
+        status = 'completed'
+        duration = time.time() - start_time
+        coverage_runs_total.labels(mode=mode, status='completed').inc()
+        coverage_build_duration_seconds.labels(mode=mode).observe(duration)
+        
+        logger.info(f"Coverage build completed for run_id={run_id} in {duration:.2f}s")
         
     except Exception as e:
         logger.exception(f"Error in coverage_build_async for run_id={run_id}: {e}")
+        
+        # Update metrics
+        if mode:
+            coverage_runs_total.labels(mode=mode, status='failed').inc()
+        
         try:
             coverage_run = CoverageRun.query.get(run_id)
             if coverage_run:
