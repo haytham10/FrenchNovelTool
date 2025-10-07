@@ -14,6 +14,7 @@ import {
   InputLabel,
   Alert,
   CircularProgress,
+  LinearProgress,
   Chip,
   Stack,
   Divider,
@@ -46,12 +47,15 @@ import {
   exportCoverageRun,
   downloadCoverageRunCSV,
   type WordList,
+  type CoverageRun as CoverageRunType,
+  type CoverageAssignment,
 } from '@/lib/api';
 import RouteGuard from '@/components/RouteGuard';
 import Breadcrumbs from '@/components/Breadcrumbs';
 import CoverageResultsTable from '@/components/CoverageResultsTable';
 import FilterResultsTable from '@/components/FilterResultsTable';
 import { useSettings } from '@/lib/queries';
+import { useCoverageWebSocket } from '@/lib/useCoverageWebSocket';
 
 export default function CoveragePage() {
   const queryClient = useQueryClient();
@@ -104,15 +108,29 @@ export default function CoveragePage() {
     queryKey: ['coverageRun', currentRunId],
     queryFn: () => getCoverageRun(currentRunId!),
     enabled: !!currentRunId,
-    refetchInterval: () => {
-      // Poll if still processing - use queryClient to read current cached data to avoid incorrect typing of the callback param
-      if (!currentRunId) return false;
-      const cached = queryClient.getQueryData(['coverageRun', currentRunId]) as { coverage_run?: { status?: string } } | undefined;
-      const status = cached?.coverage_run?.status;
-      if (status === 'processing' || status === 'pending') {
-        return 2000; // Poll every 2 seconds
-      }
-      return false; // Stop polling when complete
+    refetchOnWindowFocus: false,
+  });
+
+  // Real-time updates via WebSocket (replace polling)
+  type CoverageRunQueryData = {
+    coverage_run: CoverageRunType;
+    assignments?: CoverageAssignment[];
+    pagination?: { page: number; per_page: number; total: number; pages: number };
+  };
+
+  const ws = useCoverageWebSocket({
+    runId: currentRunId ?? null,
+    enabled: !!currentRunId,
+    onProgress: (run) => {
+      // Update only the coverage_run in cache to keep assignments stable while processing
+      queryClient.setQueryData<CoverageRunQueryData | undefined>(['coverageRun', run.id], (old) => {
+        if (old) return { ...old, coverage_run: run };
+        return { coverage_run: run };
+      });
+    },
+    onComplete: (run) => {
+      // Ensure final data (stats + assignments) is fetched
+      queryClient.invalidateQueries({ queryKey: ['coverageRun', run.id] });
     },
   });
   // Load processing history for source selection
@@ -538,21 +556,44 @@ export default function CoveragePage() {
               {coverageRun ? (
                 <>
                   <Typography variant="subtitle2">Status:</Typography>
-                  <Chip
-                    label={coverageRun.status}
-                    color={
-                      coverageRun.status === 'completed' ? 'success' :
-                      coverageRun.status === 'failed' ? 'error' :
-                      'default'
-                    }
-                    sx={{ mt: 0.5 }}
-                  />
+                  <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
+                    <Chip
+                      label={coverageRun.status}
+                      color={
+                        coverageRun.status === 'completed' ? 'success' :
+                        coverageRun.status === 'failed' ? 'error' :
+                        coverageRun.status === 'cancelled' ? 'warning' :
+                        'default'
+                      }
+                      size="small"
+                    />
+                    {coverageRun.status === 'processing' && (
+                      ws.connected ? (
+                        <Chip label="Live" color="success" size="small" variant="outlined" />
+                      ) : (
+                        <Chip label="Reconnecting..." color="warning" size="small" variant="outlined" />
+                      )
+                    )}
+                  </Stack>
+                  {/* Meta */}
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                    Run #{coverageRun.id} • Mode: {coverageRun.mode} • Source: {coverageRun.source_type} #{coverageRun.source_id}
+                    {coverageRun.wordlist_id ? (
+                      <> • Word List: {(() => { const wl = wordlists.find((w) => w.id === coverageRun.wordlist_id); return wl ? `${wl.name} (${wl.normalized_count} words)` : `#${coverageRun.wordlist_id}`; })()}</>
+                    ) : null}
+                  </Typography>
+                  {ws.error && (
+                    <Alert severity="warning" sx={{ mt: 1 }}>
+                      {ws.error.message}
+                    </Alert>
+                  )}
                   {coverageRun.status === 'processing' && (
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
-                      <CircularProgress size={20} />
-                      <Typography variant="body2">
-                        Processing... {coverageRun.progress_percent}%
-                      </Typography>
+                    <Box sx={{ mt: 1 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                        <Typography variant="body2" color="text.secondary">Processing…</Typography>
+                        <Typography variant="body2" color="text.secondary">{coverageRun.progress_percent}%</Typography>
+                      </Box>
+                      <LinearProgress variant="determinate" value={coverageRun.progress_percent} />
                     </Box>
                   )}
 
