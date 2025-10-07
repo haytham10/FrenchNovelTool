@@ -236,14 +236,7 @@ def refresh_wordlist(wordlist_id):
     
     try:
         wordlist_service = WordListService()
-        # Allow client to force refresh via ?force=true or JSON body {"force": true}
-        force_flag = False
-        if request.args.get('force') and request.args.get('force').lower() == 'true':
-            force_flag = True
-        elif request.json and isinstance(request.json, dict) and request.json.get('force'):
-            force_flag = True
-
-        refresh_report = wordlist_service.refresh_wordlist_from_source(wordlist, user, force=force_flag)
+        refresh_report = wordlist_service.refresh_wordlist_from_source(wordlist, user)
         db.session.commit()
         
         return jsonify({
