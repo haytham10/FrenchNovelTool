@@ -64,18 +64,28 @@ class GeminiService:
         self.retry_delay = current_app.config['GEMINI_RETRY_DELAY']
         # Allow operator to disable local segmentation fallback via config.
         # Default: True to preserve existing behaviour unless explicitly changed.
-        self.allow_local_fallback = current_app.config.get('GEMINI_ALLOW_LOCAL_FALLBACK', True)
+        self.allow_local_fallback = current_app.config.get('GEMINI_ALLOW_LOCAL_FALLBACK', False)
+        # Repair controls (to limit additional Gemini API calls which can be slow)
+        # Enable / disable the targeted long-sentence repair step
+        self.enable_repair = bool(current_app.config.get('GEMINI_ENABLE_REPAIR', True))
+        # Only attempt repair if sentence length > sentence_length_limit * repair_multiplier
+        self.repair_multiplier = float(current_app.config.get('GEMINI_REPAIR_MULTIPLIER', 1.5))
+        # Maximum repair attempts per unique chunk within a single request
+        self.max_repair_attempts = int(current_app.config.get('GEMINI_MAX_REPAIR_ATTEMPTS', 1))
+        # Simple in-request cache to avoid repeating repairs for identical chunks
+        self._repair_cache = {}
+
         # Runtime stats from last post-processing step
-        self.last_fragment_rate: float = 0.0
-        self.last_fragment_count: int = 0
-        self.last_fragment_details: List[Dict[str, Any]] = []
-        self.last_processed_sentences: List[str] = []
+        self.last_fragment_rate = 0.0
+        self.last_fragment_count = 0
+        self.last_fragment_details = []
+        self.last_processed_sentences = []
 
         # Retry / QC configuration
-        self.fragment_rate_retry_threshold: float = float(
+        self.fragment_rate_retry_threshold = float(
             current_app.config.get('GEMINI_FRAGMENT_RATE_RETRY_THRESHOLD', 3.0)
         )
-        self.reject_on_high_fragment_rate: bool = bool(
+        self.reject_on_high_fragment_rate = bool(
             current_app.config.get('GEMINI_REJECT_ON_HIGH_FRAGMENT_RATE', False)
         )
 
@@ -114,6 +124,7 @@ class GeminiService:
             "═══════════════════════════════════════════════════════════════",
             "",
             f"ABSOLUTE RULE: Every output sentence MUST be a complete, independent, grammatically correct sentence with {self.min_sentence_length}-{self.sentence_length_limit} words.",
+            f"ABSOLUTE HARD LIMIT: No output sentence may contain more than {self.sentence_length_limit} words. If necessary, rewrite into multiple sentences each not exceeding this limit.",
             "Each sentence must be linguistically complete.",
             min_length_rule,
             "Your task is to extract and process every single sentence from the entire document. Do not skip content.",
@@ -249,6 +260,31 @@ class GeminiService:
         ])
 
         return "\n".join(sections)
+
+    def _split_long_sentence(self, sentence: str) -> List[str]:
+        """Ask the model to rewrite a single long sentence into multiple sentences
+        each within the configured word limit. Returns normalized sentences.
+        This is a targeted repair for sentences that exceed sentence_length_limit.
+        """
+        if not sentence or not str(sentence).strip():
+            return []
+
+        max_words = self.sentence_length_limit
+        repair_prompt = (
+            f"Rewrite the following French sentence into one or more short, independent, "
+            f"grammatically complete sentences. Each output sentence must contain at most {max_words} words. "
+            "Return ONLY a JSON object: {\"sentences\": [\"Sentence 1.\", \"Sentence 2.\"]}."
+        )
+
+        try:
+            resp = self._call_gemini_api(sentence, repair_prompt, self.MODEL_PREFERENCE_MAP.get('balanced') or self.model_name)
+            # resp['sentences'] is a list of {"normalized": s, "original": s}
+            sentences = [item.get('normalized') if isinstance(item, dict) else str(item) for item in resp.get('sentences', [])]
+            # Ensure returned strings are stripped and non-empty
+            return [s.strip() for s in sentences if s and str(s).strip()]
+        except Exception as e:
+            current_app.logger.warning('Long-sentence repair failed: %s; sentence=%r', e, sentence[:200])
+            return []
     
     def build_minimal_prompt(self) -> str:
         """Build a minimal prompt that only asks for JSON sentence list.
@@ -444,6 +480,47 @@ class GeminiService:
 
                 if not chunk:
                     continue
+
+                # If this chunk exceeds configured length, attempt targeted repair
+                try:
+                    word_count = len(chunk.split())
+                except Exception:
+                    word_count = len(str(chunk).split())
+
+                if word_count > self.sentence_length_limit:
+                    # Decide whether to attempt a repair. Repairing every slightly-overlong
+                    # chunk causes many extra API calls and high latency. Use configuration
+                    # to limit attempts.
+                    repaired = []
+                    if not self.enable_repair:
+                        current_app.logger.debug('Repair disabled for chunk (len=%d): %s', word_count, chunk[:80])
+                    else:
+                        # Only attempt repair if chunk is significantly over the limit
+                        if word_count < int(self.sentence_length_limit * self.repair_multiplier):
+                            current_app.logger.debug(
+                                'Skipping repair for slightly-overlong chunk (len=%d, threshold=%s): %s',
+                                word_count, self.sentence_length_limit * self.repair_multiplier, chunk[:80]
+                            )
+                        else:
+                            # Use cache to avoid duplicate repairs in the same request
+                            cached = self._repair_cache.get(chunk)
+                            if cached is not None:
+                                repaired = cached
+                            else:
+                                try:
+                                    repaired = self._split_long_sentence(chunk)
+                                except Exception as e:
+                                    current_app.logger.warning('Exception during long-sentence repair: %s', e)
+                                    repaired = []
+                                # Store whatever we got (including empty list) to avoid retry storms
+                                self._repair_cache[chunk] = repaired
+
+                    if repaired:
+                        # Re-run post-processing on repaired pieces before continuing
+                        for r in repaired:
+                            processed.append(r)
+                        # Skip the normal handling for this original chunk
+                        continue
                 
                 # Check for fragments and log warnings
                 if self._is_likely_fragment(chunk):
@@ -531,8 +608,42 @@ class GeminiService:
         if self.fix_hyphenation:
             text = re.sub(r'(\w)-\s+(\w)', r'\1\2', text)
         text = re.sub(r'\s+', ' ', text)
+        # Remove guillemets and smart quotes — we never want these characters
+        # in the normalized output. Treat dialogue as normal sentences and
+        # let the rewriting logic handle speaker attribution / content.
+        text = re.sub(r'[«»“”]', '', text)
+
+        # If the whole sentence is wrapped in ASCII quotes, remove them so
+        # the model output will not include surrounding quotation marks.
+        text = re.sub(r'^[\"\']\s*(.*?)\s*[\"\']$', r'\1', text)
+
+        # Optionally preserve other formatting; at this point guillemets have
+        # been removed regardless of preserve_formatting to satisfy user preference.
         if not self.preserve_formatting:
+            # Keep minimal adjustments for spacing around any remaining markers
             text = text.replace('« ', '«').replace(' »', '»')
+
+        # Remove leading reporting clauses like "Il dit :", "Sam dit :", "Elle ajouta :"
+        # Pattern: optional speaker (capitalized name or pronoun) followed by up to 3 small tokens
+        # then a reporting verb (dit, ajouta, répondit, etc.) and optional punctuation. Case-insensitive.
+        try:
+            reporting_re = re.compile(
+                r"^\s*(?:(?:[A-Z][\w'’\-]+(?:\s+[A-Z][\w'’\-]+)*)|(?:il|elle|ils|elles|on|je|tu|nous|vous|lui|leur))(?:\s+\S{1,30}){0,3}\s+(?:a\s+dit|avait\s+dit|avait\s+r[ée]pondu|a\s+r[ée]pondu|r[ée]pondu|r[ée]pondit|dit|ditait|ajouta|ajoutait|ajoute|ajout[ée])\s*[:\-,\u2013\u2014]?\s*",
+                flags=re.IGNORECASE,
+            )
+            new_text = reporting_re.sub('', text, count=1)
+            # Also remove stray leading punctuation like multiple colons, dashes, or opening quotes
+            new_text = re.sub(r'^[\s:;\'"«»\-–—]+', '', new_text)
+            # Remove trailing closing quotes/punctuation so both opening and closing
+            # quotation marks are removed when stripping reporting clauses
+            new_text = re.sub(r'[\s:;\'"«»\-–—]+$', '', new_text)
+            # Only accept the stripped form if it results in non-empty text
+            if new_text and len(new_text.split()) >= 1:
+                text = new_text
+        except Exception:
+            # If regex fails for some reason, just keep the original text
+            pass
+
         return text.strip()
 
     def _looks_like_dialogue(self, sentence: str) -> bool:
@@ -591,12 +702,19 @@ class GeminiService:
                         return True
             return False
         
-        # Very short sentences are often fragments (unless they're valid imperatives or exclamations)
+        # Very short sentences are often fragments (unless they're valid imperatives,
+        # exclamations, or interrogatives with a conjugated verb).
         if len(words) < 2:
             # Allow single-word imperatives, exclamations, or dialogue
             if sentence.endswith(('!', '?', '.')) or self._looks_like_dialogue(sentence):
                 return False
             return True
+
+        # If sentence is a question ending with '?' and contains a conjugated verb,
+        # consider it a valid sentence (e.g., "Où est-il ?"). This reduces false positives
+        # from the fragment detector for short interrogatives.
+        if sentence.strip().endswith('?') and _contains_conjugated_verb(words):
+            return False
         
         # Sentences ending only with comma are definite fragments
         if sentence.endswith(','):
@@ -785,7 +903,7 @@ class GeminiService:
         return self._post_process_sentences(all_sentences)
     
     def _call_gemini_api(self, text: str, prompt: str, model_name: str) -> Dict[str, Any]:
-        """Low-level Gemini API call helper.
+        """Low-level Gemini API call helper with timeout protection.
         
         Args:
             text: Text to process
@@ -797,29 +915,54 @@ class GeminiService:
             
         Raises:
             GeminiAPIError: If API returns empty or malformed response
+            TimeoutError: If API call exceeds configured timeout
         """
+        import signal
+        
+        # Get timeout from config (default 3 minutes)
+        timeout_seconds = int(current_app.config.get('GEMINI_CALL_TIMEOUT_SECONDS', 180))
+        
+        def timeout_handler(signum, frame):
+            raise TimeoutError(f'Gemini API call exceeded {timeout_seconds}s timeout')
+        
         # Place the user text/document before the prompt to match the PDF path
         # ordering used in generate_content_from_pdf. Some SDKs/models behave
         # more reliably when the primary content is provided first.
         contents = [text, prompt]
 
         current_app.logger.debug(
-            'Calling Gemini API model=%s prompt_len=%s text_len=%s',
-            model_name, (len(prompt) if prompt else 0), (len(text) if text else 0)
+            'Calling Gemini API model=%s prompt_len=%s text_len=%s timeout=%ss',
+            model_name, (len(prompt) if prompt else 0), (len(text) if text else 0), timeout_seconds
         )
 
-        response = self.client.models.generate_content(
-            model=model_name,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                safety_settings=[
-                    types.SafetySetting(category='HARM_CATEGORY_HARASSMENT', threshold='BLOCK_NONE'),
-                    types.SafetySetting(category='HARM_CATEGORY_HATE_SPEECH', threshold='BLOCK_NONE'),
-                    types.SafetySetting(category='HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold='BLOCK_NONE'),
-                    types.SafetySetting(category='HARM_CATEGORY_DANGEROUS_CONTENT', threshold='BLOCK_NONE'),
-                ]
-            ),
-        )
+        # Set timeout alarm (Unix only; Windows will skip this)
+        old_handler = None
+        try:
+            if hasattr(signal, 'SIGALRM'):
+                old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+                signal.alarm(timeout_seconds)
+        except (AttributeError, ValueError):
+            # Windows or restricted environment - skip signal-based timeout
+            current_app.logger.debug('Signal-based timeout not available; relying on Celery soft_time_limit')
+        
+        try:
+            response = self.client.models.generate_content(
+                model=model_name,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    safety_settings=[
+                        types.SafetySetting(category='HARM_CATEGORY_HARASSMENT', threshold='BLOCK_NONE'),
+                        types.SafetySetting(category='HARM_CATEGORY_HATE_SPEECH', threshold='BLOCK_NONE'),
+                        types.SafetySetting(category='HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold='BLOCK_NONE'),
+                        types.SafetySetting(category='HARM_CATEGORY_DANGEROUS_CONTENT', threshold='BLOCK_NONE'),
+                    ]
+                ),
+            )
+        finally:
+            # Cancel alarm if set
+            if hasattr(signal, 'SIGALRM') and old_handler is not None:
+                signal.alarm(0)
+                signal.signal(signal.SIGALRM, old_handler)
         
         # Coerce None to empty string
         response_text = getattr(response, 'text', '') or ''

@@ -77,7 +77,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile.dev
     container_name: french-novel-celery-worker-dev
-    command: celery -A app.celery_app:celery worker --loglevel=info --concurrency=4
+    command: celery -A app.celery_app:celery worker --loglevel=info --concurrency=4 --task-events
     environment:
       - FLASK_ENV=development
       - SECRET_KEY=dev-secret-key

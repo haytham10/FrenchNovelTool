@@ -34,7 +34,7 @@ export const useProcessingStore = create<ProcessingState>((set) => ({
   loading: false,
   loadingMessage: '',
   uploadProgress: 0,
-  sentenceLength: 12,
+  sentenceLength: 8,
   advancedOptions: {
     geminiModel: 'speed',
     ignoreDialogues: false,
