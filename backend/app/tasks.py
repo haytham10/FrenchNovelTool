@@ -1194,11 +1194,70 @@ def coverage_build_async(self, run_id: int):
         
         logger.info(f"Processing {len(sentences)} sentences with word list '{wordlist.name}'")
         
-        # Build word list keys (for now, use samples as proxy; in production, load full list)
-        # TODO: Store full normalized word list for efficiency
-        wordlist_keys = set(wordlist.canonical_samples or [])
+        # Build word list keys. Prefer to build the full normalized set from the
+        # original source when possible (Google Sheet/CSV). Fall back to the
+        # small canonical_samples proxy if the full list can't be retrieved.
+        from app.services.wordlist_service import WordListService
+        wordlist_keys = set()
+
+        try:
+            # If the wordlist points to a Google Sheet, try to fetch the full
+            # column of words and normalize all variants.
+            if wordlist.source_type == 'google_sheet' and wordlist.source_ref:
+                try:
+                    # wordlist.source_ref expected to be spreadsheet_id or URL
+                    sheet_id = wordlist.source_ref
+                    # If a URL was stored, attempt to extract spreadsheet id
+                    if 'docs.google.com' in str(sheet_id):
+                        # naive extraction of id from typical URL
+                        import re
+                        m = re.search(r'/d/([a-zA-Z0-9-_]+)', sheet_id)
+                        if m:
+                            sheet_id = m.group(1)
+
+                    # Use GoogleSheetsService to fetch column B by default
+                    from app.services.google_sheets_service import GoogleSheetsService
+                    gss = GoogleSheetsService()
+                    # The fetch method needs user creds; try to use system service
+                    # credentials if available via current_app (best-effort)
+                    creds = None
+                    try:
+                        from flask import current_app
+                        creds = getattr(current_app, 'google_oauth_creds', None)
+                    except Exception:
+                        creds = None
+
+                    # Attempt to fetch column B values (header may exist)
+                    fetched = []
+                    try:
+                        if creds:
+                            fetched = gss.fetch_words_from_spreadsheet(creds, sheet_id, column='B', include_header=True)
+                        else:
+                            # If no creds available in worker context, still try without creds
+                            fetched = gss.fetch_words_from_spreadsheet(None, sheet_id, column='B', include_header=True)
+                    except Exception:
+                        fetched = []
+
+                    if fetched:
+                        wls = WordListService()
+                        for cell in fetched:
+                            # Expand variants and normalize
+                            for variant in wls.split_variants(cell):
+                                normalized = wls.normalize_word(variant, fold_diacritics=True)
+                                if normalized:
+                                    wordlist_keys.add(normalized)
+                except Exception:
+                    # If any of the sheet fetching fails, ignore and fall back
+                    wordlist_keys = set()
+
+        except Exception:
+            wordlist_keys = set()
+
+        # Final fallback to canonical_samples (small proxy)
         if not wordlist_keys:
-            raise ValueError("WordList has no canonical samples")
+            wordlist_keys = set(wordlist.canonical_samples or [])
+        if not wordlist_keys:
+            raise ValueError("WordList has no canonical samples or retrievable source words")
         
         # Initialize coverage service
         config = coverage_run.config_json or {}

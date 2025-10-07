@@ -9,7 +9,7 @@ from flask import current_app
 class GoogleSheetsService:
     """Service for creating and managing Google Sheets exports using user OAuth credentials"""
     def fetch_words_from_spreadsheet(self, creds, spreadsheet_id: str, sheet_title: str | None = None,
-                                     column: str = 'A', include_header: bool = False) -> list[str]:
+                                     column: str = 'B', include_header: bool = True) -> list[str]:
         """Fetch a list of words from a Google Spreadsheet column.
 
         Args:

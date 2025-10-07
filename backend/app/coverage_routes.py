@@ -56,7 +56,21 @@ def create_wordlist():
         # Read CSV file
         try:
             content = file.read().decode('utf-8')
-            words = [line.strip() for line in content.split('\n') if line.strip()]
+            # Try to parse as CSV and extract column B if present. Fall back to line-based parsing.
+            import csv
+            words = []
+            try:
+                reader = csv.reader(content.splitlines())
+                for row in reader:
+                    if not row:
+                        continue
+                    # If there's at least 2 columns, use column B (index 1), else use first column
+                    cell = row[1].strip() if len(row) > 1 and row[1].strip() else row[0].strip()
+                    if cell:
+                        words.append(cell)
+            except Exception:
+                # Fallback: one word per line
+                words = [line.strip() for line in content.split('\n') if line.strip()]
         except Exception as e:
             logger.error(f"Error reading CSV file: {e}")
             return jsonify({'error': 'Invalid CSV file'}), 400
