@@ -20,15 +20,12 @@ import {
   SelectChangeEvent,
   Tabs,
   Tab,
-  Card,
-  CardContent,
 } from '@mui/material';
 import {
   PlayArrow as PlayIcon,
   Upload as UploadIcon,
   History as HistoryIcon,
   WorkOutline as JobIcon,
-  CloudUpload as CloudIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
@@ -58,7 +55,6 @@ export default function CoveragePage() {
   const [selectedWordListId, setSelectedWordListId] = useState<number | ''>('');
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [currentRunId, setCurrentRunId] = useState<number | null>(null);
-  const [sourceSelectionMethod, setSourceSelectionMethod] = useState<'id' | 'upload'>(urlSource && urlId ? 'id' : 'id');
   
   // Update sourceId when URL params change
   useEffect(() => {

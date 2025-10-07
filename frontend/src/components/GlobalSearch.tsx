@@ -10,6 +10,7 @@ type Item = { title: string; href: string };
 
 const items: Item[] = [
   { title: 'Home', href: '/' },
+  { title: 'Vocabulary Coverage Tool', href: '/coverage' },
   { title: 'Processing History', href: '/history' },
   { title: 'User Settings', href: '/settings' },
 ];

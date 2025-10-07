@@ -47,6 +47,7 @@ export default function Header() {
                 <MIconButton color="inherit" onClick={() => setSearchOpen(true)} aria-label="Search">
                   <Icon icon={Search} fontSize="small" />
                 </MIconButton>
+                <Button component={Link} href="/coverage" color="inherit">Coverage</Button>
                 <Button component={Link} href="/history" color="inherit">History</Button>
                 <Button component={Link} href="/settings" color="inherit">Settings</Button>
               </>
