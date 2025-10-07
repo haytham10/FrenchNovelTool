@@ -201,10 +201,11 @@ class CoverageService:
     ) -> Tuple[List[Dict], Dict]:
         """
         Filter Mode (revised): select ALL sentences that contain at least N words
-        from the word list, where N defaults to 4. No selection cap is applied.
+        from the word list (default N=4) AND have a token length <= 8.
+        No selection cap is applied.
 
-        Scoring: integer score equal to the number of matched wordlist tokens
-        in the sentence (rounded by definition).
+        Scoring: score = ratio of matched words to total tokens for the sentence
+        (i.e., matched_count / token_count). Stored as a rounded float for readability.
 
         Args:
             sentences: List of sentence strings
@@ -213,8 +214,9 @@ class CoverageService:
         Returns:
             Tuple of (selected_sentences, stats)
         """
-        # Threshold for minimum matched words (configurable later if needed)
+        # Thresholds
         min_matched_words = 4
+        max_tokens = 8
 
         # Build sentence index
         sentence_index = self.build_sentence_index(sentences)
@@ -232,14 +234,15 @@ class CoverageService:
 
         for i, (idx, info) in enumerate(sentence_index.items(), start=1):
             matched_count = len(info['words_in_list'])
-            if matched_count >= min_matched_words:
-                # Integer score equal to matched word count
+            token_count = info['token_count']
+            if token_count <= max_tokens and matched_count >= min_matched_words:
+                ratio = info['in_list_ratio'] if token_count > 0 else 0.0
                 selected.append({
                     'sentence_index': idx,
                     'sentence_text': info['text'],
-                    'sentence_score': int(matched_count),
-                    'in_list_ratio': info['in_list_ratio'],
-                    'token_count': info['token_count'],
+                    'sentence_score': round(ratio, 3),
+                    'in_list_ratio': ratio,
+                    'token_count': token_count,
                     'words_in_list': list(info['words_in_list'])
                 })
 
@@ -251,7 +254,7 @@ class CoverageService:
                 except Exception:
                     pass
 
-        # Sort by score desc (then stable index order as tie-breaker)
+        # Sort by score (ratio) desc (then stable index order as tie-breaker)
         selected.sort(key=lambda x: x['sentence_score'], reverse=True)
 
         # Stats (preserve some keys for compatibility)
@@ -261,6 +264,7 @@ class CoverageService:
             'selected_count': selected_count,
             'filter_acceptance_ratio': (selected_count / len(sentences)) if sentences else 0.0,
             'min_matched_words': min_matched_words,
+            'max_tokens': max_tokens,
             # Compatibility fields retained (not used by this simplified filter):
             'scaled_min_ratios': self.scaled_min_ratios,
             'default_min_ratio': self.default_min_ratio,
@@ -268,7 +272,7 @@ class CoverageService:
             'len_max': self.len_max,
             'target_count': self.target_count,
             'candidates_by_pass': {
-                'matched_words_>=4': selected_count
+                'matched_words_>=4_len_<=8': selected_count
             },
         }
 
