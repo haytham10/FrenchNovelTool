@@ -132,6 +132,8 @@ export interface UserSettings {
   sentence_length_limit: number;
   default_folder_id?: string;
   default_sheet_name_pattern?: string;
+  // Optional ID of the default word list for vocabulary coverage
+  default_wordlist_id?: number | null;
 }
 
 /**
@@ -344,8 +346,9 @@ export async function getUserSettings(): Promise<UserSettings> {
 }
 
 export async function updateUserSettings(settings: Partial<UserSettings>): Promise<UserSettings> {
-  const response = await api.put('/settings', settings);
-  return response.data;
+  // Backend route accepts POST for saving user settings
+  const response = await api.post('/settings', settings);
+  return response.data.settings || response.data;
 }
 
 // Aliases for backward compatibility

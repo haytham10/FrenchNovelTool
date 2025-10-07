@@ -8,6 +8,54 @@ from flask import current_app
 
 class GoogleSheetsService:
     """Service for creating and managing Google Sheets exports using user OAuth credentials"""
+    def fetch_words_from_spreadsheet(self, creds, spreadsheet_id: str, sheet_title: str | None = None,
+                                     column: str = 'A', include_header: bool = False) -> list[str]:
+        """Fetch a list of words from a Google Spreadsheet column.
+
+        Args:
+            creds: Authorized user credentials
+            spreadsheet_id: The spreadsheet ID
+            sheet_title: Optional specific sheet/tab title; if None, use the first sheet
+            column: Column letter to read from (default 'A')
+            include_header: Whether to include the first row (header) in the results
+
+        Returns:
+            List of non-empty strings from the specified column
+        """
+        sheets_service = build('sheets', 'v4', credentials=creds)
+
+        # Determine the target sheet title if not provided
+        if not sheet_title:
+            try:
+                spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+                sheets = spreadsheet.get('sheets', [])
+                if not sheets:
+                    raise ValueError('Spreadsheet has no sheets')
+                sheet_title = sheets[0]['properties']['title']
+            except Exception as e:
+                current_app.logger.error(f'Failed to read spreadsheet metadata: {e}')
+                raise
+
+        # Read values from the specified column
+        range_name = f"{sheet_title}!{column}:{column}"
+        result = sheets_service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range=range_name
+        ).execute()
+        values = result.get('values', [])
+
+        # Flatten and clean
+        words: list[str] = []
+        start_index = 0 if include_header else 1  # skip header by default
+        for idx, row in enumerate(values):
+            if idx < start_index:
+                continue
+            if not row:
+                continue
+            cell = str(row[0]).strip()
+            if cell:
+                words.append(cell)
+        return words
     
     def export_to_sheet(self, creds, sentences, sheet_name="French Novel Sentences", folder_id=None,
                        mode='new', existing_sheet_id=None, tab_name=None, create_new_tab=False,

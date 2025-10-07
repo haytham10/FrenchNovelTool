@@ -6,6 +6,8 @@ from marshmallow import ValidationError
 from app import limiter, db
 from app.models import WordList, CoverageRun, CoverageAssignment, UserSettings
 from app.services.wordlist_service import WordListService
+from app.services.auth_service import AuthService
+from app.services.google_sheets_service import GoogleSheetsService
 from app.schemas import (
     WordListCreateSchema,
     WordListUpdateSchema,
@@ -77,6 +79,29 @@ def create_wordlist():
         
         if not words and source_type == 'manual':
             return jsonify({'error': 'No words provided for manual word list'}), 400
+
+        # If source is Google Sheets and words not provided, fetch from sheet
+        if source_type == 'google_sheet' and (not words or len(words) == 0):
+            if not source_ref:
+                return jsonify({'error': 'Missing Google Sheet ID (source_ref)'}), 400
+            try:
+                # Get user's Google credentials
+                auth_service = AuthService()
+                # We need the user for creds; coverage routes use JWT, fetch user via ID
+                from app.models import User
+                user = User.query.get(user_id)
+                if not user or not user.google_access_token:
+                    return jsonify({'error': 'Google Sheets access not authorized'}), 403
+                creds = auth_service.get_user_credentials(user)
+
+                sheets_service = GoogleSheetsService()
+                # Default: first sheet, column A, skip header
+                words = sheets_service.fetch_words_from_spreadsheet(creds, spreadsheet_id=source_ref, column='A', include_header=False)
+                if not words:
+                    return jsonify({'error': 'No words found in the Google Sheet (column A)'}), 400
+            except Exception as e:
+                logger.exception(f"Failed to fetch words from Google Sheets: {e}")
+                return jsonify({'error': f'Failed to read Google Sheet: {str(e)}'}), 400
     
     # Ingest word list
     wordlist_service = WordListService()
