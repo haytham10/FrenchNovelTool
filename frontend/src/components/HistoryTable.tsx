@@ -12,7 +12,7 @@ import { getHistoryStatus } from '@/lib/types';
 import { useDebounce } from '@/lib/hooks';
 import Icon from './Icon';
 import IconButton from './IconButton';
-import { CheckCircle, XCircle, Loader2, RefreshCw, Eye, Filter, Send, Calendar, Copy, ExternalLink, RotateCw } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, RefreshCw, Eye, Filter, Send, Calendar, Copy, ExternalLink, RotateCw, BookOpenCheck } from 'lucide-react';
 import ExportDialog from './ExportDialog';
 import { useRouter } from 'next/navigation';
 import HistoryDetailDialog from './HistoryDetailDialog';
@@ -866,6 +866,23 @@ export default function HistoryTable() {
                               aria-label="Send to Google Sheets"
                             >
                               <Icon icon={Send} fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        );
+                      }
+                      if (status === 'complete') {
+                        buttons.push(
+                          <Tooltip title="Run Vocabulary Analysis" key="coverage">
+                            <IconButton
+                              size="small"
+                              color="secondary"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                router.push(`/coverage?source=history&id=${entry.id}`);
+                              }}
+                              aria-label="Run vocabulary analysis"
+                            >
+                              <Icon icon={BookOpenCheck} fontSize="small" />
                             </IconButton>
                           </Tooltip>
                         );

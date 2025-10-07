@@ -1,21 +1,47 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Box, TextField, Typography, CircularProgress, Paper, Divider, Alert, AlertTitle } from '@mui/material';
+import { Box, TextField, Typography, CircularProgress, Paper, Divider, Alert, AlertTitle, Select, MenuItem, FormControl, InputLabel, Button as MuiButton, Stack, Chip } from '@mui/material';
 import { Button } from './ui';
 import { useSettings, useUpdateSettings } from '@/lib/queries';
 import { useAuth } from './AuthContext';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { listWordLists, createWordListFromFile } from '@/lib/api';
 import Icon from './Icon';
-import { User, Save, RefreshCw, CheckCircle, XCircle } from 'lucide-react';
+import { User, Save, RefreshCw, CheckCircle, XCircle, Upload, BookOpen } from 'lucide-react';
 import type { UserSettings } from '@/lib/api';
+import Link from 'next/link';
 
 export default function SettingsForm() {
   // Use React Query for data fetching with optimistic updates
   const { data: settings, isLoading: loading, error } = useSettings();
   const { user } = useAuth();
   const updateSettings = useUpdateSettings();
+  const queryClient = useQueryClient();
   
   const [localSettings, setLocalSettings] = useState<Partial<UserSettings>>({});
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  
+  // Load word lists
+  const { data: wordListsData } = useQuery({
+    queryKey: ['wordlists'],
+    queryFn: listWordLists,
+  });
+  
+  // Upload word list mutation
+  const uploadMutation = useMutation({
+    mutationFn: async (data: { file: File; name: string }) => {
+      return createWordListFromFile(data.file, data.name, true);
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['wordlists'] });
+      setLocalSettings(prev => ({
+        ...prev,
+        default_wordlist_id: data.wordlist.id,
+      }));
+      setUploadedFile(null);
+    },
+  });
 
   const handleSettingChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;
@@ -37,6 +63,24 @@ export default function SettingsForm() {
     // Trigger Google re-authentication
     window.location.href = '/api/auth/google';
   };
+  
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setUploadedFile(file);
+    }
+  };
+  
+  const handleUploadWordList = () => {
+    if (uploadedFile) {
+      uploadMutation.mutate({
+        file: uploadedFile,
+        name: uploadedFile.name.replace('.csv', ''),
+      });
+    }
+  };
+  
+  const wordlists = wordListsData?.wordlists || [];
 
   if (loading) {
     return (
@@ -201,6 +245,95 @@ export default function SettingsForm() {
             </Box>
           </Paper>
       </Box>
+
+      {/* Vocabulary Coverage Settings */}
+      <Paper variant="outlined" sx={{ p: 3, mt: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
+          <Icon icon={BookOpen} color="primary" />
+          <Typography variant="h6" fontWeight={600}>
+            Vocabulary Coverage Settings
+          </Typography>
+        </Box>
+        
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <Box>
+            <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+              Default Word List
+            </Typography>
+            <FormControl fullWidth size="small">
+              <InputLabel>Word List</InputLabel>
+              <Select
+                value={localSettings.default_wordlist_id ?? settings?.default_wordlist_id ?? ''}
+                label="Word List"
+                onChange={(e) => setLocalSettings(prev => ({ ...prev, default_wordlist_id: e.target.value as number }))}
+              >
+                <MenuItem value="">
+                  <em>Use global default</em>
+                </MenuItem>
+                {wordlists.map((wl) => (
+                  <MenuItem key={wl.id} value={wl.id}>
+                    {wl.name} ({wl.normalized_count} words)
+                    {wl.is_global_default && <Chip label="Global Default" size="small" sx={{ ml: 1 }} />}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+              Select the default word list for vocabulary coverage analysis. You can manage word lists on the{' '}
+              <Link href="/coverage" style={{ textDecoration: 'none', color: 'inherit', fontWeight: 600 }}>
+                Coverage page
+              </Link>.
+            </Typography>
+          </Box>
+
+          <Divider />
+
+          <Box>
+            <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+              Upload New Word List
+            </Typography>
+            <Stack direction="row" spacing={2} alignItems="center" sx={{ mt: 1 }}>
+              <MuiButton
+                component="label"
+                variant="outlined"
+                startIcon={<Icon icon={Upload} />}
+                size="small"
+              >
+                Choose CSV File
+                <input
+                  type="file"
+                  accept=".csv"
+                  hidden
+                  onChange={handleFileUpload}
+                />
+              </MuiButton>
+              {uploadedFile && (
+                <>
+                  <Typography variant="body2">{uploadedFile.name}</Typography>
+                  <MuiButton
+                    variant="contained"
+                    size="small"
+                    onClick={handleUploadWordList}
+                    disabled={uploadMutation.isPending}
+                  >
+                    {uploadMutation.isPending ? 'Uploading...' : 'Upload'}
+                  </MuiButton>
+                </>
+              )}
+            </Stack>
+            {uploadMutation.isError && (
+              <Alert severity="error" sx={{ mt: 1 }}>
+                Failed to upload word list
+              </Alert>
+            )}
+            {uploadMutation.isSuccess && (
+              <Alert severity="success" sx={{ mt: 1 }}>
+                Word list uploaded successfully and set as default!
+              </Alert>
+            )}
+          </Box>
+        </Box>
+      </Paper>
 
       {/* Save Button */}
       <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end', gap: 2 }}>

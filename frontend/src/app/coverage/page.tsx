@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Container,
@@ -18,12 +18,20 @@ import {
   Stack,
   Divider,
   SelectChangeEvent,
+  Tabs,
+  Tab,
+  Card,
+  CardContent,
 } from '@mui/material';
 import {
   PlayArrow as PlayIcon,
   Upload as UploadIcon,
+  History as HistoryIcon,
+  WorkOutline as JobIcon,
+  CloudUpload as CloudIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'next/navigation';
 import {
   listWordLists,
   createWordListFromFile,
@@ -32,17 +40,33 @@ import {
   type WordList,
   type CoverageAssignment,
 } from '@/lib/api';
+import RouteGuard from '@/components/RouteGuard';
+import Breadcrumbs from '@/components/Breadcrumbs';
 
 export default function CoveragePage() {
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  
+  // Get URL parameters for pre-filling
+  const urlSource = searchParams.get('source'); // 'job' or 'history'
+  const urlId = searchParams.get('id');
   
   // State
   const [mode, setMode] = useState<'coverage' | 'filter'>('filter');
-  const [sourceType, setSourceType] = useState<'job' | 'history'>('history');
-  const [sourceId, setSourceId] = useState<string>('');
+  const [sourceType, setSourceType] = useState<'job' | 'history'>(urlSource === 'job' ? 'job' : 'history');
+  const [sourceId, setSourceId] = useState<string>(urlId || '');
   const [selectedWordListId, setSelectedWordListId] = useState<number | ''>('');
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [currentRunId, setCurrentRunId] = useState<number | null>(null);
+  const [sourceSelectionMethod, setSourceSelectionMethod] = useState<'id' | 'upload'>(urlSource && urlId ? 'id' : 'id');
+  
+  // Update sourceId when URL params change
+  useEffect(() => {
+    if (urlSource && urlId) {
+      setSourceType(urlSource === 'job' ? 'job' : 'history');
+      setSourceId(urlId);
+    }
+  }, [urlSource, urlId]);
   
   // Load word lists
   const { data: wordListsData, isLoading: loadingWordLists } = useQuery({
@@ -145,15 +169,18 @@ export default function CoveragePage() {
   };
   
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Typography variant="h3" component="h1" gutterBottom>
-        Vocabulary Coverage Tool
-      </Typography>
-      
-      <Typography variant="body1" color="text.secondary" paragraph>
-        Analyze sentences based on high-frequency vocabulary. Select a mode, word list, and source to get started.
-      </Typography>
-      
+    <RouteGuard>
+      <Container maxWidth="lg" sx={{ py: 4 }}>
+        <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'Vocabulary Coverage' }]} />
+        
+        <Typography variant="h3" component="h1" gutterBottom sx={{ mb: 1 }}>
+          Vocabulary Coverage Tool
+        </Typography>
+        
+        <Typography variant="body1" color="text.secondary" paragraph sx={{ mb: 4 }}>
+          Analyze sentences based on high-frequency vocabulary. Perfect for creating optimized language learning materials.
+        </Typography>
+        
       {/* Configuration Panel */}
       <Paper sx={{ p: 3, mb: 3 }}>
         <Typography variant="h5" gutterBottom>
@@ -243,28 +270,29 @@ export default function CoveragePage() {
           <Divider />
           
           {/* Source Selection */}
-          <FormControl fullWidth>
-            <InputLabel>Source Type</InputLabel>
-            <Select
+          <Box>
+            <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+              Select Source
+            </Typography>
+            <Tabs
               value={sourceType}
-              label="Source Type"
-              onChange={(e: SelectChangeEvent<'job' | 'history'>) =>
-                setSourceType(e.target.value as 'job' | 'history')
-              }
+              onChange={(_, newValue) => setSourceType(newValue as 'job' | 'history')}
+              sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
             >
-              <MenuItem value="history">History Entry</MenuItem>
-              <MenuItem value="job">Job</MenuItem>
-            </Select>
-          </FormControl>
-          
-          <TextField
-            fullWidth
-            label={`${sourceType === 'job' ? 'Job' : 'History Entry'} ID`}
-            value={sourceId}
-            onChange={(e) => setSourceId(e.target.value)}
-            type="number"
-            helperText="Enter the ID of the job or history entry to analyze"
-          />
+              <Tab icon={<HistoryIcon />} iconPosition="start" label="From History" value="history" />
+              <Tab icon={<JobIcon />} iconPosition="start" label="From Job ID" value="job" />
+            </Tabs>
+            
+            <TextField
+              fullWidth
+              label={`${sourceType === 'job' ? 'Job' : 'History Entry'} ID`}
+              value={sourceId}
+              onChange={(e) => setSourceId(e.target.value)}
+              type="number"
+              helperText={urlSource && urlId ? "Pre-filled from previous page" : `Enter the ID of the ${sourceType === 'job' ? 'job' : 'history entry'} to analyze`}
+              size="medium"
+            />
+          </Box>
           
           {/* Run Button */}
           <Button
@@ -274,8 +302,9 @@ export default function CoveragePage() {
             onClick={handleRunCoverage}
             disabled={!sourceId || runMutation.isPending}
             fullWidth
+            sx={{ mt: 1 }}
           >
-            {runMutation.isPending ? 'Starting...' : 'Run Coverage Analysis'}
+            {runMutation.isPending ? 'Starting Analysis...' : 'Run Vocabulary Coverage'}
           </Button>
           
           {runMutation.isError && (
@@ -442,5 +471,6 @@ export default function CoveragePage() {
         </Stack>
       </Paper>
     </Container>
+    </RouteGuard>
   );
 }
