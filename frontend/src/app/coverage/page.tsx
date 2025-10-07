@@ -32,9 +32,8 @@ import {
   Upload as UploadIcon,
   Search as SearchIcon,
   Download as DownloadIcon,
-  CloudUpload as CloudUploadIcon,
-  FilterList as FilterListIcon,
 } from '@mui/icons-material';
+import { AxiosError } from 'axios';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
 import { useSnackbar } from 'notistack';
@@ -72,7 +71,7 @@ export default function CoveragePage() {
   const [historySearch, setHistorySearch] = useState<string>('');
   const [openSheetDialog, setOpenSheetDialog] = useState<boolean>(false);
   const [sheetUrl, setSheetUrl] = useState<string>('');
-  const [resultSearch, setResultSearch] = useState<string>('');
+  // const [resultSearch, setResultSearch] = useState<string>('');
   const [showExportDialog, setShowExportDialog] = useState<boolean>(false);
   const [exportSheetName, setExportSheetName] = useState<string>('');
   // Load user settings to know which default wordlist is configured
@@ -167,8 +166,21 @@ export default function CoveragePage() {
       }
       setShowExportDialog(false);
     },
-    onError: (error: any) => {
-      enqueueSnackbar(error.response?.data?.error || 'Export failed', { variant: 'error' });
+    onError: (error: AxiosError | unknown) => {
+      let msg = 'Export failed';
+      // If this is an Axios error, try to read response.data.error safely
+      if ((error as AxiosError).isAxiosError) {
+        const axiosErr = error as AxiosError;
+        const data = axiosErr.response?.data;
+        if (data && typeof data === 'object' && 'error' in data && typeof data.error === 'string') {
+          msg = data.error;
+        } else if (axiosErr.message) {
+          msg = axiosErr.message;
+        }
+      } else if (error instanceof Error) {
+        msg = error.message;
+      }
+      enqueueSnackbar(msg, { variant: 'error' });
     },
   });
   
@@ -185,8 +197,20 @@ export default function CoveragePage() {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
       enqueueSnackbar('CSV downloaded successfully!', { variant: 'success' });
-    } catch (error: any) {
-      enqueueSnackbar(error.response?.data?.error || 'Download failed', { variant: 'error' });
+    } catch (error: unknown) {
+      let msg = 'Download failed';
+      if ((error as AxiosError).isAxiosError) {
+        const axiosErr = error as AxiosError;
+        const data = axiosErr.response?.data;
+        if (data && typeof data === 'object' && 'error' in data && typeof data.error === 'string') {
+          msg = data.error;
+        } else if (axiosErr.message) {
+          msg = axiosErr.message;
+        }
+      } else if (error instanceof Error) {
+        msg = error.message;
+      }
+      enqueueSnackbar(msg, { variant: 'error' });
     }
   };
   
@@ -512,6 +536,15 @@ export default function CoveragePage() {
                       </Typography>
                     </Box>
                   )}
+
+                  <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
+                    <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleDownloadCSV} disabled={!coverageRun || coverageRun.status !== 'completed'}>
+                      Download CSV
+                    </Button>
+                    <Button variant="outlined" startIcon={<DownloadIcon />} onClick={() => setShowExportDialog(true)} disabled={!coverageRun || coverageRun.status !== 'completed'}>
+                      Export to Sheets
+                    </Button>
+                  </Box>
 
                   {/* Stats */}
                   {coverageRun.status === 'completed' && coverageRun.stats_json && (
