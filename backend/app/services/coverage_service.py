@@ -80,10 +80,63 @@ class CoverageService:
                 'token_count': len(tokens),
                 'words_in_list': set(matched),
                 'words_not_in_list': set(unmatched),
-                'in_list_ratio': ratio
+                'in_list_ratio': ratio,
+                'sentence_obj': sentence  # Store original for POS analysis if needed
             }
         
         return index
+    
+    @staticmethod
+    def count_content_words_in_matched(sentence_text: str, matched_words: Set[str], 
+                                       fold_diacritics: bool = True, 
+                                       handle_elisions: bool = True) -> int:
+        """
+        Count how many of the matched words are "content words" (nouns, verbs, adjectives, adverbs).
+        
+        Args:
+            sentence_text: The original sentence text
+            matched_words: Set of normalized matched words from word list
+            fold_diacritics: Whether diacritics were folded
+            handle_elisions: Whether elisions were handled
+            
+        Returns:
+            Count of matched content words
+        """
+        from app.utils.linguistics import get_nlp
+        
+        if not matched_words:
+            return 0
+        
+        # Content word POS tags (Universal Dependencies tagset used by spaCy)
+        # NOUN, VERB, ADJ, ADV are content words
+        # PRON, DET, ADP, CONJ, SCONJ, PART, AUX are function words
+        content_pos_tags = {'NOUN', 'VERB', 'ADJ', 'ADV', 'PROPN'}
+        
+        nlp = get_nlp()
+        doc = nlp(sentence_text)
+        
+        content_count = 0
+        for token in doc:
+            if token.is_punct or token.is_space:
+                continue
+            
+            # Get normalized form (same process as tokenize_and_lemmatize)
+            surface = token.text
+            if handle_elisions:
+                from app.utils.linguistics import LinguisticsUtils
+                surface_for_lemma = LinguisticsUtils.handle_elision(surface)
+            else:
+                surface_for_lemma = surface
+            
+            temp_doc = nlp(surface_for_lemma)
+            lemma = temp_doc[0].lemma_.lower() if temp_doc and len(temp_doc) > 0 else surface_for_lemma.lower()
+            normalized = LinguisticsUtils.normalize_text(lemma, fold_diacritics=fold_diacritics)
+            
+            # Check if this normalized token is in our matched set and is a content word
+            if normalized in matched_words and token.pos_ in content_pos_tags:
+                content_count += 1
+        
+        return content_count
     
     def coverage_mode_greedy(
         self,
@@ -200,8 +253,10 @@ class CoverageService:
         progress_callback: Optional[Callable[[int], Any]] = None
     ) -> Tuple[List[Dict], Dict]:
         """
-        Filter Mode (revised): select ALL sentences that contain at least N words
-        from the word list (default N=4) AND have a token length <= 8.
+        Filter Mode (revised): select ALL sentences that contain at least N content words
+        (nouns, verbs, adjectives, adverbs) from the word list AND have token length <= 8.
+        
+        Content words = NOUN, VERB, ADJ, ADV, PROPN (excludes pronouns, determiners, etc.)
         No selection cap is applied.
 
         Scoring: score = ratio of matched words to total tokens for the sentence
@@ -215,7 +270,7 @@ class CoverageService:
             Tuple of (selected_sentences, stats)
         """
         # Thresholds
-        min_matched_words = 4
+        min_content_words = 4  # Minimum content words (not function words)
         max_tokens = 8
 
         # Build sentence index
@@ -233,9 +288,28 @@ class CoverageService:
         step = max(1, total // 50)  # ~2% granularity
 
         for i, (idx, info) in enumerate(sentence_index.items(), start=1):
-            matched_count = len(info['words_in_list'])
             token_count = info['token_count']
-            if token_count <= max_tokens and matched_count >= min_matched_words:
+            
+            # First check basic criteria
+            if token_count > max_tokens:
+                if progress_callback and (i % step == 0 or i == total):
+                    try:
+                        pct = 10 + int(80 * (i / total))
+                        pct = min(max(pct, 10), 90)
+                        progress_callback(pct)
+                    except Exception:
+                        pass
+                continue
+            
+            # Count content words among matched words
+            content_word_count = self.count_content_words_in_matched(
+                info['text'],
+                info['words_in_list'],
+                fold_diacritics=self.fold_diacritics,
+                handle_elisions=self.handle_elisions
+            )
+            
+            if content_word_count >= min_content_words:
                 ratio = info['in_list_ratio'] if token_count > 0 else 0.0
                 selected.append({
                     'sentence_index': idx,
@@ -243,7 +317,8 @@ class CoverageService:
                     'sentence_score': round(ratio, 3),
                     'in_list_ratio': ratio,
                     'token_count': token_count,
-                    'words_in_list': list(info['words_in_list'])
+                    'words_in_list': list(info['words_in_list']),
+                    'content_word_count': content_word_count
                 })
 
             if progress_callback and (i % step == 0 or i == total):
@@ -263,7 +338,7 @@ class CoverageService:
             'total_sentences': len(sentences),
             'selected_count': selected_count,
             'filter_acceptance_ratio': (selected_count / len(sentences)) if sentences else 0.0,
-            'min_matched_words': min_matched_words,
+            'min_content_words': min_content_words,
             'max_tokens': max_tokens,
             # Compatibility fields retained (not used by this simplified filter):
             'scaled_min_ratios': self.scaled_min_ratios,
@@ -272,13 +347,13 @@ class CoverageService:
             'len_max': self.len_max,
             'target_count': self.target_count,
             'candidates_by_pass': {
-                'matched_words_>=4_len_<=8': selected_count
+                'content_words_>=4_len_<=8': selected_count
             },
         }
 
         logger.info(
-            "Filter mode (>= %s matched words): %s/%s sentences selected",
-            min_matched_words, selected_count, len(sentences)
+            "Filter mode (>= %s content words): %s/%s sentences selected",
+            min_content_words, selected_count, len(sentences)
         )
 
         if progress_callback:
