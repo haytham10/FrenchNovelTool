@@ -174,10 +174,22 @@ celery -A app.celery worker --loglevel=info
    GET /api/v1/coverage/runs/789
    
    # Returns:
-   # - ~500 sentences
-   # - Each 4-8 words
+   # - ~500 sentences prioritized by length
+   # - Pass 1: 4-word sentences (ideal for drilling)
+   # - Pass 2: 3-word sentences (if needed to reach 500)
+   # - Pass 3: Other lengths (5-8 words, if still needed)
    # - Each ≥95% in 2K list
-   # - Ranked by quality
+   # - Ranked by quality within each pass
+   
+   # Example stats:
+   # {
+   #   "candidates_by_pass": {
+   #     "pass_1_4word": 350,
+   #     "pass_2_3word": 120,
+   #     "pass_3_other": 80
+   #   },
+   #   "selected_count": 500
+   # }
    ```
 
 4. **Export to Sheets** (when implemented)

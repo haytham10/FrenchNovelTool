@@ -165,6 +165,7 @@ class CoverageService:
     ) -> Tuple[List[Dict], Dict]:
         """
         Filter Mode: Select sentences with high vocabulary density and rank them.
+        Uses a multi-pass approach prioritizing ideal sentence lengths.
         
         Args:
             sentences: List of sentence strings
@@ -177,22 +178,19 @@ class CoverageService:
         # Build sentence index
         sentence_index = self.build_sentence_index(sentences)
         
-        # Filter candidates by length and ratio
-        candidates = []
+        # Multi-pass approach: prioritize 4-word sentences, then fall back to 3-word
+        selected = []
+        candidates_by_pass = {}
         
+        # Pass 1: Look for 4-word sentences first (ideal length)
+        pass_1_candidates = []
         for idx, info in sentence_index.items():
             token_count = info['token_count']
             ratio = info['in_list_ratio']
             
-            # Apply length and ratio filters
-            if (self.len_min <= token_count <= self.len_max and
-                ratio >= self.min_in_list_ratio):
-                
-                # Calculate composite score
-                # Higher ratio and shorter sentences score better
+            if token_count == 4 and ratio >= self.min_in_list_ratio:
                 score = ratio * 10.0 + (1.0 / token_count) * 0.5
-                
-                candidates.append({
+                pass_1_candidates.append({
                     'sentence_index': idx,
                     'sentence_text': info['text'],
                     'sentence_score': score,
@@ -201,25 +199,97 @@ class CoverageService:
                     'words_in_list': list(info['words_in_list'])
                 })
         
-        # Sort by score (descending)
-        candidates.sort(key=lambda x: x['sentence_score'], reverse=True)
+        # Sort and select from pass 1
+        pass_1_candidates.sort(key=lambda x: x['sentence_score'], reverse=True)
+        selected.extend(pass_1_candidates[:self.target_count])
+        candidates_by_pass['pass_1_4word'] = len(pass_1_candidates)
         
-        # Select top N
-        selected = candidates[:self.target_count]
+        logger.info(f"Filter mode pass 1 (4-word): {len(selected)}/{len(pass_1_candidates)} sentences selected")
+        
+        # Pass 2: If we don't have enough, look for 3-word sentences
+        if len(selected) < self.target_count:
+            remaining_needed = self.target_count - len(selected)
+            pass_2_candidates = []
+            
+            for idx, info in sentence_index.items():
+                # Skip if already selected
+                if any(s['sentence_index'] == idx for s in selected):
+                    continue
+                
+                token_count = info['token_count']
+                ratio = info['in_list_ratio']
+                
+                if token_count == 3 and ratio >= self.min_in_list_ratio:
+                    score = ratio * 10.0 + (1.0 / token_count) * 0.5
+                    pass_2_candidates.append({
+                        'sentence_index': idx,
+                        'sentence_text': info['text'],
+                        'sentence_score': score,
+                        'in_list_ratio': ratio,
+                        'token_count': token_count,
+                        'words_in_list': list(info['words_in_list'])
+                    })
+            
+            # Sort and select from pass 2
+            pass_2_candidates.sort(key=lambda x: x['sentence_score'], reverse=True)
+            selected.extend(pass_2_candidates[:remaining_needed])
+            candidates_by_pass['pass_2_3word'] = len(pass_2_candidates)
+            
+            logger.info(f"Filter mode pass 2 (3-word): {len(pass_2_candidates)} candidates found, "
+                       f"added {min(remaining_needed, len(pass_2_candidates))} sentences")
+        
+        # Pass 3: If still not enough, use original range-based approach for remaining lengths
+        if len(selected) < self.target_count:
+            remaining_needed = self.target_count - len(selected)
+            pass_3_candidates = []
+            
+            for idx, info in sentence_index.items():
+                # Skip if already selected
+                if any(s['sentence_index'] == idx for s in selected):
+                    continue
+                
+                token_count = info['token_count']
+                ratio = info['in_list_ratio']
+                
+                # Accept sentences in the configured range, excluding 3 and 4 words (already processed)
+                if (self.len_min <= token_count <= self.len_max and 
+                    token_count not in [3, 4] and 
+                    ratio >= self.min_in_list_ratio):
+                    score = ratio * 10.0 + (1.0 / token_count) * 0.5
+                    pass_3_candidates.append({
+                        'sentence_index': idx,
+                        'sentence_text': info['text'],
+                        'sentence_score': score,
+                        'in_list_ratio': ratio,
+                        'token_count': token_count,
+                        'words_in_list': list(info['words_in_list'])
+                    })
+            
+            # Sort and select from pass 3
+            pass_3_candidates.sort(key=lambda x: x['sentence_score'], reverse=True)
+            selected.extend(pass_3_candidates[:remaining_needed])
+            candidates_by_pass['pass_3_other'] = len(pass_3_candidates)
+            
+            logger.info(f"Filter mode pass 3 (other lengths): {len(pass_3_candidates)} candidates found, "
+                       f"added {min(remaining_needed, len(pass_3_candidates))} sentences")
+        
+        # Calculate total candidates across all passes
+        total_candidates = sum(candidates_by_pass.values())
         
         # Calculate statistics
         stats = {
             'total_sentences': len(sentences),
-            'candidates_passed_filter': len(candidates),
+            'candidates_passed_filter': total_candidates,
             'selected_count': len(selected),
-            'filter_acceptance_ratio': len(candidates) / len(sentences) if sentences else 0.0,
+            'filter_acceptance_ratio': total_candidates / len(sentences) if sentences else 0.0,
             'min_in_list_ratio': self.min_in_list_ratio,
             'len_min': self.len_min,
             'len_max': self.len_max,
-            'target_count': self.target_count
+            'target_count': self.target_count,
+            'candidates_by_pass': candidates_by_pass
         }
         
-        logger.info(f"Filter mode: {len(selected)}/{len(candidates)} sentences selected "
-                   f"from {len(sentences)} total")
+        logger.info(f"Filter mode complete: {len(selected)}/{total_candidates} sentences selected "
+                   f"from {len(sentences)} total (passes: {candidates_by_pass})")
         
         return selected, stats

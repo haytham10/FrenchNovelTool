@@ -218,20 +218,27 @@ POST /api/v1/coverage/runs/789/export
 
 **Use Case:** Language learners like Stan who want ~500 perfect sentences for auditory repetition drills.
 
-**Algorithm:** 
-1. Filter sentences by length (4-8 words) and ratio (≥95% in word list)
-2. Rank by composite score (ratio + frequency + diversity)
-3. Select top N (default 500)
+**Algorithm (Multi-Pass Approach):** 
+1. **Pass 1**: Scan all sentences for 4-word sentences with ≥95% in word list (prioritized)
+2. **Pass 2**: If fewer than 500 found, scan for 3-word sentences to fill gap
+3. **Pass 3**: If still not enough, use remaining sentences in configured range (5-8 words)
+4. Each pass ranks by composite score (ratio + frequency + quality)
+5. Select top N from combined passes (default 500)
+
+**Why Multi-Pass?** 4-word sentences are ideal for language learning drills - long enough to be meaningful, short enough for easy memorization. The algorithm prioritizes these before falling back to shorter or longer alternatives.
 
 **Example:**
 - Word list: French 2K common words
 - Input: 5,000 rewritten sentences
-- Filter: Keep only 4-8 words AND ≥95% in word list → ~1,200 candidates
-- Rank & Select: Top 500 by score
+- Pass 1: Find 350 4-word sentences with ≥95% coverage
+- Pass 2: Find 120 3-word sentences to reach 470 total
+- Pass 3: Add 30 more sentences (5-8 words) to reach target of 500
+- Result: 500 sentences prioritized by ideal length
 
 **Typical Results:**
-- Sentences: "Le chat dort bien." (100% match, 4 words, score: 10.25)
-- Rejected: "Un grand chien magnifique court." (too long, 5 words)
+- Prioritized: "Le chat dort bien." (4 words, 100% match, score: 10.25)
+- Fallback: "Chat dort." (3 words, 100% match, score: 10.33)
+- Last Resort: "Le grand chien magnifique court." (5 words, 80% match)
 - Rejected: "Le xylophone résonne." (≥95% threshold not met)
 
 ## Configuration Options

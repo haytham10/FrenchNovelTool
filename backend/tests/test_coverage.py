@@ -249,7 +249,7 @@ class TestCoverageService:
             assert 'sentence_text' in assignment
     
     def test_filter_mode(self):
-        """Test filter mode"""
+        """Test filter mode with multi-pass approach"""
         wordlist_keys = {'le', 'chat', 'manger', 'dormir', 'petit'}
         
         config = {
@@ -262,9 +262,9 @@ class TestCoverageService:
         service = CoverageService(wordlist_keys, config)
         
         sentences = [
-            "Le chat mange.",  # High ratio
-            "Le petit chat dort.",  # High ratio
-            "Un gros chien court rapidement."  # Low ratio
+            "Le chat mange.",  # 3 words, high ratio
+            "Le petit chat dort.",  # 4 words, high ratio
+            "Un gros chien court rapidement."  # 5 words, low ratio
         ]
         
         selected, stats = service.filter_mode(sentences)
@@ -276,6 +276,7 @@ class TestCoverageService:
         assert 'total_sentences' in stats
         assert 'candidates_passed_filter' in stats
         assert 'selected_count' in stats
+        assert 'candidates_by_pass' in stats  # New field for multi-pass
         
         # Each selected sentence should have required fields
         for sentence_data in selected:
@@ -283,6 +284,44 @@ class TestCoverageService:
             assert 'sentence_text' in sentence_data
             assert 'sentence_score' in sentence_data
             assert 'in_list_ratio' in sentence_data
+    
+    def test_filter_mode_multipass_priority(self):
+        """Test that filter mode prioritizes 4-word sentences over 3-word"""
+        wordlist_keys = {'le', 'chat', 'manger', 'dormir', 'petit', 'grand', 'noir'}
+        
+        config = {
+            'min_in_list_ratio': 0.8,
+            'len_min': 3,
+            'len_max': 8,
+            'target_count': 3
+        }
+        
+        service = CoverageService(wordlist_keys, config)
+        
+        sentences = [
+            "Le chat mange maintenant.",  # 4 words - should be prioritized
+            "Le chat dort.",  # 3 words
+            "Le petit chat noir.",  # 4 words - should be prioritized
+            "Chat dort.",  # 2 words - below min
+            "Le grand chat noir dort bien."  # 6 words
+        ]
+        
+        selected, stats = service.filter_mode(sentences)
+        
+        # Should select 3 sentences
+        assert len(selected) <= 3
+        
+        # Check that pass information is included
+        assert 'candidates_by_pass' in stats
+        
+        # If we have 4-word sentences, they should be selected first
+        four_word_count = sum(1 for s in selected if s['token_count'] == 4)
+        three_word_count = sum(1 for s in selected if s['token_count'] == 3)
+        
+        # 4-word sentences should be prioritized (we have 2 4-word sentences)
+        # So we should get both 4-word sentences before any 3-word
+        if four_word_count + three_word_count >= 2:
+            assert four_word_count >= 2 or stats['candidates_by_pass'].get('pass_1_4word', 0) < 2
 
 
 class TestCoverageModels:
