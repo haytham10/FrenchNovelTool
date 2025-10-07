@@ -284,7 +284,7 @@ class WordListService:
                     creds,
                     spreadsheet_id=wordlist.source_ref,
                     column='B',
-                    include_header=False
+                    include_header=True
                 )
                 logger.info(f"Fetched {len(words)} words from Google Sheet {wordlist.source_ref}")
             except Exception as e:
