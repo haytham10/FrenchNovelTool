@@ -1,10 +1,13 @@
 """Service for Google Sheets and Drive API interactions"""
 import os
 import re
+import logging
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from flask import current_app
+
+logger = logging.getLogger(__name__)
 
 
 class GoogleSheetsService:
@@ -47,26 +50,44 @@ class GoogleSheetsService:
 
         # Flatten and clean
         words: list[str] = []
-        start_index = 0 if include_header else 0  # we'll handle header detection/filtering below
+        
+        # Skip first row if it looks like a header
+        start_index = 0
+        if values and len(values) > 0:
+            first_cell = str(values[0][0]).strip().lower()
+            # Common header patterns
+            if first_cell in ('index', 'word', 'mot', 'term', 'french', 'uni|une', 'a|an'):
+                start_index = 1
+                logger.info(f"Skipping header row: {values[0][0]}")
+        
         for idx, row in enumerate(values):
             if idx < start_index:
                 continue
             if not row:
                 continue
+            
             cell = str(row[0]).strip()
             if not cell:
                 continue
 
             # Remove leading numeric indices that may be present in the same cell (e.g. "1 Un|Une")
+            # This handles cases where index and word are in the same cell
             cell = re.sub(r'^\s*\d+\s*[-.:)\]]*\s*', '', cell)
 
-            # Ignore purely-numeric cells and common header labels
+            # Skip if it's just a number (standalone index)
+            if re.match(r'^\d+$', cell):
+                continue
+            
+            # Skip common header labels (but be more conservative)
             lower = cell.lower()
-            if re.match(r'^\d+$', cell) or lower in ('index', 'word', 'mot', 'term', 'sentence', 'sentence_text', 'word_text'):
+            if lower in ('index', 'word', 'mot', 'term', 'sentence', 'sentence_text', 'word_text', 'part of speech', 'pos', 'translation', 'english'):
                 continue
 
+            # Valid word - add it (variants will be split by WordListService)
             if cell:
                 words.append(cell)
+        
+        logger.info(f"Extracted {len(words)} words from column {column}. Sample: {words[:5]}")
         return words
     
     def export_to_sheet(self, creds, sentences, sheet_name="French Novel Sentences", folder_id=None,

@@ -40,17 +40,20 @@ class WordListService:
         word = re.sub(r'[\u200b-\u200f\ufeff]', '', word)
 
         # Remove surrounding quotes and apostrophes which often appear in spreadsheets
-        word = word.strip('"\'' )
+        word = word.strip('"' + "'" + ' ')
+        
+        # Remove leading numbers and punctuation (e.g. "1. avoir" -> "avoir")
+        word = re.sub(r'^\d+[.:\-)]?\s*', '', word)
 
-        # Remove internal apostrophes (aujourd'hui -> aujourdhui) to match normalization
-        word = word.replace("'", "")
-
-        # Handle elisions (l', d', j', n', s', t', c', qu')
+        # Handle elisions BEFORE removing apostrophes (l', d', j', n', s', t', c', qu')
         # Extract the lexical head after elision
         elision_pattern = r"^(?:l'|d'|j'|n'|s'|t'|c'|qu')\s*(.+)$"
         match = re.match(elision_pattern, word, re.IGNORECASE)
         if match:
             word = match.group(1)
+        else:
+            # Remove internal apostrophes only if not an elision (aujourd'hui -> aujourdhui)
+            word = word.replace("'", "")
 
         # Unicode casefold for case-insensitive matching
         word = word.casefold()
@@ -69,15 +72,16 @@ class WordListService:
     def split_variants(word: str) -> List[str]:
         """
         Split a word on | and / to get variants.
+        Also handles comma-separated variants.
         
         Args:
-            word: Input word potentially containing variants
+            word: Input word potentially containing variants (e.g. "Un|Une", "avoir/être")
             
         Returns:
             List of variant words
         """
-        # Split on | or /
-        variants = re.split(r'[|/]', word)
+        # Split on |, /, or comma (with optional spaces)
+        variants = re.split(r'\s*[|/,]\s*', word)
         return [v.strip() for v in variants if v.strip()]
     
     @staticmethod
