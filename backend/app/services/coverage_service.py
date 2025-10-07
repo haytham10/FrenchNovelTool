@@ -1,6 +1,6 @@
 """Service for vocabulary coverage analysis (Coverage and Filter modes)"""
 import logging
-from typing import Dict, List, Set, Tuple, Optional
+from typing import Dict, List, Set, Tuple, Optional, Callable, Any
 from collections import defaultdict
 from app.utils.linguistics import LinguisticsUtils
 
@@ -88,7 +88,7 @@ class CoverageService:
     def coverage_mode_greedy(
         self,
         sentences: List[str],
-        progress_callback: callable | None = None
+        progress_callback: Optional[Callable[[int], Any]] = None
     ) -> Tuple[List[Dict], Dict]:
         """
         Coverage Mode: Greedy set cover algorithm to select minimal sentences
@@ -197,7 +197,7 @@ class CoverageService:
     def filter_mode(
         self,
         sentences: List[str],
-        progress_callback: callable | None = None
+        progress_callback: Optional[Callable[[int], Any]] = None
     ) -> Tuple[List[Dict], Dict]:
         """
         Filter Mode (revised): select ALL sentences that contain at least N words
