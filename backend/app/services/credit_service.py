@@ -11,6 +11,7 @@ from app.constants import (
     CREDIT_REASON_JOB_FINAL,
     CREDIT_REASON_JOB_REFUND,
     CREDIT_REASON_ADMIN_ADJUSTMENT,
+    CREDIT_REASON_COVERAGE_RUN,
     MONTHLY_CREDIT_GRANT,
     PRICING_VERSION,
     CREDIT_OVERDRAFT_LIMIT
@@ -255,6 +256,62 @@ class CreditService:
         return entry
     
     @staticmethod
+    def charge_coverage_run(user_id: int, coverage_run_id: int, amount: int,
+                           description: Optional[str] = None) -> tuple[bool, Optional[str]]:
+        """
+        Charge credits for a coverage run.
+        Uses database-level locking to prevent race conditions.
+        
+        Args:
+            user_id: User ID
+            coverage_run_id: Coverage run ID
+            amount: Amount to charge (positive number, will be stored as negative)
+            description: Optional description
+            
+        Returns:
+            Tuple of (success: bool, error_message: Optional[str])
+        """
+        from app.constants import CREDIT_REASON_COVERAGE_RUN, CREDIT_OVERDRAFT_LIMIT
+        
+        month = CreditService.get_current_month()
+        
+        # Ensure monthly grant exists
+        CreditService.ensure_monthly_grant(user_id)
+        
+        # Use SELECT FOR UPDATE to lock the user's ledger entries for this month
+        try:
+            # Lock all ledger rows for this user/month, then sum in Python
+            rows = db.session.query(CreditLedger.delta_credits).filter(
+                CreditLedger.user_id == user_id,
+                CreditLedger.month == month
+            ).with_for_update().all()
+            current_balance = sum(row[0] for row in rows) if rows else 0
+            new_balance = current_balance - amount
+
+            # Check if balance would go below overdraft limit
+            if new_balance < CREDIT_OVERDRAFT_LIMIT:
+                db.session.rollback()
+                return False, f'Insufficient credits. Current: {current_balance}, Required: {amount}, Overdraft limit: {CREDIT_OVERDRAFT_LIMIT}'
+
+            # Create charge entry
+            entry = CreditLedger(
+                user_id=user_id,
+                month=month,
+                delta_credits=-amount,  # Negative for consumption
+                reason=CREDIT_REASON_COVERAGE_RUN,
+                pricing_version=PRICING_VERSION,
+                description=description or f'Coverage run #{coverage_run_id}'
+            )
+            db.session.add(entry)
+            db.session.commit()
+
+            return True, None
+
+        except Exception as e:
+            db.session.rollback()
+            return False, f'Failed to charge credits: {str(e)}'
+    
+    @staticmethod
     def admin_adjustment(user_id: int, amount: int, description: str, 
                         month: Optional[str] = None) -> CreditLedger:
         """
@@ -317,7 +374,7 @@ class CreditService:
         for entry in entries:
             if entry.reason == CREDIT_REASON_MONTHLY_GRANT:
                 granted += entry.delta_credits
-            elif entry.reason == CREDIT_REASON_JOB_RESERVE:
+            elif entry.reason in [CREDIT_REASON_JOB_RESERVE, CREDIT_REASON_COVERAGE_RUN]:
                 used += abs(entry.delta_credits)
             elif entry.reason == CREDIT_REASON_JOB_REFUND:
                 refunded += entry.delta_credits

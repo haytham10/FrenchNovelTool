@@ -47,6 +47,8 @@ import {
   exportCoverageRun,
   downloadCoverageRunCSV,
   importSentencesFromSheets,
+  getCoverageCost,
+  getCredits,
   type WordList,
   type CoverageRun as CoverageRunType,
   type CoverageAssignment,
@@ -102,6 +104,20 @@ export default function CoveragePage() {
   const { data: wordListsData, isLoading: loadingWordLists } = useQuery({
     queryKey: ['wordlists'],
     queryFn: listWordLists,
+  });
+  
+  // Load coverage cost
+  const { data: costData } = useQuery({
+    queryKey: ['coverageCost'],
+    queryFn: getCoverageCost,
+    staleTime: 1000 * 60 * 60, // Cache for 1 hour
+  });
+  
+  // Load user credits
+  const { data: creditsData } = useQuery({
+    queryKey: ['credits'],
+    queryFn: getCredits,
+    staleTime: 1000 * 60, // Refresh every minute
   });
   
   // Load coverage run results
@@ -202,6 +218,26 @@ export default function CoveragePage() {
     },
     onSuccess: (data) => {
       setCurrentRunId(data.coverage_run.id);
+      queryClient.invalidateQueries({ queryKey: ['credits'] }); // Refresh credit balance
+      enqueueSnackbar(
+        `Coverage run started! ${data.credits_charged} credits charged.`,
+        { variant: 'success' }
+      );
+    },
+    onError: (error: unknown) => {
+      let msg = 'Failed to start coverage run';
+      if ((error as AxiosError).isAxiosError) {
+        const axiosErr = error as AxiosError;
+        const data = axiosErr.response?.data;
+        if (data && typeof data === 'object' && 'error' in data && typeof data.error === 'string') {
+          msg = data.error;
+        } else if (axiosErr.message) {
+          msg = axiosErr.message;
+        }
+      } else if (error instanceof Error) {
+        msg = error.message;
+      }
+      enqueueSnackbar(msg, { variant: 'error' });
     },
   });
   
@@ -515,17 +551,39 @@ export default function CoveragePage() {
             </Paper>
           </Box>
           
+          {/* Credit Balance and Cost Warning */}
+          {creditsData && costData && (
+            <Alert 
+              severity={creditsData.balance >= costData.cost ? 'info' : 'warning'}
+              sx={{ mt: 2 }}
+            >
+              <Stack spacing={0.5}>
+                <Typography variant="body2">
+                  <strong>Credit Balance:</strong> {creditsData.balance} credits
+                </Typography>
+                <Typography variant="body2">
+                  <strong>Coverage Run Cost:</strong> {costData.cost} credits
+                </Typography>
+                {creditsData.balance < costData.cost && (
+                  <Typography variant="body2" color="warning.main" fontWeight={600}>
+                    ⚠️ Insufficient credits. You need at least {costData.cost} credits to run coverage analysis.
+                  </Typography>
+                )}
+              </Stack>
+            </Alert>
+          )}
+          
           {/* Run Button */}
           <Button
             variant="contained"
             size="large"
             startIcon={<PlayIcon />}
             onClick={handleRunCoverage}
-            disabled={!sourceId || runMutation.isPending}
+            disabled={!sourceId || runMutation.isPending || (creditsData && costData && creditsData.balance < costData.cost)}
             fullWidth
             sx={{ mt: 1 }}
           >
-            {runMutation.isPending ? 'Starting Analysis...' : 'Run Vocabulary Coverage'}
+            {runMutation.isPending ? 'Starting Analysis...' : `Run Vocabulary Coverage (${costData?.cost || 2} credits)`}
           </Button>
           
           {runMutation.isError && (

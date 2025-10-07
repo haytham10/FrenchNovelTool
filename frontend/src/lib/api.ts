@@ -804,6 +804,14 @@ export const importSentencesFromSheets = async (
 };
 
 /**
+ * Get coverage run cost
+ */
+export const getCoverageCost = async (): Promise<{ cost: number; currency: string }> => {
+  const response = await api.get('/coverage/cost');
+  return response.data;
+};
+
+/**
  * Create and start a coverage run
  */
 export const createCoverageRun = async (params: {
@@ -812,7 +820,7 @@ export const createCoverageRun = async (params: {
   source_id: number;
   wordlist_id?: number;
   config?: Record<string, unknown>;
-}): Promise<{ coverage_run: CoverageRun; task_id: string }> => {
+}): Promise<{ coverage_run: CoverageRun; task_id: string; credits_charged: number }> => {
   const response = await api.post('/coverage/run', params);
   return response.data;
 };

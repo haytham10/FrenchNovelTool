@@ -285,6 +285,18 @@ def delete_wordlist(wordlist_id):
 # Coverage Run Endpoints
 # ============================================================================
 
+@coverage_bp.route('/coverage/cost', methods=['GET'])
+@jwt_required()
+def get_coverage_cost():
+    """Get the cost of running a coverage analysis"""
+    from app.constants import COVERAGE_RUN_COST
+    
+    return jsonify({
+        'cost': COVERAGE_RUN_COST,
+        'currency': 'credits'
+    }), 200
+
+
 @coverage_bp.route('/coverage/import-from-sheets', methods=['POST'])
 @jwt_required()
 @limiter.limit("10 per hour")
@@ -487,6 +499,23 @@ def create_coverage_run():
         db.session.add(coverage_run)
         db.session.commit()
         
+        # Charge credits for coverage run
+        from app.services.credit_service import CreditService
+        from app.constants import COVERAGE_RUN_COST
+        
+        success, error_msg = CreditService.charge_coverage_run(
+            user_id=user_id,
+            coverage_run_id=coverage_run.id,
+            amount=COVERAGE_RUN_COST,
+            description=f'Coverage run #{coverage_run.id} ({data["mode"]} mode)'
+        )
+        
+        if not success:
+            # Rollback coverage run creation if credit charge failed
+            db.session.delete(coverage_run)
+            db.session.commit()
+            return jsonify({'error': error_msg}), 402  # Payment Required
+        
         # Start async task
         task = coverage_build_async.apply_async(args=[coverage_run.id])
         
@@ -495,7 +524,8 @@ def create_coverage_run():
         
         return jsonify({
             'coverage_run': coverage_run.to_dict(),
-            'task_id': task.id
+            'task_id': task.id,
+            'credits_charged': COVERAGE_RUN_COST
         }), 201
         
     except Exception as e:
