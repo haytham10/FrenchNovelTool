@@ -250,7 +250,7 @@ class WordListService:
         """Get the global default word list."""
         return WordList.query.filter_by(is_global_default=True).first()
     
-    def refresh_wordlist_from_source(self, wordlist: WordList, user=None) -> Dict:
+    def refresh_wordlist_from_source(self, wordlist: WordList, user=None, force: bool = False) -> Dict:
         """
         Refresh/populate words_json for a wordlist from its original source.
         Useful for wordlists created before words_json was added.
@@ -262,8 +262,8 @@ class WordListService:
         Returns:
             Dict with refresh report
         """
-        if wordlist.words_json and len(wordlist.words_json) > 0:
-            logger.info(f"WordList {wordlist.id} already has words_json with {len(wordlist.words_json)} words")
+        if wordlist.words_json and len(wordlist.words_json) > 0 and not force:
+            logger.info(f"WordList {wordlist.id} already has words_json with {len(wordlist.words_json)} words (force={force})")
             return {
                 'status': 'already_populated',
                 'word_count': len(wordlist.words_json)
@@ -304,20 +304,38 @@ class WordListService:
         if not words:
             raise ValueError("No words found to refresh wordlist")
         
-        # Re-ingest to normalize
+        # Re-ingest to normalize with diagnostics
         normalized_keys = set()
+        duplicates = []
+        anomalies = []
+        variants_total = 0
+        multi_token_count = 0
+        raw_count = 0
+
         for word in words:
+            raw_count += 1
             if not word or not word.strip():
                 continue
             variants = self.split_variants(word)
+            variants_total += max(0, len(variants) - 1)
+
             for variant in variants:
                 # Handle multi-token
                 tokens = variant.split()
                 if len(tokens) > 1:
-                    variant = self.extract_head_token(variant)
-                
-                normalized = self.normalize_word(variant, fold_diacritics=True)
-                if normalized:
+                    multi_token_count += 1
+                    variant_to_use = self.extract_head_token(variant)
+                else:
+                    variant_to_use = variant
+
+                normalized = self.normalize_word(variant_to_use, fold_diacritics=True)
+                if not normalized:
+                    anomalies.append({'word': word, 'variant': variant, 'issue': 'empty_after_normalization'})
+                    continue
+
+                if normalized in normalized_keys:
+                    duplicates.append({'original': variant, 'normalized': normalized})
+                else:
                     normalized_keys.add(normalized)
         
         # Update wordlist
@@ -327,11 +345,16 @@ class WordListService:
             wordlist.canonical_samples = sorted(list(normalized_keys))[:20]
         wordlist.updated_at = datetime.utcnow()
         
-        logger.info(f"Refreshed WordList {wordlist.id} with {len(normalized_keys)} normalized words")
-        
+        logger.info(f"Refreshed WordList {wordlist.id} with {len(normalized_keys)} normalized words (raw_rows={raw_count}, variants_total={variants_total}, multi_token_count={multi_token_count}, duplicates={len(duplicates)})")
+
         return {
             'status': 'refreshed',
             'word_count': len(normalized_keys),
+            'raw_rows': raw_count,
+            'variants_expanded': variants_total,
+            'multi_token_count': multi_token_count,
+            'duplicates': len(duplicates),
+            'anomalies': anomalies,
             'source': wordlist.source_type
         }
     
