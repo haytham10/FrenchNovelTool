@@ -2,9 +2,10 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TableSortLabel, TextField, Box, IconButton, Tooltip, Checkbox, Button, Stack, Chip, ToggleButtonGroup, ToggleButton, LinearProgress, Typography } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import Icon from './Icon';
-import { Edit2, Check, X, CheckSquare, AlertCircle } from 'lucide-react';
+import { Edit2, Check, X, CheckSquare, AlertCircle, BookOpenCheck } from 'lucide-react';
 import { useDebounce } from '@/lib/hooks';
 import type { AdvancedNormalizationOptions } from './NormalizeControls';
+import Link from 'next/link';
 
 interface ResultsTableProps {
   sentences: string[];
@@ -12,6 +13,7 @@ interface ResultsTableProps {
   onSentencesChange?: (sentences: string[]) => void;
   onExportSelected?: (selectedIndices: number[]) => void;
   advancedOptions?: AdvancedNormalizationOptions;
+  jobId?: number;
 }
 
 type Order = 'asc' | 'desc';
@@ -40,7 +42,7 @@ const StyledTableRow = styled(TableRow)(({ theme }) => ({
 
 const LONG_SENTENCE_THRESHOLD = 15; // words
 
-export default function ResultsTable({ sentences, originalSentences = [], onSentencesChange, onExportSelected, advancedOptions }: ResultsTableProps) {
+export default function ResultsTable({ sentences, originalSentences = [], onSentencesChange, onExportSelected, advancedOptions, jobId }: ResultsTableProps) {
   const [order, setOrder] = useState<Order>('asc');
   const [orderBy, setOrderBy] = useState<keyof { index: number; sentence: string }>('index');
   const [filter, setFilter] = useState<string>('');
@@ -416,11 +418,23 @@ export default function ResultsTable({ sentences, originalSentences = [], onSent
           </TableBody>
         </Table>
       </TableContainer>
-      <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
         <Box sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>
           Showing {filteredSentences.length} of {sentences.length} sentences
           {selectedRows.size > 0 && ` (${selectedRows.size} selected)`}
         </Box>
+        {jobId && sentences.length > 0 && (
+          <Button
+            component={Link}
+            href={`/coverage?source=job&id=${jobId}`}
+            variant="outlined"
+            color="primary"
+            startIcon={<Icon icon={BookOpenCheck} />}
+            sx={{ textTransform: 'none' }}
+          >
+            Run Vocabulary Analysis
+          </Button>
+        )}
       </Box>
     </Box>
   );

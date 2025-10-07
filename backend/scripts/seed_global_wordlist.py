@@ -1,0 +1,84 @@
+"""Seed script to create global default French 2K word list"""
+import sys
+import os
+
+# Add parent directory to path so we can import app
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from app import create_app, db
+from app.models import WordList
+from app.services.wordlist_service import WordListService
+
+# Sample French 2K most common words (abbreviated list for MVP)
+# In production, this would be loaded from a file or database
+FRENCH_2K_SAMPLE = [
+    "le", "de", "un", "être", "et", "à", "il", "avoir", "ne", "je",
+    "son", "que", "se", "qui", "ce", "dans", "en", "du", "elle", "au",
+    "pour", "pas", "sur", "tout", "par", "mais", "faire", "dire", "me",
+    "plus", "on", "te", "avec", "nous", "mon", "vous", "te", "lui",
+    "y", "bien", "pouvoir", "cette", "aller", "ou", "si", "deux", "comme",
+    "voir", "dont", "ta", "là", "vouloir", "grand", "quelque", "aussi",
+    "sans", "homme", "chez", "même", "sous", "savoir", "autre", "premier",
+    "fois", "où", "chose", "très", "jour", "tout", "trois", "femme",
+    "petit", "encore", "main", "peu", "quand", "prendre", "bon", "venir",
+    "temps", "jamais", "nouveau", "donner", "devoir", "croire", "nous",
+    "ni", "notre", "monde", "avant", "père", "si", "oui", "non",
+    "falloir", "parler", "rendre", "terre", "famille", "trouver", "enfant",
+    "pendant", "après", "vrai", "regard", "sentiment", "vie", "heure",
+    "moment", "aimer", "maison", "vers", "comprendre", "mettre", "yeux",
+    "arriver", "tant", "passer", "français", "toujours", "pays", "alors",
+    "politique", "entendre", "devenir", "entre", "rester", "partir", "place",
+    "cœur", "mère", "jouer", "mois", "côté", "nombre", "esprit", "raison",
+    "demander", "moins", "contre", "ensemble", "travail", "état", "force",
+    "hier", "ici", "maintenant", "déjà", "tard", "tôt", "soir", "matin",
+    "nuit", "année", "semaine", "long", "court", "haut", "bas", "fort",
+    "faible", "gros", "mince", "large", "étroit", "chaud", "froid", "bon",
+    "mauvais", "beau", "laid", "jeune", "vieux", "nouveau", "ancien", "cher",
+    "pauvre", "riche", "simple", "difficile", "facile", "dur", "mou", "lent",
+    "rapide", "blanc", "noir", "rouge", "bleu", "vert", "jaune", "orange",
+    "rose", "violet", "marron", "gris", "clair", "sombre", "brillant",
+    "sombre", "propre", "sale", "sec", "humide", "plein", "vide", "ouvert",
+    "fermé", "proche", "loin", "premier", "dernier", "seul", "ensemble"
+]
+
+
+def seed_global_wordlist():
+    """Create the global default French 2K word list"""
+    app = create_app()
+    
+    with app.app_context():
+        # Check if global default already exists
+        existing = WordList.query.filter_by(is_global_default=True).first()
+        if existing:
+            print(f"Global default word list already exists: {existing.name} (ID: {existing.id})")
+            return
+        
+        print("Creating global default French 2K word list...")
+        
+        wordlist_service = WordListService()
+        
+        # Ingest the word list
+        wordlist, ingestion_report = wordlist_service.ingest_word_list(
+            words=FRENCH_2K_SAMPLE,
+            name="French 2K (Global Default)",
+            owner_user_id=None,  # Global list
+            source_type='manual',
+            source_ref='seed_script',
+            fold_diacritics=True
+        )
+        
+        # Mark as global default
+        wordlist.is_global_default = True
+        
+        db.session.commit()
+        
+        print(f"✓ Created global default word list: {wordlist.name}")
+        print(f"  ID: {wordlist.id}")
+        print(f"  Normalized count: {wordlist.normalized_count}")
+        print(f"  Duplicates: {len(ingestion_report['duplicates'])}")
+        print(f"  Multi-token entries: {len(ingestion_report['multi_token_entries'])}")
+        print(f"  Samples: {wordlist.canonical_samples[:10]}")
+
+
+if __name__ == '__main__':
+    seed_global_wordlist()

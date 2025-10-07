@@ -1338,6 +1338,451 @@ CreditService.admin_adjustment(
 
 ---
 
+## Vocabulary Coverage Tool
+
+### Overview
+
+The Vocabulary Coverage Tool helps language learners analyze and filter sentences based on high-frequency vocabulary. It supports two modes:
+
+- **Coverage Mode**: Select a minimal set of sentences that covers all words in a vocabulary list
+- **Filter Mode**: Find sentences with high vocabulary density (e.g., ≥95% common words) for efficient drilling
+
+### Word List Management
+
+#### List Word Lists
+
+**Endpoint:** `GET /api/v1/wordlists`
+
+**Authentication:** Required
+
+**Response:**
+```json
+{
+  "wordlists": [
+    {
+      "id": 1,
+      "owner_user_id": null,
+      "name": "French 2K (Global Default)",
+      "source_type": "manual",
+      "normalized_count": 1987,
+      "canonical_samples": ["le", "de", "un", "etre", ...],
+      "is_global_default": true,
+      "created_at": "2024-01-15T12:00:00Z"
+    },
+    {
+      "id": 2,
+      "owner_user_id": 123,
+      "name": "My Custom List",
+      "source_type": "csv",
+      "normalized_count": 500,
+      "is_global_default": false,
+      "created_at": "2024-01-16T10:00:00Z"
+    }
+  ]
+}
+```
+
+#### Create Word List
+
+**Endpoint:** `POST /api/v1/wordlists`
+
+**Authentication:** Required
+
+**Rate Limit:** 10 per hour
+
+**Request (CSV upload):**
+```
+Content-Type: multipart/form-data
+
+file: <CSV file>
+name: "My French 3K List"
+fold_diacritics: true
+```
+
+**Request (JSON):**
+```json
+{
+  "name": "Custom Word List",
+  "source_type": "manual",
+  "words": ["le", "chat", "manger", "dormir", "maison"],
+  "fold_diacritics": true
+}
+```
+
+**Response:**
+```json
+{
+  "wordlist": {
+    "id": 3,
+    "owner_user_id": 123,
+    "name": "Custom Word List",
+    "source_type": "manual",
+    "normalized_count": 5,
+    "canonical_samples": ["le", "chat", "manger", "dormir", "maison"],
+    "is_global_default": false,
+    "created_at": "2024-01-17T14:00:00Z"
+  },
+  "ingestion_report": {
+    "original_count": 5,
+    "normalized_count": 5,
+    "duplicates": [],
+    "multi_token_entries": [],
+    "variants_expanded": 0,
+    "anomalies": []
+  }
+}
+```
+
+#### Get Word List Details
+
+**Endpoint:** `GET /api/v1/wordlists/:id`
+
+**Authentication:** Required
+
+**Response:**
+```json
+{
+  "id": 1,
+  "owner_user_id": null,
+  "name": "French 2K (Global Default)",
+  "source_type": "manual",
+  "normalized_count": 1987,
+  "canonical_samples": ["le", "de", "un", "etre", ...],
+  "is_global_default": true,
+  "created_at": "2024-01-15T12:00:00Z"
+}
+```
+
+#### Update Word List
+
+**Endpoint:** `PATCH /api/v1/wordlists/:id`
+
+**Authentication:** Required (must be owner)
+
+**Request:**
+```json
+{
+  "name": "Updated List Name"
+}
+```
+
+**Response:**
+```json
+{
+  "id": 2,
+  "name": "Updated List Name",
+  ...
+}
+```
+
+#### Delete Word List
+
+**Endpoint:** `DELETE /api/v1/wordlists/:id`
+
+**Authentication:** Required (must be owner)
+
+**Response:**
+```json
+{
+  "message": "WordList deleted successfully"
+}
+```
+
+### Coverage Runs
+
+#### Create Coverage Run
+
+**Endpoint:** `POST /api/v1/coverage/run`
+
+**Authentication:** Required
+
+**Rate Limit:** 20 per hour
+
+**Request (Filter Mode):**
+```json
+{
+  "mode": "filter",
+  "source_type": "job",
+  "source_id": 123,
+  "wordlist_id": 1,
+  "config": {
+    "min_in_list_ratio": 0.95,
+    "len_min": 4,
+    "len_max": 8,
+    "target_count": 500
+  }
+}
+```
+
+**Request (Coverage Mode):**
+```json
+{
+  "mode": "coverage",
+  "source_type": "history",
+  "source_id": 456,
+  "wordlist_id": 1,
+  "config": {
+    "alpha": 0.5,
+    "beta": 0.3,
+    "gamma": 0.2
+  }
+}
+```
+
+**Parameters:**
+- `mode`: "coverage" or "filter" (required)
+- `source_type`: "job" or "history" (required)
+- `source_id`: ID of job or history entry (required)
+- `wordlist_id`: ID of word list to use (optional, uses user/global default if omitted)
+- `config`: Mode-specific configuration (optional)
+
+**Response:**
+```json
+{
+  "coverage_run": {
+    "id": 789,
+    "user_id": 123,
+    "mode": "filter",
+    "source_type": "job",
+    "source_id": 123,
+    "wordlist_id": 1,
+    "status": "pending",
+    "progress_percent": 0,
+    "created_at": "2024-01-17T15:00:00Z"
+  },
+  "task_id": "abc123-def456-..."
+}
+```
+
+#### Get Coverage Run Status
+
+**Endpoint:** `GET /api/v1/coverage/runs/:id`
+
+**Authentication:** Required (must be owner)
+
+**Query Parameters:**
+- `page`: Page number for assignments (default: 1)
+- `per_page`: Results per page (default: 50, max: 100)
+
+**Response (Pending):**
+```json
+{
+  "coverage_run": {
+    "id": 789,
+    "mode": "filter",
+    "status": "processing",
+    "progress_percent": 45,
+    "created_at": "2024-01-17T15:00:00Z"
+  },
+  "assignments": [],
+  "pagination": {
+    "page": 1,
+    "per_page": 50,
+    "total": 0,
+    "pages": 0
+  }
+}
+```
+
+**Response (Completed - Filter Mode):**
+```json
+{
+  "coverage_run": {
+    "id": 789,
+    "mode": "filter",
+    "status": "completed",
+    "progress_percent": 100,
+    "stats_json": {
+      "total_sentences": 5000,
+      "candidates_passed_filter": 1200,
+      "selected_count": 500,
+      "filter_acceptance_ratio": 0.24,
+      "min_in_list_ratio": 0.95,
+      "len_min": 4,
+      "len_max": 8
+    },
+    "completed_at": "2024-01-17T15:05:00Z"
+  },
+  "assignments": [
+    {
+      "id": 1,
+      "word_key": "chat",
+      "sentence_index": 42,
+      "sentence_text": "Le chat dort sur le tapis.",
+      "sentence_score": 9.8,
+      "in_list_ratio": 1.0
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "per_page": 50,
+    "total": 500,
+    "pages": 10
+  }
+}
+```
+
+**Response (Completed - Coverage Mode):**
+```json
+{
+  "coverage_run": {
+    "id": 790,
+    "mode": "coverage",
+    "status": "completed",
+    "stats_json": {
+      "words_total": 2000,
+      "words_covered": 1850,
+      "words_uncovered": 150,
+      "uncovered_words": ["xylophone", "zèbre", ...],
+      "selected_sentence_count": 423,
+      "total_sentences": 5000
+    },
+    "completed_at": "2024-01-17T15:10:00Z"
+  },
+  "assignments": [
+    {
+      "id": 1,
+      "word_key": "chat",
+      "word_original": "chat",
+      "lemma": "chat",
+      "matched_surface": "chat",
+      "sentence_index": 42,
+      "sentence_text": "Le chat dort bien.",
+      "sentence_score": 0.95
+    }
+  ],
+  "pagination": {...}
+}
+```
+
+#### Swap Assignment (Coverage Mode)
+
+**Endpoint:** `POST /api/v1/coverage/runs/:id/swap`
+
+**Authentication:** Required (must be owner)
+
+**Request:**
+```json
+{
+  "word_key": "chat",
+  "new_sentence_index": 100
+}
+```
+
+**Response:**
+```json
+{
+  "id": 1,
+  "word_key": "chat",
+  "sentence_index": 100,
+  "sentence_text": "Un petit chat joue.",
+  "manual_edit": true
+}
+```
+
+#### Export Coverage Run
+
+**Endpoint:** `POST /api/v1/coverage/runs/:id/export`
+
+**Authentication:** Required (must be owner)
+
+**Rate Limit:** 10 per hour
+
+**Request:**
+```json
+{
+  "sheet_name": "French Drilling - Week 1",
+  "folder_id": "1ABC..."
+}
+```
+
+**Response:**
+```json
+{
+  "message": "Export functionality coming soon",
+  "sheet_name": "French Drilling - Week 1"
+}
+```
+
+**Note:** Export functionality is planned for a future release.
+
+### User Settings Extension
+
+The user settings endpoint now supports coverage-related settings:
+
+**Endpoint:** `POST /api/v1/user/settings`
+
+**Request:**
+```json
+{
+  "sentence_length_limit": 8,
+  "gemini_model": "speed",
+  "default_wordlist_id": 1,
+  "coverage_defaults": {
+    "mode": "filter",
+    "min_in_list_ratio": 0.95,
+    "len_min": 4,
+    "len_max": 8,
+    "target_count": 500
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "message": "Settings saved successfully",
+  "settings": {
+    "sentence_length_limit": 8,
+    "gemini_model": "speed",
+    "default_wordlist_id": 1,
+    "coverage_defaults": {
+      "mode": "filter",
+      "min_in_list_ratio": 0.95,
+      "len_min": 4,
+      "len_max": 8,
+      "target_count": 500
+    }
+  }
+}
+```
+
+### Configuration Options
+
+#### Coverage Mode Config
+```json
+{
+  "alpha": 0.5,           // Duplicate penalty weight
+  "beta": 0.3,            // Quality weight
+  "gamma": 0.2,           // Length penalty weight
+  "target_sentence_length": 6,
+  "max_sentences": 1000
+}
+```
+
+#### Filter Mode Config
+```json
+{
+  "min_in_list_ratio": 0.95,    // Minimum % of words in list (0.0-1.0)
+  "len_min": 4,                  // Minimum sentence length (tokens)
+  "len_max": 8,                  // Maximum sentence length (tokens)
+  "target_count": 500,           // Number of sentences to select
+  "frequency_weighting": true,   // Prefer higher-frequency words
+  "diversity_penalty": 0.2       // Reduce near-duplicates
+}
+```
+
+#### Normalization Config (Shared)
+```json
+{
+  "normalize_mode": "lemma",      // Normalization method
+  "fold_diacritics": true,        // Remove diacritics (café → cafe)
+  "handle_elisions": true         // Handle l', d', etc.
+}
+```
+
+---
+
 ## Error Handling
 
 ### Credit-Related Error Codes
@@ -1345,6 +1790,13 @@ CreditService.admin_adjustment(
 - `INSUFFICIENT_CREDITS`: User does not have enough credits
 - `JOB_NOT_FOUND`: Job ID does not exist
 - `INVALID_JOB_STATUS`: Job is in wrong status for the requested operation
+
+### Coverage-Related Error Codes
+
+- `WORDLIST_NOT_FOUND`: Specified word list does not exist
+- `NO_DEFAULT_WORDLIST`: No word list specified and no default found
+- `INVALID_SOURCE`: Source job or history entry not found or invalid
+- `NO_SENTENCES`: Source has no sentences to analyze
 
 ### HTTP Status Codes
 

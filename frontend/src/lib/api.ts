@@ -132,6 +132,8 @@ export interface UserSettings {
   sentence_length_limit: number;
   default_folder_id?: string;
   default_sheet_name_pattern?: string;
+  // Optional ID of the default word list for vocabulary coverage
+  default_wordlist_id?: number | null;
 }
 
 /**
@@ -344,8 +346,9 @@ export async function getUserSettings(): Promise<UserSettings> {
 }
 
 export async function updateUserSettings(settings: Partial<UserSettings>): Promise<UserSettings> {
-  const response = await api.put('/settings', settings);
-  return response.data;
+  // Backend route accepts POST for saving user settings
+  const response = await api.post('/settings', settings);
+  return response.data.settings || response.data;
 }
 
 // Aliases for backward compatibility
@@ -642,5 +645,222 @@ export function getApiErrorMessage(error: unknown, defaultMessage = 'An unexpect
   
   return defaultMessage;
 }
+
+// ============================================================================
+// Vocabulary Coverage Tool API
+// ============================================================================
+
+export interface WordList {
+  id: number;
+  owner_user_id: number | null;
+  name: string;
+  source_type: 'csv' | 'google_sheet' | 'manual';
+  source_ref?: string;
+  normalized_count: number;
+  canonical_samples: string[];
+  is_global_default: boolean;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface IngestionReport {
+  original_count: number;
+  normalized_count: number;
+  duplicates: Array<{ word: string; normalized: string }>;
+  multi_token_entries: Array<{ original: string; head_token: string }>;
+  variants_expanded: number;
+  anomalies: Array<{ word: string; issue: string }>;
+}
+
+export interface CoverageRun {
+  id: number;
+  user_id: number;
+  mode: 'coverage' | 'filter';
+  source_type: 'job' | 'history';
+  source_id: number;
+  wordlist_id?: number;
+  config_json: Record<string, unknown>;
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  progress_percent: number;
+  stats_json: Record<string, unknown>;
+  created_at: string;
+  completed_at?: string;
+  error_message?: string;
+  celery_task_id?: string;
+}
+
+export interface CoverageAssignment {
+  id: number;
+  coverage_run_id: number;
+  word_original?: string;
+  word_key: string;
+  lemma?: string;
+  matched_surface?: string;
+  sentence_index: number;
+  sentence_text: string;
+  sentence_score?: number;
+  conflicts?: Record<string, unknown>;
+  manual_edit: boolean;
+  notes?: string;
+}
+
+/**
+ * List all word lists accessible to the user (global + user's own)
+ */
+export const listWordLists = async (): Promise<{ wordlists: WordList[] }> => {
+  const response = await api.get('/wordlists');
+  return response.data;
+};
+
+/**
+ * Create a new word list from CSV file upload
+ */
+export const createWordListFromFile = async (
+  file: File,
+  name: string,
+  foldDiacritics: boolean = true
+): Promise<{ wordlist: WordList; ingestion_report: IngestionReport }> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('name', name);
+  formData.append('fold_diacritics', foldDiacritics.toString());
+
+  const response = await api.post('/wordlists', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  return response.data;
+};
+
+/**
+ * Create a new word list from array of words
+ */
+export const createWordListFromWords = async (
+  name: string,
+  words: string[],
+  sourceType: 'manual' | 'google_sheet' = 'manual',
+  sourceRef?: string,
+  foldDiacritics: boolean = true
+): Promise<{ wordlist: WordList; ingestion_report: IngestionReport }> => {
+  const response = await api.post('/wordlists', {
+    name,
+    source_type: sourceType,
+    source_ref: sourceRef,
+    words,
+    fold_diacritics: foldDiacritics,
+  });
+  return response.data;
+};
+
+/**
+ * Get details of a specific word list
+ */
+export const getWordList = async (wordlistId: number): Promise<WordList> => {
+  const response = await api.get(`/wordlists/${wordlistId}`);
+  return response.data;
+};
+
+/**
+ * Update a word list (name only)
+ */
+export const updateWordList = async (
+  wordlistId: number,
+  name: string
+): Promise<WordList> => {
+  const response = await api.patch(`/wordlists/${wordlistId}`, { name });
+  return response.data;
+};
+
+/**
+ * Delete a word list
+ */
+export const deleteWordList = async (wordlistId: number): Promise<void> => {
+  await api.delete(`/wordlists/${wordlistId}`);
+};
+
+/**
+ * Refresh a word list from its source (re-populate words_json)
+ */
+export const refreshWordList = async (
+  wordlistId: number
+): Promise<{ wordlist: WordList; refresh_report: { status: string; word_count: number; source: string } }> => {
+  const response = await api.post(`/wordlists/${wordlistId}/refresh`);
+  return response.data;
+};
+
+/**
+ * Create and start a coverage run
+ */
+export const createCoverageRun = async (params: {
+  mode: 'coverage' | 'filter';
+  source_type: 'job' | 'history';
+  source_id: number;
+  wordlist_id?: number;
+  config?: Record<string, unknown>;
+}): Promise<{ coverage_run: CoverageRun; task_id: string }> => {
+  const response = await api.post('/coverage/run', params);
+  return response.data;
+};
+
+/**
+ * Get coverage run status and results
+ */
+export const getCoverageRun = async (
+  runId: number,
+  page: number = 1,
+  perPage: number = 50
+): Promise<{
+  coverage_run: CoverageRun;
+  assignments: CoverageAssignment[];
+  pagination: {
+    page: number;
+    per_page: number;
+    total: number;
+    pages: number;
+  };
+}> => {
+  const response = await api.get(`/coverage/runs/${runId}`, {
+    params: { page, per_page: perPage },
+  });
+  return response.data;
+};
+
+/**
+ * Swap a word assignment to a different sentence (Coverage mode)
+ */
+export const swapCoverageAssignment = async (
+  runId: number,
+  wordKey: string,
+  newSentenceIndex: number
+): Promise<CoverageAssignment> => {
+  const response = await api.post(`/coverage/runs/${runId}/swap`, {
+    word_key: wordKey,
+    new_sentence_index: newSentenceIndex,
+  });
+  return response.data;
+};
+
+/**
+ * Export coverage run to Google Sheets
+ */
+export const exportCoverageRun = async (
+  runId: number,
+  sheetName: string,
+  folderId?: string
+): Promise<{ message: string; spreadsheet_id?: string; spreadsheet_url?: string }> => {
+  const response = await api.post(`/coverage/runs/${runId}/export`, {
+    sheet_name: sheetName,
+    folder_id: folderId,
+  });
+  return response.data;
+};
+
+export const downloadCoverageRunCSV = async (runId: number): Promise<Blob> => {
+  const response = await api.get(`/coverage/runs/${runId}/download`, {
+    responseType: 'blob',
+  });
+  return response.data;
+};
 
 export default api;
