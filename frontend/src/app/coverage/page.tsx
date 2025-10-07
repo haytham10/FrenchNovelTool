@@ -550,29 +550,7 @@ export default function CoveragePage() {
               )}
             </Paper>
           </Box>
-          
-          {/* Credit Balance and Cost Warning */}
-          {creditsData && costData && (
-            <Alert 
-              severity={creditsData.balance >= costData.cost ? 'info' : 'warning'}
-              sx={{ mt: 2 }}
-            >
-              <Stack spacing={0.5}>
-                <Typography variant="body2">
-                  <strong>Credit Balance:</strong> {creditsData.balance} credits
-                </Typography>
-                <Typography variant="body2">
-                  <strong>Coverage Run Cost:</strong> {costData.cost} credits
-                </Typography>
-                {creditsData.balance < costData.cost && (
-                  <Typography variant="body2" color="warning.main" fontWeight={600}>
-                    ⚠️ Insufficient credits. You need at least {costData.cost} credits to run coverage analysis.
-                  </Typography>
-                )}
-              </Stack>
-            </Alert>
-          )}
-          
+
           {/* Run Button */}
           <Button
             variant="contained"
