@@ -1,5 +1,5 @@
 """Request/Response validation schemas using Marshmallow"""
-from marshmallow import Schema, fields, validate, pre_load
+from marshmallow import Schema, fields, validate, pre_load, validates_schema, ValidationError
 
 
 class GoogleAuthSchema(Schema):

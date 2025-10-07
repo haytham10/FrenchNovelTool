@@ -323,3 +323,73 @@ class GoogleSheetsService:
                 # Don't fail the export if sharing fails
 
         return f'https://docs.google.com/spreadsheets/d/{spreadsheet_id}'
+
+    def create_spreadsheet_from_rows(self, user_or_creds, sheet_name: str, rows: list[list], folder_id: str | None = None):
+        """Create a spreadsheet and write a provided matrix of rows (list of lists).
+
+        Accepts either user (app.models.User) or already-authorized creds object.
+        Returns a dict with spreadsheetId and spreadsheetUrl.
+        """
+        # Resolve credentials
+        creds = None
+        try:
+            # If user_or_creds is a credentials-like object, assume it's ready
+            if hasattr(user_or_creds, 'refresh_token') or hasattr(user_or_creds, 'token'):
+                creds = user_or_creds
+            else:
+                # Assume it's a User model instance and fetch creds via AuthService
+                from app.services.auth_service import AuthService
+                auth_service = AuthService()
+                creds = auth_service.get_user_credentials(user_or_creds)
+        except Exception as e:
+            current_app.logger.error(f'Failed to resolve Google credentials: {e}')
+            raise
+
+        sheets_service = build('sheets', 'v4', credentials=creds)
+        drive_service = build('drive', 'v3', credentials=creds)
+
+        # Create a new spreadsheet
+        spreadsheet = {'properties': {'title': sheet_name}}
+        spreadsheet = sheets_service.spreadsheets().create(body=spreadsheet, fields='spreadsheetId').execute()
+        spreadsheet_id = spreadsheet.get('spreadsheetId')
+
+        # Move to folder if requested
+        if folder_id:
+            try:
+                file = drive_service.files().get(fileId=spreadsheet_id, fields='parents').execute()
+                previous_parents = ",".join(file.get('parents', []))
+                drive_service.files().update(
+                    fileId=spreadsheet_id,
+                    addParents=folder_id,
+                    removeParents=previous_parents,
+                    fields='id, parents'
+                ).execute()
+            except Exception as e:
+                current_app.logger.warning(f'Failed to move spreadsheet to folder {folder_id}: {e}')
+
+        # Write provided rows matrix
+        body = {'values': rows}
+        sheets_service.spreadsheets().values().update(
+            spreadsheetId=spreadsheet_id, range='A1', valueInputOption='RAW', body=body
+        ).execute()
+
+        # Apply simple header formatting (if any rows present)
+        try:
+            requests = []
+            if rows and len(rows) > 0:
+                requests.append({
+                    'repeatCell': {
+                        'range': {'sheetId': 0, 'startRowIndex': 0, 'endRowIndex': 1},
+                        'cell': {'userEnteredFormat': {'backgroundColor': {'red': 0.2, 'green': 0.6, 'blue': 0.8}, 'textFormat': {'foregroundColor': {'red': 1, 'green': 1, 'blue': 1}, 'bold': True}}},
+                        'fields': 'userEnteredFormat(backgroundColor,textFormat)'
+                    }
+                })
+                requests.append({
+                    'autoResizeDimensions': {'dimensions': {'sheetId': 0, 'dimension': 'COLUMNS', 'startIndex': 0, 'endIndex': min(10, len(rows[0]) if rows else 2)}}
+                })
+            if requests:
+                sheets_service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={'requests': requests}).execute()
+        except Exception as e:
+            current_app.logger.warning(f'Failed to apply formatting to spreadsheet {spreadsheet_id}: {e}')
+
+        return {'spreadsheetId': spreadsheet_id, 'spreadsheetUrl': f'https://docs.google.com/spreadsheets/d/{spreadsheet_id}'}

@@ -826,7 +826,7 @@ export default function HistoryTable() {
 						</Tooltip>
 					  )}
 
-					  {status === 'complete' && (
+                      {(status === 'complete' || status === 'exported') && (
 						<Tooltip title="Run Vocabulary Analysis">
 						  <IconButton
 							size="small"

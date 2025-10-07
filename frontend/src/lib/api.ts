@@ -792,6 +792,18 @@ export const refreshWordList = async (
 };
 
 /**
+ * Import sentences from Google Sheets URL
+ */
+export const importSentencesFromSheets = async (
+  sheetUrl: string
+): Promise<{ history_id: number; sentence_count: number; filename: string }> => {
+  const response = await api.post('/coverage/import-from-sheets', {
+    sheet_url: sheetUrl,
+  });
+  return response.data;
+};
+
+/**
  * Create and start a coverage run
  */
 export const createCoverageRun = async (params: {

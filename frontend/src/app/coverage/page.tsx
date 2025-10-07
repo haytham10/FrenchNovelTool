@@ -14,6 +14,7 @@ import {
   InputLabel,
   Alert,
   CircularProgress,
+  LinearProgress,
   Chip,
   Stack,
   Divider,
@@ -45,12 +46,17 @@ import {
   getProcessingHistory,
   exportCoverageRun,
   downloadCoverageRunCSV,
+  importSentencesFromSheets,
   type WordList,
+  type CoverageRun as CoverageRunType,
   type CoverageAssignment,
 } from '@/lib/api';
 import RouteGuard from '@/components/RouteGuard';
 import Breadcrumbs from '@/components/Breadcrumbs';
+import CoverageResultsTable from '@/components/CoverageResultsTable';
+import FilterResultsTable from '@/components/FilterResultsTable';
 import { useSettings } from '@/lib/queries';
+import { useCoverageWebSocket } from '@/lib/useCoverageWebSocket';
 
 export default function CoveragePage() {
   const queryClient = useQueryClient();
@@ -60,6 +66,7 @@ export default function CoveragePage() {
   // Get URL parameters for pre-filling
   const urlSource = searchParams.get('source'); // 'job' or 'history'
   const urlId = searchParams.get('id');
+  const urlRunId = searchParams.get('runId'); // Pre-existing run to view
   
   // State
   const [mode, setMode] = useState<'coverage' | 'filter'>('filter');
@@ -67,7 +74,7 @@ export default function CoveragePage() {
   const [sourceId, setSourceId] = useState<string>(urlId || '');
   const [selectedWordListId, setSelectedWordListId] = useState<number | ''>('');
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [currentRunId, setCurrentRunId] = useState<number | null>(null);
+  const [currentRunId, setCurrentRunId] = useState<number | null>(urlRunId ? parseInt(urlRunId) : null);
   const [historySearch, setHistorySearch] = useState<string>('');
   const [openSheetDialog, setOpenSheetDialog] = useState<boolean>(false);
   const [sheetUrl, setSheetUrl] = useState<string>('');
@@ -84,6 +91,13 @@ export default function CoveragePage() {
     }
   }, [urlSource, urlId]);
   
+  // Update currentRunId when URL param changes
+  useEffect(() => {
+    if (urlRunId) {
+      setCurrentRunId(parseInt(urlRunId));
+    }
+  }, [urlRunId]);
+  
   // Load word lists
   const { data: wordListsData, isLoading: loadingWordLists } = useQuery({
     queryKey: ['wordlists'],
@@ -95,15 +109,29 @@ export default function CoveragePage() {
     queryKey: ['coverageRun', currentRunId],
     queryFn: () => getCoverageRun(currentRunId!),
     enabled: !!currentRunId,
-    refetchInterval: () => {
-      // Poll if still processing - use queryClient to read current cached data to avoid incorrect typing of the callback param
-      if (!currentRunId) return false;
-      const cached = queryClient.getQueryData(['coverageRun', currentRunId]) as { coverage_run?: { status?: string } } | undefined;
-      const status = cached?.coverage_run?.status;
-      if (status === 'processing' || status === 'pending') {
-        return 2000; // Poll every 2 seconds
-      }
-      return false; // Stop polling when complete
+    refetchOnWindowFocus: false,
+  });
+
+  // Real-time updates via WebSocket (replace polling)
+  type CoverageRunQueryData = {
+    coverage_run: CoverageRunType;
+    assignments?: CoverageAssignment[];
+    pagination?: { page: number; per_page: number; total: number; pages: number };
+  };
+
+  const ws = useCoverageWebSocket({
+    runId: currentRunId ?? null,
+    enabled: !!currentRunId,
+    onProgress: (run) => {
+      // Update only the coverage_run in cache to keep assignments stable while processing
+      queryClient.setQueryData<CoverageRunQueryData | undefined>(['coverageRun', run.id], (old) => {
+        if (old) return { ...old, coverage_run: run };
+        return { coverage_run: run };
+      });
+    },
+    onComplete: (run) => {
+      // Ensure final data (stats + assignments) is fetched
+      queryClient.invalidateQueries({ queryKey: ['coverageRun', run.id] });
     },
   });
   // Load processing history for source selection
@@ -122,6 +150,29 @@ export default function CoveragePage() {
       queryClient.invalidateQueries({ queryKey: ['wordlists'] });
       setSelectedWordListId(data.wordlist.id);
       setUploadedFile(null);
+    },
+  });
+  
+  // Import from Google Sheets mutation
+  const importSheetsMutation = useMutation({
+    mutationFn: async (sheetUrl: string) => {
+      return importSentencesFromSheets(sheetUrl);
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['history', 'forCoverage'] });
+      setSourceId(String(data.history_id));
+      setOpenSheetDialog(false);
+      setSheetUrl('');
+      enqueueSnackbar(
+        `Imported ${data.sentence_count} sentences from ${data.filename}`,
+        { variant: 'success' }
+      );
+    },
+    onError: (error: Error) => {
+      enqueueSnackbar(
+        `Failed to import from Google Sheets: ${error.message}`,
+        { variant: 'error' }
+      );
     },
   });
   
@@ -275,6 +326,16 @@ export default function CoveragePage() {
     if (typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Number(v))) return Number(v);
     return null;
   };
+
+  // Tab state for better organization
+  const [activeTab, setActiveTab] = useState<'config' | 'results'>('config');
+
+  // Auto-switch to results tab when run completes
+  useEffect(() => {
+    if (coverageRun?.status === 'completed' && activeTab === 'config') {
+      setActiveTab('results');
+    }
+  }, [coverageRun?.status, activeTab]);
   
   return (
     <RouteGuard>
@@ -519,21 +580,44 @@ export default function CoveragePage() {
               {coverageRun ? (
                 <>
                   <Typography variant="subtitle2">Status:</Typography>
-                  <Chip
-                    label={coverageRun.status}
-                    color={
-                      coverageRun.status === 'completed' ? 'success' :
-                      coverageRun.status === 'failed' ? 'error' :
-                      'default'
-                    }
-                    sx={{ mt: 0.5 }}
-                  />
+                  <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
+                    <Chip
+                      label={coverageRun.status}
+                      color={
+                        coverageRun.status === 'completed' ? 'success' :
+                        coverageRun.status === 'failed' ? 'error' :
+                        coverageRun.status === 'cancelled' ? 'warning' :
+                        'default'
+                      }
+                      size="small"
+                    />
+                    {coverageRun.status === 'processing' && (
+                      ws.connected ? (
+                        <Chip label="Live" color="success" size="small" variant="outlined" />
+                      ) : (
+                        <Chip label="Reconnecting..." color="warning" size="small" variant="outlined" />
+                      )
+                    )}
+                  </Stack>
+                  {/* Meta */}
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                    Run #{coverageRun.id} • Mode: {coverageRun.mode} • Source: {coverageRun.source_type} #{coverageRun.source_id}
+                    {coverageRun.wordlist_id ? (
+                      <> • Word List: {(() => { const wl = wordlists.find((w) => w.id === coverageRun.wordlist_id); return wl ? `${wl.name} (${wl.normalized_count} words)` : `#${coverageRun.wordlist_id}`; })()}</>
+                    ) : null}
+                  </Typography>
+                  {ws.error && (
+                    <Alert severity="warning" sx={{ mt: 1 }}>
+                      {ws.error.message}
+                    </Alert>
+                  )}
                   {coverageRun.status === 'processing' && (
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
-                      <CircularProgress size={20} />
-                      <Typography variant="body2">
-                        Processing... {coverageRun.progress_percent}%
-                      </Typography>
+                    <Box sx={{ mt: 1 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                        <Typography variant="body2" color="text.secondary">Processing…</Typography>
+                        <Typography variant="body2" color="text.secondary">{coverageRun.progress_percent}%</Typography>
+                      </Box>
+                      <LinearProgress variant="determinate" value={coverageRun.progress_percent} />
                     </Box>
                   )}
 
@@ -593,28 +677,20 @@ export default function CoveragePage() {
                           <Divider />
                           <Box>
                             <Typography variant="subtitle2" gutterBottom>
-                              Sample Results (first 10):
+                              {mode === 'coverage' ? 'Word Assignments' : 'Top Sentences'}
                             </Typography>
-                            <Stack spacing={1}>
-                              {assignments.slice(0, 10).map((assignment: CoverageAssignment, idx: number) => (
-                                <Paper key={idx} variant="outlined" sx={{ p: 1.5 }}>
-                                  <Typography variant="body2" fontWeight="medium">
-                                    {assignment.sentence_text}
-                                  </Typography>
-                                  <Typography variant="caption" color="text.secondary">
-                                    {mode === 'coverage' 
-                                      ? `Word: ${assignment.word_key}`
-                                      : `Score: ${assignment.sentence_score ? assignment.sentence_score.toFixed(2) : 'N/A'}`
-                                    }
-                                  </Typography>
-                                </Paper>
-                              ))}
-                            </Stack>
-
-                            {assignments.length > 10 && (
-                              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                                ... and {assignments.length - 10} more results
-                              </Typography>
+                            
+                            {/* Use dedicated table components */}
+                            {mode === 'coverage' ? (
+                              <CoverageResultsTable
+                                assignments={assignments}
+                                loading={false}
+                              />
+                            ) : (
+                              <FilterResultsTable
+                                assignments={assignments}
+                                loading={false}
+                              />
                             )}
                           </Box>
                         </>
@@ -689,6 +765,46 @@ export default function CoveragePage() {
             disabled={!exportSheetName || exportMutation.isPending}
           >
             {exportMutation.isPending ? 'Exporting...' : 'Export'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Import from Sheets Dialog */}
+      <Dialog open={openSheetDialog} onClose={() => setOpenSheetDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Import Sentences from Google Sheets</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            label="Google Sheets URL"
+            value={sheetUrl}
+            onChange={(e) => setSheetUrl(e.target.value)}
+            sx={{ mt: 2 }}
+            placeholder="https://docs.google.com/spreadsheets/d/..."
+            helperText="Paste the full URL or just the spreadsheet ID"
+          />
+          <Alert severity="info" sx={{ mt: 2 }}>
+            <Typography variant="body2" gutterBottom>
+              <strong>Sheet Format:</strong>
+            </Typography>
+            <Typography variant="body2" component="div">
+              • Column A: Index (optional, e.g., 1, 2, 3...)
+              <br />
+              • Column B: Sentence (French sentences)
+              <br />
+              <br />
+              The first row will be detected as a header and skipped if it contains
+              &ldquo;Index&rdquo; or &ldquo;Sentence&rdquo;.
+            </Typography>
+          </Alert>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenSheetDialog(false)}>Cancel</Button>
+          <Button 
+            variant="contained" 
+            onClick={() => importSheetsMutation.mutate(sheetUrl)}
+            disabled={!sheetUrl || importSheetsMutation.isPending}
+          >
+            {importSheetsMutation.isPending ? 'Importing...' : 'Import'}
           </Button>
         </DialogActions>
       </Dialog>
