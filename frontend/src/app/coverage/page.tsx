@@ -31,15 +31,21 @@ import {
   PlayArrow as PlayIcon,
   Upload as UploadIcon,
   Search as SearchIcon,
+  Download as DownloadIcon,
+  CloudUpload as CloudUploadIcon,
+  FilterList as FilterListIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
+import { useSnackbar } from 'notistack';
 import {
   listWordLists,
   createWordListFromFile,
   createCoverageRun,
   getCoverageRun,
   getProcessingHistory,
+  exportCoverageRun,
+  downloadCoverageRunCSV,
   type WordList,
   type CoverageAssignment,
 } from '@/lib/api';
@@ -50,6 +56,7 @@ import { useSettings } from '@/lib/queries';
 export default function CoveragePage() {
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
+  const { enqueueSnackbar } = useSnackbar();
   
   // Get URL parameters for pre-filling
   const urlSource = searchParams.get('source'); // 'job' or 'history'
@@ -65,6 +72,9 @@ export default function CoveragePage() {
   const [historySearch, setHistorySearch] = useState<string>('');
   const [openSheetDialog, setOpenSheetDialog] = useState<boolean>(false);
   const [sheetUrl, setSheetUrl] = useState<string>('');
+  const [resultSearch, setResultSearch] = useState<string>('');
+  const [showExportDialog, setShowExportDialog] = useState<boolean>(false);
+  const [exportSheetName, setExportSheetName] = useState<string>('');
   // Load user settings to know which default wordlist is configured
   const { data: settings } = useSettings();
   
@@ -144,6 +154,41 @@ export default function CoveragePage() {
       setCurrentRunId(data.coverage_run.id);
     },
   });
+  
+  const exportMutation = useMutation({
+    mutationFn: async () => {
+      if (!currentRunId) throw new Error('No run ID');
+      return exportCoverageRun(currentRunId, exportSheetName || `Coverage Run ${currentRunId}`);
+    },
+    onSuccess: (data) => {
+      enqueueSnackbar(`Exported to Google Sheets successfully!`, { variant: 'success' });
+      if (data.spreadsheet_url) {
+        window.open(data.spreadsheet_url, '_blank');
+      }
+      setShowExportDialog(false);
+    },
+    onError: (error: any) => {
+      enqueueSnackbar(error.response?.data?.error || 'Export failed', { variant: 'error' });
+    },
+  });
+  
+  const handleDownloadCSV = async () => {
+    if (!currentRunId) return;
+    try {
+      const blob = await downloadCoverageRunCSV(currentRunId);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `coverage_run_${currentRunId}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      enqueueSnackbar('CSV downloaded successfully!', { variant: 'success' });
+    } catch (error: any) {
+      enqueueSnackbar(error.response?.data?.error || 'Download failed', { variant: 'error' });
+    }
+  };
   
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -228,23 +273,31 @@ export default function CoveragePage() {
         
         <Stack spacing={3}>
           {/* Mode Selection */}
-          <FormControl fullWidth>
-            <InputLabel>Analysis Mode</InputLabel>
-            <Select
-              value={mode}
-              label="Analysis Mode"
-              onChange={(e: SelectChangeEvent<'coverage' | 'filter'>) => 
-                setMode(e.target.value as 'coverage' | 'filter')
+          <Box>
+            <FormControl fullWidth>
+              <InputLabel>Analysis Mode</InputLabel>
+              <Select
+                value={mode}
+                label="Analysis Mode"
+                onChange={(e: SelectChangeEvent<'coverage' | 'filter'>) => 
+                  setMode(e.target.value as 'coverage' | 'filter')
+                }
+              >
+                <MenuItem value="filter">
+                  Filter Mode - Find high-density vocabulary sentences (recommended)
+                </MenuItem>
+                <MenuItem value="coverage">
+                  Coverage Mode - Minimal set covering all words
+                </MenuItem>
+              </Select>
+            </FormControl>
+            <Alert severity="info" sx={{ mt: 1 }}>
+              {mode === 'filter' 
+                ? '💡 Filter Mode: Prioritizes 4-word sentences (ideal for drilling), then 3-word sentences. Returns ~500 high-quality sentences with ≥95% common vocabulary.'
+                : '💡 Coverage Mode: Finds the minimum number of sentences to cover every word in your list at least once. Great for comprehensive vocabulary exposure.'
               }
-            >
-              <MenuItem value="filter">
-                Filter Mode - Find high-density vocabulary sentences (recommended)
-              </MenuItem>
-              <MenuItem value="coverage">
-                Coverage Mode - Minimal set covering all words
-              </MenuItem>
-            </Select>
-          </FormControl>
+            </Alert>
+          </Box>
           
           {/* Word List Selection */}
           <FormControl fullWidth>
@@ -577,6 +630,35 @@ export default function CoveragePage() {
           </Box>
         </Stack>
       </Paper>
+      
+      {/* Export to Sheets Dialog */}
+      <Dialog open={showExportDialog} onClose={() => setShowExportDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Export to Google Sheets</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            label="Sheet Name"
+            value={exportSheetName}
+            onChange={(e) => setExportSheetName(e.target.value)}
+            sx={{ mt: 2 }}
+            placeholder="Coverage Results"
+          />
+          <Alert severity="info" sx={{ mt: 2 }}>
+            This will create a new Google Spreadsheet with your coverage results. 
+            Make sure you have connected your Google account in Settings.
+          </Alert>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowExportDialog(false)}>Cancel</Button>
+          <Button 
+            variant="contained" 
+            onClick={() => exportMutation.mutate()}
+            disabled={!exportSheetName || exportMutation.isPending}
+          >
+            {exportMutation.isPending ? 'Exporting...' : 'Export'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
     </RouteGuard>
   );

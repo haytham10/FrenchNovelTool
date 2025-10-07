@@ -838,10 +838,17 @@ export const exportCoverageRun = async (
   runId: number,
   sheetName: string,
   folderId?: string
-): Promise<{ message: string; sheet_name: string }> => {
+): Promise<{ message: string; spreadsheet_id?: string; spreadsheet_url?: string }> => {
   const response = await api.post(`/coverage/runs/${runId}/export`, {
     sheet_name: sheetName,
     folder_id: folderId,
+  });
+  return response.data;
+};
+
+export const downloadCoverageRunCSV = async (runId: number): Promise<Blob> => {
+  const response = await api.get(`/coverage/runs/${runId}/download`, {
+    responseType: 'blob',
   });
   return response.data;
 };
