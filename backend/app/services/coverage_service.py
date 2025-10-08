@@ -10,41 +10,45 @@ logger = logging.getLogger(__name__)
 
 class CoverageService:
     """Handles vocabulary coverage analysis in Coverage and Filter modes"""
-    
-    def __init__(self, wordlist_keys: Set[str], config: Optional[Dict] = None):
+
+    def __init__(
+        self,
+        wordlist_keys: Set[str],
+        config: Optional[Dict] = None,
+        max_learning_sentences: int = 500,
+        coverage_quality_weight: float = 10,
+        coverage_length_penalty: float = 1,
+        coverage_prune_max_tokens: int = 8,
+    ):
         """
         Initialize coverage service.
-        
+
         Args:
             wordlist_keys: Set of normalized word keys from word list
             config: Configuration dict with mode-specific settings
+            max_learning_sentences: Max sentences in the learning set for coverage mode
+            coverage_quality_weight: Weight for new words in coverage score
+            coverage_length_penalty: Penalty for sentence length in coverage score
+            coverage_prune_max_tokens: Token limit for pruning sentences in coverage mode
         """
         self.wordlist_keys = wordlist_keys
         self.config = config or {}
-        logger.info(f"CoverageService initialized with {len(wordlist_keys)} wordlist keys. Sample: {list(wordlist_keys)[:10]}")
+        logger.info(f"CoverageService initialized with {len(wordlist_keys)} wordlist keys.")
 
-        # Coverage mode defaults
-        self.alpha = self.config.get('alpha', 0.5)  # Duplicate penalty weight
-        self.beta = self.config.get('beta', 0.3)   # Quality weight
-        self.gamma = self.config.get('gamma', 0.2)  # Length penalty weight
-        self.coverage_quality_weight = float(self.config.get('quality_weight', 10))
-        self.coverage_length_penalty = float(self.config.get('length_penalty', 1))
-        self.coverage_prune_max_tokens = self.config.get('coverage_prune_max_tokens', 8)
+        # Configurable parameters
+        self.max_learning_sentences = self.config.get("max_learning_sentences", max_learning_sentences)
+        self.coverage_quality_weight = self.config.get("coverage_quality_weight", coverage_quality_weight)
+        self.coverage_length_penalty = self.config.get("coverage_length_penalty", coverage_length_penalty)
+        self.coverage_prune_max_tokens = self.config.get("coverage_prune_max_tokens", coverage_prune_max_tokens)
 
         # Filter mode defaults
         self.len_min = self.config.get('len_min', 3)
         self.len_max = self.config.get('len_max', 8)
         self.target_count = self.config.get('target_count', 500)
 
-        # Scaled min_in_list_ratio: high for short sentences, lower for longer ones
-        # A dict mapping token_count -> min_ratio
+        # Scaled min_in_list_ratio for filter mode
         self.scaled_min_ratios = self.config.get('scaled_min_ratios', {
-            3: 0.99,
-            4: 0.99,
-            5: 0.9,
-            6: 0.8,
-            7: 0.7,
-            8: 0.65
+            3: 0.99, 4: 0.99, 5: 0.9, 6: 0.8, 7: 0.7, 8: 0.65
         })
         self.default_min_ratio = self.config.get('default_min_ratio', 0.6)
 
@@ -347,6 +351,14 @@ class CoverageService:
         def _select_from_pool(pool: Dict[int, Dict]) -> None:
             nonlocal uncovered_words
             while uncovered_words and heap:
+                # Stop if learning set cap is reached
+                if len(selected_sentence_set) >= self.max_learning_sentences:
+                    logger.warning(
+                        "Learning set cap of %s reached. %s words remain uncovered.",
+                        self.max_learning_sentences, len(uncovered_words)
+                    )
+                    break
+
                 neg_score, idx = heapq.heappop(heap)
                 # Recompute actual score for current uncovered set
                 score, gain = compute_score_for_idx(idx, uncovered_words)
