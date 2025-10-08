@@ -1308,15 +1308,20 @@ def coverage_build_async(self, run_id: int):
             except Exception:
                 logger.exception("progress_callback failed for run %s", run_id)
         
-        # Run appropriate mode
+        # Run appropriate mode and measure duration for diagnostics
+        mode_start = time.time()
         if coverage_run.mode == 'coverage':
+            logger.info("coverage_build_async: invoking CoverageService.coverage_mode_greedy for run %s", run_id)
             assignments_data, stats = coverage_service.coverage_mode_greedy(sentences, progress_callback=_progress_callback)
         elif coverage_run.mode == 'filter':
+            logger.info("coverage_build_async: invoking CoverageService.filter_mode for run %s", run_id)
             assignments_data, stats = coverage_service.filter_mode(sentences, progress_callback=_progress_callback)
         else:
             raise ValueError(f"Unknown mode: {coverage_run.mode}")
+        mode_duration = time.time() - mode_start
+        logger.info("coverage_build_async: coverage processing finished for run %s (mode=%s) in %.2fs", run_id, coverage_run.mode, mode_duration)
         
-        # Save assignments to database
+        # Save assignments to database (measure DB write time)
         if coverage_run.mode == 'coverage':
             # Expect word-level assignments with 'word_key'
             for assignment_data in assignments_data:
@@ -1347,14 +1352,16 @@ def coverage_build_async(self, run_id: int):
                     sentence_score=assignment_data.get('sentence_score')
                 )
                 db.session.add(assignment)
-        
-        # Update run with stats
+
+        # Commit assignments and update run with stats
+        db_commit_start = time.time()
         coverage_run.stats_json = stats
         coverage_run.status = 'completed'
         coverage_run.progress_percent = 100
         coverage_run.completed_at = datetime.utcnow()
-        
         safe_db_commit(db)
+        db_commit_duration = time.time() - db_commit_start
+        logger.info("coverage_build_async: DB commit completed for run %s in %.2fs", run_id, db_commit_duration)
 
         # Emit final progress update so any listening clients receive completed status
         try:
