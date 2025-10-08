@@ -1038,16 +1038,35 @@ export default function CoveragePage() {
                 </Stack>
               </>
             ) : (
-              // Failed/Other States
+              // Failed / Pending / Other States
               <>
-                <Typography variant="h5" fontWeight={600} gutterBottom color="error">
-                  {coverageRun?.status === 'failed' ? 'Analysis Failed' : 'Status Unknown'}
+                {/* Render a clearer message for pending (starting) state so users don't
+                    briefly see an error-looking UI while the background worker picks up
+                    the job. Keep failed/unknown behavior unchanged. */}
+                <Typography
+                  variant="h5"
+                  fontWeight={600}
+                  gutterBottom
+                  color={coverageRun?.status === 'failed' ? 'error' : 'text.primary'}
+                >
+                  {coverageRun?.status === 'failed'
+                    ? 'Analysis Failed'
+                    : coverageRun?.status === 'pending'
+                    ? 'Starting Analysis'
+                    : 'Status Unknown'}
                 </Typography>
-                
-                <Alert severity="error" sx={{ mb: 3 }}>
-                  {coverageRun?.error_message || 'Analysis failed. Please try again.'}
+
+                <Alert
+                  severity={coverageRun?.status === 'failed' ? 'error' : coverageRun?.status === 'pending' ? 'info' : 'error'}
+                  sx={{ mb: 3 }}
+                >
+                  {coverageRun?.status === 'failed'
+                    ? (coverageRun?.error_message || 'Analysis failed. Please try again.')
+                    : coverageRun?.status === 'pending'
+                    ? 'Your analysis has been queued and will start shortly. This message will update when processing begins.'
+                    : (coverageRun?.error_message || 'Analysis failed. Please try again.')}
                 </Alert>
-                
+
                 <Button
                   variant="contained"
                   onClick={() => {
