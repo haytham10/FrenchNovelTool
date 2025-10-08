@@ -17,10 +17,6 @@ class CoverageService:
         self,
         wordlist_keys: Set[str],
         config: Optional[Dict] = None,
-        max_learning_sentences: int = 500,
-        coverage_quality_weight: float = 10,
-        coverage_length_penalty: float = 1,
-        coverage_prune_max_tokens: int = 8,
     ):
         """
         Initialize coverage service.
@@ -28,20 +24,9 @@ class CoverageService:
         Args:
             wordlist_keys: Set of normalized word keys from word list
             config: Configuration dict with mode-specific settings
-            max_learning_sentences: Max sentences in the learning set for coverage mode
-            coverage_quality_weight: Weight for new words in coverage score
-            coverage_length_penalty: Penalty for sentence length in coverage score
-            coverage_prune_max_tokens: Token limit for pruning sentences in coverage mode
         """
         self.wordlist_keys = wordlist_keys
         self.config = config or {}
-        logger.info(f"CoverageService initialized with {len(wordlist_keys)} wordlist keys.")
-
-        # Configurable parameters
-        self.max_learning_sentences = self.config.get("max_learning_sentences", max_learning_sentences)
-        self.coverage_quality_weight = self.config.get("coverage_quality_weight", coverage_quality_weight)
-        self.coverage_length_penalty = self.config.get("coverage_length_penalty", coverage_length_penalty)
-        self.coverage_prune_max_tokens = self.config.get("coverage_prune_max_tokens", coverage_prune_max_tokens)
 
         # Filter mode defaults
         self.len_min = self.config.get('len_min', 3)
@@ -257,16 +242,17 @@ class CoverageService:
         progress_callback: Optional[Callable[[int], Any]] = None
     ) -> Tuple[List[Dict], Dict]:
         """
-        Coverage Mode: Greedy set cover algorithm to select minimal sentences
-        that cover all words in the word list.
+        Coverage Mode: Greedy algorithm to select sentences that cover all words.
+        
+        Scoring: Score = (new_words × 10) - sentence_length
+        Goal: Cover all 2000 target words in 500 sentences or less.
         
         Args:
             sentences: List of sentence strings
+            progress_callback: Optional progress callback
             
         Returns:
             Tuple of (assignments, stats)
-            - assignments: List of dicts with word_key, sentence_index, etc.
-            - stats: Dict with coverage statistics
         """
         # Build sentence index
         sentence_index = self.build_sentence_index(sentences)
@@ -276,142 +262,77 @@ class CoverageService:
             except Exception:
                 pass
         
-        # Optional pruning: remove long sentences before selection to tighten the pool
-        candidate_sentence_index = sentence_index
-        pruned_sentence_ids = set()
-        prune_threshold = self.coverage_prune_max_tokens
-        if prune_threshold is not None:
-            candidate_sentence_index = {
-                idx: info for idx, info in sentence_index.items()
-                if info['token_count'] <= prune_threshold
-            }
-            pruned_sentence_ids = {
-                idx for idx, info in sentence_index.items()
-                if info['token_count'] > prune_threshold
-            }
-            if not candidate_sentence_index:
-                logger.warning(
-                    "Coverage pruning removed all sentences (threshold=%s); falling back to full set",
-                    prune_threshold,
-                )
-                candidate_sentence_index = sentence_index
-                pruned_sentence_ids = set()
-
         # Track uncovered words
         uncovered_words = self.wordlist_keys.copy()
         
-        # Track assignments
+        # Track assignments and selections
         assignments = []
-        word_to_sentence = {}  # word_key -> sentence_index
-
-        selected_sentence_order: List[int] = []
+        word_to_sentence = {}
+        selected_sentence_order = []
         selected_sentence_set = set()
-        sentence_contribution: Dict[int, int] = defaultdict(int)
-        sentence_selection_score: Dict[int, float] = {}
-
-        # Precompute content-word sets and token counts for the pool to avoid
-        # recomputing spaCy/token processing repeatedly inside the greedy loop.
-        pool_content_words: Dict[int, Set[str]] = {}
-        pool_token_counts: Dict[int, int] = {}
-        for idx, info in candidate_sentence_index.items():
-            pool_content_words[idx] = self.filter_content_words_only(
-                info,
-                self.wordlist_keys,
-                fold_diacritics=self.fold_diacritics,
-                handle_elisions=self.handle_elisions
-            )
-            pool_token_counts[idx] = info['token_count']
-
-        # Build inverted index: word -> set(sentence_idx)
-        inverted_index: Dict[str, Set[int]] = defaultdict(set)
-        for idx, words in pool_content_words.items():
-            for w in words:
-                inverted_index[w].add(idx)
-
-        # Initialize a max-heap (as min-heap with negative scores) for lazy greedy.
-        # Each heap entry is ( -score, sentence_idx ). We also allow stale entries
-        # and recompute score on pop until it's up-to-date.
-        heap: List[Tuple[float, int]] = []
-
-        def compute_score_for_idx(idx: int, uncovered: Set[str]) -> Tuple[float, int]:
-            words = pool_content_words.get(idx, set())
-            covered = words & uncovered
-            gain = len(covered)
-            if gain == 0:
-                return (float('-inf'), 0)
-            length_penalty = pool_token_counts.get(idx, candidate_sentence_index[idx]['token_count']) * self.coverage_length_penalty
-            score = (gain * self.coverage_quality_weight) - length_penalty
-            return (score, gain)
-
-        # Seed heap with initial scores
-        for idx in pool_content_words:
-            score, gain = compute_score_for_idx(idx, uncovered_words)
-            if gain > 0:
-                heapq.heappush(heap, (-score, idx))
-
-        # Lazy greedy selection using heap and inverted index
-        def _select_from_pool(pool: Dict[int, Dict]) -> None:
-            nonlocal uncovered_words
-            while uncovered_words and heap:
-                neg_score, idx = heapq.heappop(heap)
-                # Recompute actual score for current uncovered set
-                score, gain = compute_score_for_idx(idx, uncovered_words)
-                if gain == 0:
-                    continue  # stale or no longer useful
-
-                # If the recomputed score differs from popped score, re-push updated
-                if -neg_score != score:
-                    heapq.heappush(heap, (-score, idx))
+        sentence_contribution = defaultdict(int)
+        sentence_selection_score = {}
+        
+        max_sentences = 500
+        
+        # Greedy selection loop
+        while uncovered_words and len(selected_sentence_order) < max_sentences:
+            best_idx = None
+            best_score = float('-inf')
+            best_new_words = set()
+            
+            # Find the sentence with the highest score
+            for idx, info in sentence_index.items():
+                if idx in selected_sentence_set:
                     continue
-
-                # Select this sentence
-                content_words_in_sentence = pool_content_words.get(idx, set())
-                covered_by_this = content_words_in_sentence & uncovered_words
-
-                for word_key in covered_by_this:
-                    word_to_sentence[word_key] = idx
-                    uncovered_words.discard(word_key)
-
-                sentence_contribution[idx] += len(covered_by_this)
-                sentence_selection_score[idx] = score
-
-                if idx not in selected_sentence_set:
-                    selected_sentence_set.add(idx)
-                    selected_sentence_order.append(idx)
-
-                # Update heap entries for sentences that lost coverage due to removal
-                # of words: we lazily let their popped entries be stale; but to speed
-                # up convergence, we can push updated scores for sentences that
-                # shared words with this selection.
-                for w in covered_by_this:
-                    for other_idx in inverted_index.get(w, set()):
-                        if other_idx == idx:
-                            continue
-                        # Recompute and push updated score if still covers something
-                        s_score, s_gain = compute_score_for_idx(other_idx, uncovered_words)
-                        if s_gain > 0:
-                            heapq.heappush(heap, (-s_score, other_idx))
-
-                if progress_callback:
-                    try:
-                        covered = len(word_to_sentence)
-                        total = len(self.wordlist_keys) if self.wordlist_keys else 1
-                        pct = 10 + int(80 * (covered / total))
-                        pct = min(max(pct, 10), 95)
-                        progress_callback(pct)
-                    except Exception:
-                        pass
-
-        # Primary pass on pruned pool
-        _select_from_pool(candidate_sentence_index)
-
-        # Fallback pass on full set if needed (captures stragglers that only exist in long sentences)
-        if uncovered_words and candidate_sentence_index is not sentence_index:
-            logger.info(
-                "Coverage fallback: %s words remain after pruned pass; evaluating full sentence set",
-                len(uncovered_words),
-            )
-            _select_from_pool(sentence_index)
+                    
+                # Get content words in this sentence that are in wordlist
+                sentence_words = self.filter_content_words_only(
+                    info,
+                    self.wordlist_keys,
+                    fold_diacritics=self.fold_diacritics,
+                    handle_elisions=self.handle_elisions
+                )
+                
+                # Find NEW words (not yet covered)
+                new_words = sentence_words & uncovered_words
+                
+                if not new_words:
+                    continue
+                
+                # Calculate score: (new_words × 10) - sentence_length
+                score = (len(new_words) * 10) - info['token_count']
+                
+                if score > best_score:
+                    best_score = score
+                    best_idx = idx
+                    best_new_words = new_words
+            
+            # If no sentence can cover new words, stop
+            if best_idx is None:
+                break
+            
+            # Select this sentence
+            selected_sentence_set.add(best_idx)
+            selected_sentence_order.append(best_idx)
+            sentence_contribution[best_idx] = len(best_new_words)
+            sentence_selection_score[best_idx] = best_score
+            
+            # Mark words as covered
+            for word_key in best_new_words:
+                word_to_sentence[word_key] = best_idx
+                uncovered_words.discard(word_key)
+            
+            # Progress callback
+            if progress_callback:
+                try:
+                    covered = len(word_to_sentence)
+                    total = len(self.wordlist_keys) if self.wordlist_keys else 1
+                    pct = 10 + int(85 * (covered / total))
+                    pct = min(max(pct, 10), 95)
+                    progress_callback(pct)
+                except Exception:
+                    pass
         
         # Build assignments list
         for word_key, sentence_idx in word_to_sentence.items():
@@ -425,7 +346,7 @@ class CoverageService:
             
             assignments.append({
                 'word_key': word_key,
-                'word_original': word_key,  # Will be filled by caller if available
+                'word_original': word_key,
                 'lemma': word_key,
                 'matched_surface': matched_surface,
                 'sentence_index': sentence_idx,
@@ -441,9 +362,6 @@ class CoverageService:
             'uncovered_words': len(uncovered_words),
             'selected_sentence_count': len(selected_sentence_set),
             'learning_set_count': len(selected_sentence_order),
-            'pruned_sentence_count': len(pruned_sentence_ids),
-            'pruned_sentence_threshold': prune_threshold,
-            'exceeded_sentence_cap': len(selected_sentence_set) > self.max_learning_sentences,
             'learning_set': [
                 {
                     'rank': rank,
@@ -455,12 +373,6 @@ class CoverageService:
                 }
                 for rank, idx in enumerate(selected_sentence_order, start=1)
             ],
-            'parameters': {
-                'quality_weight': self.coverage_quality_weight,
-                'length_penalty': self.coverage_length_penalty,
-                'prune_max_tokens': self.coverage_prune_max_tokens,
-                'max_learning_sentences': self.max_learning_sentences,
-            },
         }
 
         # Log covered and uncovered words to files
