@@ -4,8 +4,6 @@ import React, { useMemo, useState } from 'react';
 import {
   Box,
   Paper,
-  TextField,
-  InputAdornment,
   Typography,
   Table,
   TableBody,
@@ -13,43 +11,45 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  TablePagination,
   Chip,
 } from '@mui/material';
-import { Search as SearchIcon } from '@mui/icons-material';
 import type { LearningSetEntry } from '@/lib/api';
 
 interface LearningSetTableProps {
   entries: LearningSetEntry[];
   loading?: boolean;
+  disablePagination?: boolean;
+  externalSearchQuery?: string;
+  // optional slice indices when parent wants to control visible rows
+  pageSliceStart?: number;
+  pageSliceEnd?: number;
 }
 
-export default function LearningSetTable({ entries, loading = false }: LearningSetTableProps) {
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(25);
+export default function LearningSetTable({ entries, loading = false, disablePagination = false, externalSearchQuery, pageSliceStart, pageSliceEnd }: LearningSetTableProps) {
+  const [page] = useState(0);
+  const [rowsPerPage] = useState(25);
+
+  // If an externalSearchQuery is provided, use it to filter the entire entries list
+  const activeSearch = externalSearchQuery ?? '';
 
   const filteredEntries = useMemo(() => {
-    if (!search.trim()) return entries;
-    const query = search.toLowerCase().trim();
+    if (!activeSearch.trim()) return entries;
+    const query = activeSearch.toLowerCase().trim();
     return entries.filter((entry) =>
       entry.sentence_text.toLowerCase().includes(query) || String(entry.rank).includes(query)
     );
-  }, [entries, search]);
+  }, [entries, activeSearch]);
 
   const paginatedEntries = useMemo(() => {
+    // If parent supplied explicit slice indices, use them to show the visible rows
+    if (typeof pageSliceStart === 'number' && typeof pageSliceEnd === 'number') {
+      return filteredEntries.slice(pageSliceStart, pageSliceEnd);
+    }
+
+    if (disablePagination) return filteredEntries;
     const start = page * rowsPerPage;
     return filteredEntries.slice(start, start + rowsPerPage);
-  }, [filteredEntries, page, rowsPerPage]);
-
-  const handleChangePage = (_event: unknown, newPage: number) => {
-    setPage(newPage);
-  };
-
-  const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setRowsPerPage(parseInt(event.target.value, 10));
-    setPage(0);
-  };
+  }, [filteredEntries, page, rowsPerPage, disablePagination, pageSliceStart, pageSliceEnd]);
 
   if (loading && entries.length === 0) {
     return (
@@ -73,23 +73,6 @@ export default function LearningSetTable({ entries, loading = false }: LearningS
 
   return (
     <Box>
-      <Box sx={{ mb: 2 }}>
-        <TextField
-          fullWidth
-          size="small"
-          placeholder="Search by rank or sentence..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon fontSize="small" />
-              </InputAdornment>
-            ),
-          }}
-        />
-      </Box>
-
       <TableContainer component={Paper} variant="outlined">
         <Table size="small">
           <TableHead>
@@ -130,23 +113,6 @@ export default function LearningSetTable({ entries, loading = false }: LearningS
           </TableBody>
         </Table>
       </TableContainer>
-
-      <TablePagination
-        component="div"
-        count={filteredEntries.length}
-        page={page}
-        onPageChange={handleChangePage}
-        rowsPerPage={rowsPerPage}
-        onRowsPerPageChange={handleChangeRowsPerPage}
-        rowsPerPageOptions={[10, 25, 50, 100]}
-      />
-
-      <Box sx={{ mt: 2 }}>
-        <Typography variant="caption" color="text.secondary">
-          Showing {paginatedEntries.length} of {filteredEntries.length} sentences
-          {search && ` (filtered from ${entries.length} total)`}
-        </Typography>
-      </Box>
     </Box>
   );
 }

@@ -153,28 +153,29 @@ export default function CoveragePage() {
   });
 
   // Real-time updates via WebSocket (replace polling)
-  type CoverageRunQueryData = {
-    coverage_run: CoverageRunType;
-    assignments?: CoverageAssignment[];
-    pagination?: { page: number; per_page: number; total: number; pages: number };
-    learning_set?: LearningSetEntry[];
-  };
-
-  const ws = useCoverageWebSocket({
-    runId: currentRunId ?? null,
-    enabled: !!currentRunId,
-    onProgress: (run) => {
-      // Update only the coverage_run in cache to keep assignments stable while processing
-      queryClient.setQueryData<CoverageRunQueryData | undefined>(['coverageRun', run.id], (old) => {
-        if (old) return { ...old, coverage_run: run };
-        return { coverage_run: run };
-      });
-    },
-    onComplete: (run) => {
-      // Ensure final data (stats + assignments) is fetched
-      queryClient.invalidateQueries({ queryKey: ['coverageRun', run.id] });
-    },
-  });
+    type CoverageRunQueryData = {
+      coverage_run: CoverageRunType;
+      assignments?: CoverageAssignment[];
+      pagination?: { page: number; per_page: number; total: number; pages: number };
+      learning_set?: LearningSetEntry[];
+    };
+  
+    // Call the hook for side effects only (don't assign to an unused variable)
+    useCoverageWebSocket({
+      runId: currentRunId ?? null,
+      enabled: !!currentRunId,
+      onProgress: (run) => {
+        // Update only the coverage_run in cache to keep assignments stable while processing
+        queryClient.setQueryData<CoverageRunQueryData | undefined>(['coverageRun', run.id], (old) => {
+          if (old) return { ...old, coverage_run: run };
+          return { coverage_run: run };
+        });
+      },
+      onComplete: (run) => {
+        // Ensure final data (stats + assignments) is fetched
+        queryClient.invalidateQueries({ queryKey: ['coverageRun', run.id] });
+      },
+    });
   // Load processing history for source selection
   const { data: historyData, isLoading: loadingHistory } = useQuery({
     queryKey: ['history', 'forCoverage'],
@@ -381,6 +382,15 @@ export default function CoveragePage() {
         score: null,
       }));
   }, [learningSet, assignments]);
+  // Pagination for previewed results (show 10 per page)
+  const [resultsPage, setResultsPage] = useState<number>(1);
+  const RESULTS_PAGE_SIZE = 10;
+  const [resultsSearch, setResultsSearch] = React.useState('');
+
+  // Reset preview pagination whenever a new run is loaded
+  useEffect(() => {
+    setResultsPage(1);
+  }, [currentRunId, coverageRun?.id]);
   const history = (historyData || []).slice().sort((a, b) => (
     new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
   ));
@@ -791,7 +801,7 @@ export default function CoveragePage() {
                         },
                       }}
                     >
-                      {runMutation.isPending ? 'Starting...' : 'Run Vocabulary Coverage'}
+                      {runMutation.isPending ? 'Starting...' : 'Start'}
                     </Button>
 
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
@@ -849,11 +859,11 @@ export default function CoveragePage() {
                     <LinearProgress variant="determinate" value={coverageRun.progress_percent} sx={{ height: 8, borderRadius: 1 }} />
                   </Box>
                   
-                  {ws.connected ? (
+                  {/* {ws.connected ? (
                     <Chip label="Live Updates" color="success" size="small" icon={<CircularProgress size={12} sx={{ color: 'inherit' }} />} />
                   ) : (
                     <Chip label="Reconnecting..." color="warning" size="small" />
-                  )}
+                  )} */}
                   
                   <Box sx={{ mt: 4 }}>
                     <Button
@@ -966,15 +976,53 @@ export default function CoveragePage() {
                     </Button>
                   </Stack>
                   
-                  {/* Results Preview */}
-                  <Box>
-                    <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-                    Results
-                    </Typography>
+                <Box>
                     {mode === 'coverage' && learningSetDisplay.length > 0 ? (
-                      <LearningSetTable entries={learningSetDisplay.slice(0, 10)} loading={loadingRun} />
+                          <>
+                            {/* Page-level search that applies to the whole result set */}
+                            <Box sx={{ mb: 2 }}>
+                              <TextField
+                                fullWidth
+                                size="small"
+                                placeholder="Search by rank or sentence..."
+                                value={resultsSearch}
+                                onChange={(e) => { setResultsSearch(e.target.value); setResultsPage(1); }}
+                                InputProps={{
+                                  startAdornment: (
+                                    <InputAdornment position="start">
+                                      <SearchIcon fontSize="small" />
+                                    </InputAdornment>
+                                  ),
+                                }}
+                              />
+                            </Box>
+
+                            <LearningSetTable
+                              // pass full entries and let the table know an externalSearchQuery is active
+                              entries={learningSetDisplay}
+                              loading={loadingRun}
+                              disablePagination
+                              externalSearchQuery={resultsSearch}
+                              // we still slice at the page-level for visible rows
+                              pageSliceStart={(resultsPage - 1) * RESULTS_PAGE_SIZE}
+                              pageSliceEnd={resultsPage * RESULTS_PAGE_SIZE}
+                            />
+                        {learningSetDisplay.length > RESULTS_PAGE_SIZE && (
+                          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+                            <Pagination
+                              count={Math.ceil(learningSetDisplay.length / RESULTS_PAGE_SIZE)}
+                              page={resultsPage}
+                              onChange={(_, p) => setResultsPage(p)}
+                              color="primary"
+                            />
+                          </Box>
+                        )}
+                      </>
                     ) : mode === 'filter' && assignments.length > 0 ? (
-                      <FilterResultsTable assignments={assignments.slice(0, 10)} loading={loadingRun} />
+                      <FilterResultsTable
+                        assignments={assignments}
+                        loading={loadingRun}
+                      />
                     ) : (
                       <Typography variant="body2" color="text.secondary">
                         No results
@@ -1020,7 +1068,7 @@ export default function CoveragePage() {
             )}
           </Box>
         )}
-      </Paper>
+      	</Paper>
       
       {/* Navigation Buttons */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 3 }}>
@@ -1032,47 +1080,23 @@ export default function CoveragePage() {
         >
           Back
         </Button>
-        <Button
-          endIcon={<ArrowForwardIcon />}
-          onClick={handleStepNext}
-          disabled={isNextDisabled}
-          variant="contained"
-          size="large"
-        >
-          {nextButtonLabel}
-        </Button>
+        {
+          // Hide the Finish (Next) button when the run is actively processing
+          // and the user is on the final step. This prevents accidental
+          // navigation while a processing run is in progress.
+          !(activeStep === WIZARD_STEPS.length - 1 && coverageRun?.status === 'processing') && (
+            <Button
+              endIcon={<ArrowForwardIcon />}
+              onClick={handleStepNext}
+              disabled={isNextDisabled}
+              variant="contained"
+              size="large"
+            >
+              {nextButtonLabel}
+            </Button>
+          )
+        }
       </Box>
-      
-      {/* Full Results Section (below the wizard) */}
-      {coverageRun?.status === 'completed' && (
-        <Box id="full-results" sx={{ mt: 4 }}>
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="h5" gutterBottom fontWeight={600}>
-              Full Results
-            </Typography>
-            
-            <Divider sx={{ my: 2 }} />
-            
-            {mode === 'coverage' && learningSetDisplay.length > 0 && (
-              <Box>
-                <Typography variant="h6" gutterBottom>
-                  Learning Set ({learningSetDisplay.length} sentences)
-                </Typography>
-                <LearningSetTable entries={learningSetDisplay} loading={loadingRun} />
-              </Box>
-            )}
-            
-            {mode === 'filter' && assignments.length > 0 && (
-              <Box>
-                <Typography variant="h6" gutterBottom>
-                  Filtered Sentences ({assignments.length} results)
-                </Typography>
-                <FilterResultsTable assignments={assignments} loading={loadingRun} />
-              </Box>
-            )}
-          </Paper>
-        </Box>
-      )}
       
       {/* Help Dialog */}
       <Dialog open={showHelpDialog} onClose={() => setShowHelpDialog(false)} maxWidth="sm" fullWidth>

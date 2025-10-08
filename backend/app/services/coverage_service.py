@@ -493,6 +493,8 @@ class CoverageService:
                     'sentence_index': idx,
                     'sentence_text': info['text'],
                     'in_list_ratio': round(ratio, 3),
+                    # Backwards-compatible score field expected by frontend components
+                    'sentence_score': round(ratio, 3),
                     'token_count': token_count,
                     'words_in_list': list(matched_content_words),  # Only content words
                     'content_word_count': content_word_count
