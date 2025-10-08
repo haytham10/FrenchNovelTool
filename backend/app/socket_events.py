@@ -2,6 +2,7 @@
 from flask import request
 from flask_socketio import emit, join_room, leave_room, disconnect
 from flask_jwt_extended import decode_token
+from jwt import ExpiredSignatureError, InvalidTokenError
 from app import socketio
 from app.models import Job, CoverageRun
 import logging
@@ -50,12 +51,23 @@ def handle_connect(auth):
             return False
         
         # Verify JWT token
-        decoded = decode_token(token)
+        try:
+            decoded = decode_token(token)
+        except ExpiredSignatureError:
+            logger.info('WebSocket auth failed: token expired')
+            # Client should refresh their access token and reconnect
+            disconnect()
+            return False
+        except InvalidTokenError as e:
+            logger.warning(f'WebSocket auth failed: invalid token: {e}')
+            disconnect()
+            return False
+
         user_id = int(decoded['sub'])
-        
+
         logger.info(f'WebSocket connected: user_id={user_id}')
         return True
-        
+
     except Exception as e:
         logger.error(f'WebSocket auth failed: {e}')
         disconnect()
@@ -84,8 +96,15 @@ def handle_join_job(data):
             return
         
         # Verify user owns this job
-        decoded = decode_token(token)
-        user_id = int(decoded['sub'])
+        try:
+            decoded = decode_token(token)
+            user_id = int(decoded['sub'])
+        except ExpiredSignatureError:
+            emit('error', {'message': 'token_expired'})
+            return
+        except InvalidTokenError:
+            emit('error', {'message': 'invalid_token'})
+            return
         
         job = Job.query.get(job_id)
         if not job:
@@ -122,8 +141,15 @@ def handle_join_coverage_run(data):
             return
 
         # Verify user owns this run
-        decoded = decode_token(token)
-        user_id = int(decoded['sub'])
+        try:
+            decoded = decode_token(token)
+            user_id = int(decoded['sub'])
+        except ExpiredSignatureError:
+            emit('error', {'message': 'token_expired'})
+            return
+        except InvalidTokenError:
+            emit('error', {'message': 'invalid_token'})
+            return
 
         run = CoverageRun.query.get(run_id)
         if not run:
