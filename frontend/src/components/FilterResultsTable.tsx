@@ -3,7 +3,7 @@
 /**
  * Filter Results Table - Display ranked sentences for Filter mode
  */
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Table,
   TableBody,
@@ -41,27 +41,23 @@ export default function FilterResultsTable({
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
 
-  // Sort by score descending and filter
-  const sortedAndFilteredAssignments = useMemo(() => {
-    let filtered = [...assignments].sort((a, b) => 
-      (b.sentence_score || 0) - (a.sentence_score || 0)
-    );
-    
-    if (search.trim()) {
-      const query = search.toLowerCase().trim();
-      filtered = filtered.filter((assignment) => 
-        assignment.sentence_text.toLowerCase().includes(query)
-      );
-    }
-    
-    return filtered;
+  // Filter assignments based on search (copying CoverageResultsTable semantics)
+  const filteredAssignments = useMemo(() => {
+    if (!search.trim()) return assignments;
+
+    const query = search.toLowerCase().trim();
+    return assignments.filter((assignment) =>
+      (assignment.word_key || '').toLowerCase().includes(query) ||
+      (assignment.sentence_text || '').toLowerCase().includes(query) ||
+      (assignment.word_original || '').toLowerCase().includes(query)
+    ).sort((a, b) => (b.sentence_score || 0) - (a.sentence_score || 0));
   }, [assignments, search]);
 
   // Paginate
   const paginatedAssignments = useMemo(() => {
     const start = page * rowsPerPage;
-    return sortedAndFilteredAssignments.slice(start, start + rowsPerPage);
-  }, [sortedAndFilteredAssignments, page, rowsPerPage]);
+    return filteredAssignments.slice(start, start + rowsPerPage);
+  }, [filteredAssignments, page, rowsPerPage]);
 
   const handleChangePage = (_event: unknown, newPage: number) => {
     setPage(newPage);
@@ -71,6 +67,11 @@ export default function FilterResultsTable({
     setRowsPerPage(parseInt(event.target.value, 10));
     setPage(0);
   };
+
+  // When the search query or underlying assignments change, keep the table on the first page
+  useEffect(() => {
+    setPage(0);
+  }, [search, assignments]);
 
   // Calculate sentence stats
   interface SentenceStats {
@@ -289,13 +290,21 @@ export default function FilterResultsTable({
       {/* Pagination */}
       <TablePagination
         component="div"
-        count={sortedAndFilteredAssignments.length}
+        count={filteredAssignments.length}
         page={page}
         onPageChange={handleChangePage}
         rowsPerPage={rowsPerPage}
         onRowsPerPageChange={handleChangeRowsPerPage}
         rowsPerPageOptions={[10, 25, 50, 100]}
       />
+
+      {/* Summary */}
+      <Box sx={{ mt: 2 }}>
+        <Typography variant="caption" color="text.secondary">
+          Showing {paginatedAssignments.length} of {filteredAssignments.length} sentences
+          {search && ` (filtered from ${assignments.length} total)`}
+        </Typography>
+      </Box>
     </Box>
   );
 }

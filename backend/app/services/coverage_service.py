@@ -53,8 +53,12 @@ class CoverageService:
             nlp = None
 
         if nlp is not None and hasattr(nlp, 'pipe'):
-            # Process in batches of 100 sentences to prevent memory spikes
-            batch_size = 100
+            # Process in batches to prevent memory spikes. Batch size can be tuned
+            # at runtime via the COVERAGE_SPACY_BATCH_SIZE environment variable.
+            try:
+                batch_size = int(os.getenv('COVERAGE_SPACY_BATCH_SIZE', '100'))
+            except Exception:
+                batch_size = 100
             for batch_start in range(0, len(sentences), batch_size):
                 batch_end = min(batch_start + batch_size, len(sentences))
                 batch_sentences = sentences[batch_start:batch_end]
