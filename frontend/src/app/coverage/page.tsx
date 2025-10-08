@@ -52,10 +52,11 @@ import {
   type WordList,
   type CoverageRun as CoverageRunType,
   type CoverageAssignment,
+  type LearningSetEntry,
 } from '@/lib/api';
 import RouteGuard from '@/components/RouteGuard';
 import Breadcrumbs from '@/components/Breadcrumbs';
-import CoverageResultsTable from '@/components/CoverageResultsTable';
+import LearningSetTable from '@/components/LearningSetTable';
 import FilterResultsTable from '@/components/FilterResultsTable';
 import { useSettings } from '@/lib/queries';
 import { useCoverageWebSocket } from '@/lib/useCoverageWebSocket';
@@ -133,6 +134,7 @@ export default function CoveragePage() {
     coverage_run: CoverageRunType;
     assignments?: CoverageAssignment[];
     pagination?: { page: number; per_page: number; total: number; pages: number };
+    learning_set?: LearningSetEntry[];
   };
 
   const ws = useCoverageWebSocket({
@@ -325,7 +327,36 @@ export default function CoveragePage() {
   
   const wordlists = wordListsData?.wordlists || [];
   const coverageRun = runData?.coverage_run;
-  const assignments = runData?.assignments || [];
+  const assignments = React.useMemo(
+    () => runData?.assignments ?? [],
+    [runData?.assignments]
+  );
+  const learningSet = React.useMemo(
+    () => ((runData?.learning_set as LearningSetEntry[] | undefined) ?? []),
+    [runData?.learning_set]
+  );
+  const learningSetDisplay = React.useMemo(() => {
+    if (learningSet.length > 0) return learningSet;
+    if (assignments.length === 0) return [] as LearningSetEntry[];
+
+    const unique = new Map<number, string>();
+    assignments.forEach((assignment) => {
+      if (!unique.has(assignment.sentence_index)) {
+        unique.set(assignment.sentence_index, assignment.sentence_text);
+      }
+    });
+
+    return Array.from(unique.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([sentenceIndex, sentenceText], idx) => ({
+        rank: idx + 1,
+        sentence_index: sentenceIndex,
+        sentence_text: sentenceText,
+        token_count: null,
+        new_word_count: null,
+        score: null,
+      }));
+  }, [learningSet, assignments]);
   const history = (historyData || []).slice().sort((a, b) => (
     new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
   ));
@@ -703,31 +734,39 @@ export default function CoveragePage() {
                             <Typography variant="body2">
                               Selected sentences: {getNumberStat('selected_sentence_count') ?? 'N/A'}
                             </Typography>
+                            <Typography variant="body2">
+                              Learning set size: {learningSetDisplay.length > 0
+                                ? learningSetDisplay.length
+                                : (getNumberStat('learning_set_count') ?? 'N/A')}
+                            </Typography>
+                            <Typography variant="body2">
+                              Pruned sentences (&gt;{getNumberStat('coverage_prune_max_tokens') ?? 'N/A'} words): {getNumberStat('pruned_sentence_count') ?? 'N/A'}
+                            </Typography>
                           </Stack>
                         )}
                       </Box>
 
                       {/* Sample Results */}
-                      {assignments.length > 0 && (
+                      {mode === 'coverage' && learningSetDisplay.length > 0 && (
                         <>
                           <Divider />
                           <Box>
                             <Typography variant="subtitle2" gutterBottom>
-                              {mode === 'coverage' ? 'Word Assignments' : 'Top Sentences'}
+                              Learning Set
                             </Typography>
-                            
-                            {/* Use dedicated table components */}
-                            {mode === 'coverage' ? (
-                              <CoverageResultsTable
-                                assignments={assignments}
-                                loading={false}
-                              />
-                            ) : (
-                              <FilterResultsTable
-                                assignments={assignments}
-                                loading={false}
-                              />
-                            )}
+                            <LearningSetTable entries={learningSetDisplay} loading={loadingRun && learningSetDisplay.length === 0} />
+                          </Box>
+                        </>
+                      )}
+
+                      {mode === 'filter' && assignments.length > 0 && (
+                        <>
+                          <Divider />
+                          <Box>
+                            <Typography variant="subtitle2" gutterBottom>
+                              Top Sentences
+                            </Typography>
+                            <FilterResultsTable assignments={assignments} loading={false} />
                           </Box>
                         </>
                       )}

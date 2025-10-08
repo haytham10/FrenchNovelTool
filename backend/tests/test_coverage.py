@@ -242,6 +242,9 @@ class TestCoverageService:
         assert 'words_total' in stats
         assert 'words_covered' in stats
         assert 'selected_sentence_count' in stats
+        assert 'learning_set' in stats
+        assert isinstance(stats['learning_set'], list)
+        assert stats.get('learning_set_count') == len(stats['learning_set'])
         
         # Each assignment should have required fields
         for assignment in assignments:

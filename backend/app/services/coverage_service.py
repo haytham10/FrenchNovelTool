@@ -26,6 +26,9 @@ class CoverageService:
         self.alpha = self.config.get('alpha', 0.5)  # Duplicate penalty weight
         self.beta = self.config.get('beta', 0.3)   # Quality weight
         self.gamma = self.config.get('gamma', 0.2)  # Length penalty weight
+        self.coverage_quality_weight = float(self.config.get('quality_weight', 10))
+        self.coverage_length_penalty = float(self.config.get('length_penalty', 1))
+        self.coverage_prune_max_tokens = self.config.get('coverage_prune_max_tokens', 10)
 
         # Filter mode defaults
         self.len_min = self.config.get('len_min', 3)
@@ -163,48 +166,109 @@ class CoverageService:
             except Exception:
                 pass
         
+        # Optional pruning: remove long sentences before selection to tighten the pool
+        candidate_sentence_index = sentence_index
+        pruned_sentence_ids = set()
+        prune_threshold = self.coverage_prune_max_tokens
+        if prune_threshold is not None:
+            candidate_sentence_index = {
+                idx: info for idx, info in sentence_index.items()
+                if info['token_count'] <= prune_threshold
+            }
+            pruned_sentence_ids = {
+                idx for idx, info in sentence_index.items()
+                if info['token_count'] > prune_threshold
+            }
+            if not candidate_sentence_index:
+                logger.warning(
+                    "Coverage pruning removed all sentences (threshold=%s); falling back to full set",
+                    prune_threshold,
+                )
+                candidate_sentence_index = sentence_index
+                pruned_sentence_ids = set()
+
         # Track uncovered words
         uncovered_words = self.wordlist_keys.copy()
         
         # Track assignments
         assignments = []
         word_to_sentence = {}  # word_key -> sentence_index
-        
-    # Greedy selection
-        while uncovered_words:
-            best_sentence_idx = None
-            best_gain = 0
-            best_covered_words = set()
-            
-            # Find sentence that covers most uncovered words
-            for idx, info in sentence_index.items():
-                covered_by_this = info['words_in_list'] & uncovered_words
-                gain = len(covered_by_this)
-                
-                if gain > best_gain:
-                    best_gain = gain
-                    best_sentence_idx = idx
-                    best_covered_words = covered_by_this
-            
-            # If no sentence covers any remaining word, break
-            if best_gain == 0:
-                break
-            
-            # Assign covered words to this sentence
-            for word_key in best_covered_words:
-                word_to_sentence[word_key] = best_sentence_idx
-                uncovered_words.discard(word_key)
 
-            # Emit progress based on coverage of words
-            if progress_callback:
-                try:
-                    covered = len(word_to_sentence)
-                    total = len(self.wordlist_keys) if self.wordlist_keys else 1
-                    pct = 10 + int(80 * (covered / total))
-                    pct = min(max(pct, 10), 95)
-                    progress_callback(pct)
-                except Exception:
-                    pass
+        selected_sentence_order: List[int] = []
+        selected_sentence_set = set()
+        sentence_contribution: Dict[int, int] = defaultdict(int)
+        sentence_selection_score: Dict[int, float] = {}
+
+        def _select_from_pool(pool: Dict[int, Dict]) -> None:
+            nonlocal uncovered_words
+            while uncovered_words:
+                best_sentence_idx = None
+                best_score = float('-inf')
+                best_covered_words: Set[str] = set()
+                best_length = None
+
+                for idx, info in pool.items():
+                    covered_by_this = info['words_in_list'] & uncovered_words
+                    if not covered_by_this:
+                        continue
+
+                    gain = len(covered_by_this)
+                    length_penalty = info['token_count'] * self.coverage_length_penalty
+                    score = (gain * self.coverage_quality_weight) - length_penalty
+
+                    if (
+                        best_sentence_idx is None
+                        or score > best_score
+                        or (
+                            score == best_score
+                            and (
+                                gain > len(best_covered_words)
+                                or (
+                                    gain == len(best_covered_words)
+                                    and (best_length is None or info['token_count'] < best_length)
+                                )
+                            )
+                        )
+                    ):
+                        best_sentence_idx = idx
+                        best_score = score
+                        best_covered_words = covered_by_this
+                        best_length = info['token_count']
+
+                if best_sentence_idx is None:
+                    break
+
+                for word_key in best_covered_words:
+                    word_to_sentence[word_key] = best_sentence_idx
+                    uncovered_words.discard(word_key)
+
+                sentence_contribution[best_sentence_idx] += len(best_covered_words)
+                sentence_selection_score[best_sentence_idx] = best_score
+
+                if best_sentence_idx not in selected_sentence_set:
+                    selected_sentence_set.add(best_sentence_idx)
+                    selected_sentence_order.append(best_sentence_idx)
+
+                if progress_callback:
+                    try:
+                        covered = len(word_to_sentence)
+                        total = len(self.wordlist_keys) if self.wordlist_keys else 1
+                        pct = 10 + int(80 * (covered / total))
+                        pct = min(max(pct, 10), 95)
+                        progress_callback(pct)
+                    except Exception:
+                        pass
+
+        # Primary pass on pruned pool
+        _select_from_pool(candidate_sentence_index)
+
+        # Fallback pass on full set if needed (captures stragglers that only exist in long sentences)
+        if uncovered_words and candidate_sentence_index is not sentence_index:
+            logger.info(
+                "Coverage fallback: %s words remain after pruned pass; evaluating full sentence set",
+                len(uncovered_words),
+            )
+            _select_from_pool(sentence_index)
         
         # Build assignments list
         for word_key, sentence_idx in word_to_sentence.items():
@@ -233,7 +297,23 @@ class CoverageService:
             'words_uncovered': len(uncovered_words),
             'uncovered_words': sorted(list(uncovered_words))[:50],  # Sample
             'selected_sentence_count': len(set(word_to_sentence.values())),
-            'total_sentences': len(sentences)
+            'total_sentences': len(sentences),
+            'learning_set_count': len(selected_sentence_order),
+            'learning_set': [
+                {
+                    'rank': rank,
+                    'sentence_index': idx,
+                    'sentence_text': sentence_index[idx]['text'],
+                    'token_count': sentence_index[idx]['token_count'],
+                    'new_word_count': sentence_contribution.get(idx, 0),
+                    'score': sentence_selection_score.get(idx),
+                }
+                for rank, idx in enumerate(selected_sentence_order, start=1)
+            ],
+            'coverage_quality_weight': self.coverage_quality_weight,
+            'coverage_length_penalty': self.coverage_length_penalty,
+            'coverage_prune_max_tokens': prune_threshold,
+            'pruned_sentence_count': len(pruned_sentence_ids),
         }
         
         if progress_callback:

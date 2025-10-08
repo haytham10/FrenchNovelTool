@@ -550,6 +550,33 @@ def get_coverage_run(run_id):
     
     assignments_query = CoverageAssignment.query.filter_by(coverage_run_id=run_id)
     assignments_paginated = assignments_query.paginate(page=page, per_page=per_page, error_out=False)
+
+    learning_set = []
+    if coverage_run.mode == 'coverage':
+        stats = coverage_run.stats_json or {}
+        learning_set = stats.get('learning_set') or []
+
+        # Backward compatibility: derive a basic learning set if stats are missing
+        if not learning_set:
+            all_assignments = assignments_query.all()
+            seen_sentences = set()
+            ordered_assignments = []
+            for assignment in all_assignments:
+                if assignment.sentence_index not in seen_sentences:
+                    seen_sentences.add(assignment.sentence_index)
+                    ordered_assignments.append(assignment)
+            ordered_assignments.sort(key=lambda a: a.sentence_index)
+            learning_set = [
+                {
+                    'rank': rank,
+                    'sentence_index': assignment.sentence_index,
+                    'sentence_text': assignment.sentence_text,
+                    'token_count': None,
+                    'new_word_count': None,
+                    'score': assignment.sentence_score,
+                }
+                for rank, assignment in enumerate(ordered_assignments, start=1)
+            ]
     
     return jsonify({
         'coverage_run': coverage_run.to_dict(),
@@ -559,7 +586,8 @@ def get_coverage_run(run_id):
             'per_page': per_page,
             'total': assignments_paginated.total,
             'pages': assignments_paginated.pages
-        }
+        },
+        'learning_set': learning_set
     }), 200
 
 
@@ -630,16 +658,36 @@ def export_coverage_run(run_id):
         # Get assignments
         assignments = CoverageAssignment.query.filter_by(coverage_run_id=run_id).all()
         
+        # Helper to build a learning set fallback if stats missing
+        def _build_learning_set_from_assignments(assignments_list):
+            seen = set()
+            ordered = []
+            for assignment in assignments_list:
+                if assignment.sentence_index not in seen:
+                    seen.add(assignment.sentence_index)
+                    ordered.append(assignment)
+            ordered.sort(key=lambda a: a.sentence_index)
+            return [
+                {
+                    'rank': rank,
+                    'sentence_index': assignment.sentence_index,
+                    'sentence_text': assignment.sentence_text,
+                    'score': assignment.sentence_score,
+                }
+                for rank, assignment in enumerate(ordered, start=1)
+            ]
+
         # Prepare data for sheets
         if coverage_run.mode == 'coverage':
-            # Coverage mode: word-to-sentence assignments
-            rows = [['Word', 'Sentence', 'Score', 'Index']]  # Header
-            for assignment in assignments:
+            # Coverage mode: export the learning set (ranked sentences)
+            stats = coverage_run.stats_json or {}
+            learning_set = stats.get('learning_set') or _build_learning_set_from_assignments(assignments)
+
+            rows = [['Rank', 'Sentence']]  # Header
+            for entry in learning_set:
                 rows.append([
-                    assignment.word_key,
-                    assignment.sentence_text,
-                    assignment.sentence_score or 0.0,
-                    assignment.sentence_index
+                    entry.get('rank'),
+                    entry.get('sentence_text')
                 ])
         else:
             # Filter mode: ranked sentences
@@ -696,20 +744,39 @@ def download_coverage_run(run_id):
         # Get assignments
         assignments = CoverageAssignment.query.filter_by(coverage_run_id=run_id).all()
         
+        # Helper to build learning set fallback when stats missing
+        def _build_learning_set_from_assignments(assignments_list):
+            seen = set()
+            ordered = []
+            for assignment in assignments_list:
+                if assignment.sentence_index not in seen:
+                    seen.add(assignment.sentence_index)
+                    ordered.append(assignment)
+            ordered.sort(key=lambda a: a.sentence_index)
+            return [
+                {
+                    'rank': rank,
+                    'sentence_index': assignment.sentence_index,
+                    'sentence_text': assignment.sentence_text,
+                    'score': assignment.sentence_score,
+                }
+                for rank, assignment in enumerate(ordered, start=1)
+            ]
+
         # Create CSV in memory
         output = StringIO()
         writer = csv.writer(output)
         
         # Write data based on mode
         if coverage_run.mode == 'coverage':
-            # Coverage mode: word-to-sentence assignments
-            writer.writerow(['Word', 'Sentence', 'Score', 'Index'])
-            for assignment in assignments:
+            stats = coverage_run.stats_json or {}
+            learning_set = stats.get('learning_set') or _build_learning_set_from_assignments(assignments)
+
+            writer.writerow(['Rank', 'Sentence'])
+            for entry in learning_set:
                 writer.writerow([
-                    assignment.word_key,
-                    assignment.sentence_text,
-                    assignment.sentence_score or 0.0,
-                    assignment.sentence_index
+                    entry.get('rank'),
+                    entry.get('sentence_text')
                 ])
         else:
             # Filter mode: ranked sentences

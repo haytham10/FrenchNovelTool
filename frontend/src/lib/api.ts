@@ -704,6 +704,15 @@ export interface CoverageAssignment {
   notes?: string;
 }
 
+export interface LearningSetEntry {
+  rank: number;
+  sentence_text: string;
+  sentence_index: number | null;
+  token_count?: number | null;
+  new_word_count?: number | null;
+  score?: number | null;
+}
+
 /**
  * List all word lists accessible to the user (global + user's own)
  */
@@ -841,6 +850,7 @@ export const getCoverageRun = async (
     total: number;
     pages: number;
   };
+  learning_set?: LearningSetEntry[];
 }> => {
   const response = await api.get(`/coverage/runs/${runId}`, {
     params: { page, per_page: perPage },

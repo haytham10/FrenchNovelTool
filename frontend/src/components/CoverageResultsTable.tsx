@@ -20,10 +20,9 @@ import {
   TextField,
   InputAdornment,
   TablePagination,
-  Button,
   Stack,
 } from '@mui/material';
-import { Search, SwapHoriz, Edit } from '@mui/icons-material';
+import { Search, SwapHoriz } from '@mui/icons-material';
 import type { CoverageAssignment } from '@/lib/api';
 
 interface CoverageResultsTableProps {
