@@ -104,12 +104,19 @@ for i in {1..3}; do
     fi
 done
 
-# Start Celery worker with production settings
+# Start Celery worker with production settings and capture exit code
 echo "🎯 Starting Celery worker..."
-exec celery -A celery_worker.celery worker \
+celery -A celery_worker.celery worker \
     --loglevel=info \
     --concurrency=${CELERY_CONCURRENCY:-4} \
     --max-tasks-per-child=50 \
     --task-events \
     --time-limit=1800 \
     --soft-time-limit=1500
+
+rc=$?
+echo "Celery exited with code: $rc"
+if [ $rc -ne 0 ]; then
+    echo "Celery failed — exiting entrypoint to allow platform to surface the failure."
+    exit $rc
+fi
