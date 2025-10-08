@@ -105,40 +105,39 @@ class CoverageService:
         Returns:
             Count of matched content words
         """
-        from app.utils.linguistics import get_nlp
-        
+        # This helper is kept for backward compatibility but prefers tokenized
+        # input from build_sentence_index. When used directly with sentence text,
+        # it falls back to tokenizing via LinguisticsUtils.tokenize_and_lemmatize.
+        from app.utils.linguistics import LinguisticsUtils
+
         if not matched_words:
             return 0
-        
-        # Content word POS tags (Universal Dependencies tagset used by spaCy)
-        # NOUN, VERB, ADJ, ADV are content words
-        # PRON, DET, ADP, CONJ, SCONJ, PART, AUX are function words
+
         content_pos_tags = {'NOUN', 'VERB', 'ADJ', 'ADV', 'PROPN'}
-        
-        nlp = get_nlp()
-        doc = nlp(sentence_text)
-        
+
+        # Try to use pre-tokenized form if available (caller may pass sentence_text
+        # as a dict with tokens). If it's a raw string, tokenize once.
+        tokens = None
+        if isinstance(sentence_text, dict) and 'tokens' in sentence_text:
+            tokens = sentence_text['tokens']
+        else:
+            tokens = LinguisticsUtils.tokenize_and_lemmatize(
+                sentence_text,
+                fold_diacritics=fold_diacritics,
+                handle_elisions=handle_elisions
+            )
+
         content_count = 0
-        for token in doc:
-            if token.is_punct or token.is_space:
+        for token in tokens:
+            pos = token.get('pos') if isinstance(token, dict) else None
+            if pos is None:
+                # If pos not available, be conservative and treat as non-content
                 continue
-            
-            # Get normalized form (same process as tokenize_and_lemmatize)
-            surface = token.text
-            if handle_elisions:
-                from app.utils.linguistics import LinguisticsUtils
-                surface_for_lemma = LinguisticsUtils.handle_elision(surface)
-            else:
-                surface_for_lemma = surface
-            
-            temp_doc = nlp(surface_for_lemma)
-            lemma = temp_doc[0].lemma_.lower() if temp_doc and len(temp_doc) > 0 else surface_for_lemma.lower()
-            normalized = LinguisticsUtils.normalize_text(lemma, fold_diacritics=fold_diacritics)
-            
-            # Check if this normalized token is in our matched set and is a content word
-            if normalized in matched_words and token.pos_ in content_pos_tags:
+
+            normalized = token.get('normalized') if isinstance(token, dict) else None
+            if normalized in matched_words and pos in content_pos_tags:
                 content_count += 1
-        
+
         return content_count
     
     @staticmethod
@@ -159,42 +158,41 @@ class CoverageService:
         Returns:
             Set of normalized content words that are in the wordlist
         """
-        from app.utils.linguistics import get_nlp
-        
+        from app.utils.linguistics import LinguisticsUtils
+
         if not wordlist_keys:
             return set()
-        
-        # Content word POS tags (Universal Dependencies tagset used by spaCy)
+
         content_pos_tags = {'NOUN', 'VERB', 'ADJ', 'ADV', 'PROPN'}
-        
-        nlp = get_nlp()
-        doc = nlp(sentence_text)
-        
+
+        # If caller passed a pre-tokenized sentence dict, use it directly.
         matched_content = set()
-        for token in doc:
-            if token.is_punct or token.is_space:
+        if isinstance(sentence_text, dict) and 'tokens' in sentence_text:
+            tokens = sentence_text['tokens']
+            for token in tokens:
+                pos = token.get('pos')
+                if pos not in content_pos_tags:
+                    continue
+                normalized = token.get('normalized')
+                if normalized in wordlist_keys:
+                    matched_content.add(normalized)
+            return matched_content
+
+        # Fallback: tokenize once and process tokens
+        tokens = LinguisticsUtils.tokenize_and_lemmatize(
+            sentence_text,
+            fold_diacritics=fold_diacritics,
+            handle_elisions=handle_elisions
+        )
+
+        for token in tokens:
+            pos = token.get('pos')
+            if pos not in content_pos_tags:
                 continue
-            
-            # Only process content words
-            if token.pos_ not in content_pos_tags:
-                continue
-            
-            # Get normalized form (same process as tokenize_and_lemmatize)
-            surface = token.text
-            if handle_elisions:
-                from app.utils.linguistics import LinguisticsUtils
-                surface_for_lemma = LinguisticsUtils.handle_elision(surface)
-            else:
-                surface_for_lemma = surface
-            
-            temp_doc = nlp(surface_for_lemma)
-            lemma = temp_doc[0].lemma_.lower() if temp_doc and len(temp_doc) > 0 else surface_for_lemma.lower()
-            normalized = LinguisticsUtils.normalize_text(lemma, fold_diacritics=fold_diacritics)
-            
-            # Check if this normalized token is in the wordlist
+            normalized = token.get('normalized')
             if normalized in wordlist_keys:
                 matched_content.add(normalized)
-        
+
         return matched_content
     
     def coverage_mode_greedy(
@@ -255,6 +253,19 @@ class CoverageService:
         sentence_contribution: Dict[int, int] = defaultdict(int)
         sentence_selection_score: Dict[int, float] = {}
 
+        # Precompute content-word sets and token counts for the pool to avoid
+        # recomputing spaCy/token processing repeatedly inside the greedy loop.
+        pool_content_words: Dict[int, Set[str]] = {}
+        pool_token_counts: Dict[int, int] = {}
+        for idx, info in candidate_sentence_index.items():
+            pool_content_words[idx] = self.filter_content_words_only(
+                info,
+                self.wordlist_keys,
+                fold_diacritics=self.fold_diacritics,
+                handle_elisions=self.handle_elisions
+            )
+            pool_token_counts[idx] = info['token_count']
+
         def _select_from_pool(pool: Dict[int, Dict]) -> None:
             nonlocal uncovered_words
             while uncovered_words:
@@ -264,20 +275,24 @@ class CoverageService:
                 best_length = None
 
                 for idx, info in pool.items():
-                    # Filter to only content words when evaluating coverage
-                    content_words_in_sentence = self.filter_content_words_only(
-                        info['text'],
-                        self.wordlist_keys,
-                        fold_diacritics=self.fold_diacritics,
-                        handle_elisions=self.handle_elisions
-                    )
+                    # Use precomputed content-word sets when available
+                    content_words_in_sentence = pool_content_words.get(idx)
+                    if content_words_in_sentence is None:
+                        # Fall back to computing it once
+                        content_words_in_sentence = self.filter_content_words_only(
+                            info,
+                            self.wordlist_keys,
+                            fold_diacritics=self.fold_diacritics,
+                            handle_elisions=self.handle_elisions
+                        )
+                        pool_content_words[idx] = content_words_in_sentence
                     
                     covered_by_this = content_words_in_sentence & uncovered_words
                     if not covered_by_this:
                         continue
 
                     gain = len(covered_by_this)
-                    length_penalty = info['token_count'] * self.coverage_length_penalty
+                    length_penalty = pool_token_counts.get(idx, info['token_count']) * self.coverage_length_penalty
                     score = (gain * self.coverage_quality_weight) - length_penalty
 
                     if (
@@ -445,9 +460,9 @@ class CoverageService:
                         pass
                 continue
             
-            # Filter to only content words from the matched set
+            # Filter to only content words from the matched set using pre-tokenized tokens
             matched_content_words = self.filter_content_words_only(
-                info['text'],
+                info,
                 info['words_in_list'],
                 fold_diacritics=self.fold_diacritics,
                 handle_elisions=self.handle_elisions

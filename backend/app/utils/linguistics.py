@@ -161,42 +161,46 @@ class LinguisticsUtils:
         """
         nlp = get_nlp()
         doc = nlp(text)
-        
+
         tokens = []
         for token in doc:
             # Skip punctuation and whitespace
-            # Use getattr for compatibility with DummyNLP fallback
             if getattr(token, 'is_punct', False) or getattr(token, 'is_space', False):
                 continue
-            
+
             surface = token.text
-            
-            # Handle elisions on the surface form *before* lemmatization
+
+            # For performance, avoid creating a temporary doc per-token.
+            # Use the token's lemma_ provided by spaCy and include POS information so
+            # callers can make content-word decisions without re-running the pipeline.
+            lemma = getattr(token, 'lemma_', surface).lower()
+            pos = getattr(token, 'pos_', None)
+
+            # If requested, apply simple elision handling to the surface before
+            # normalizing. We do not re-run the pipeline here for performance.
             if handle_elisions:
-                surface_for_lemma = LinguisticsUtils.handle_elision(surface)
+                surface_for_norm = LinguisticsUtils.handle_elision(surface)
             else:
-                surface_for_lemma = surface
+                surface_for_norm = surface
 
-            # Get lemma from the (potentially elision-handled) surface form
-            # We create a temporary doc to get the lemma of the modified surface form
-            temp_doc = nlp(surface_for_lemma)
-            lemma = temp_doc[0].lemma_.lower() if temp_doc and len(temp_doc) > 0 else surface_for_lemma.lower()
+            # Normalize the lemma (preferred) and fall back to the surface-for-norm
+            # when lemma is empty.
+            normalized_source = lemma if lemma else surface_for_norm
+            normalized = LinguisticsUtils.normalize_text(normalized_source, fold_diacritics=fold_diacritics)
 
-            # Normalize the final lemma
-            normalized = LinguisticsUtils.normalize_text(lemma, fold_diacritics=fold_diacritics)
-            
             if not normalized:
                 logger.debug(f"Skipping empty normalized token from lemma '{lemma}'")
                 continue
 
-            logger.debug(f"Token: surface='{surface}', lemma='{lemma}', normalized='{normalized}'")
+            logger.debug(f"Token: surface='{surface}', lemma='{lemma}', normalized='{normalized}', pos='{pos}'")
 
             tokens.append({
                 'surface': surface,
                 'lemma': lemma,
-                'normalized': normalized
+                'normalized': normalized,
+                'pos': pos
             })
-        
+
         return tokens
     
     @staticmethod
