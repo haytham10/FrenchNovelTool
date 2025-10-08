@@ -376,7 +376,7 @@ de temps en temps
 
 ## Technical Notes
 
-- **Lemmatization:** Uses spaCy `fr_core_news_md` model for French
+- **Lemmatization:** Uses spaCy `fr_core_news_sm` model for French
 - **Normalization:** Handles plurals, conjugations, elisions (l', d'), diacritics
 - **Performance:** Typical run on 5K sentences with 2K word list: 5-15 seconds
 - **Storage:** Full word lists stored; samples cached in WordList model

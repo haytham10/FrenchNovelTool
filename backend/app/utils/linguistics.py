@@ -31,13 +31,13 @@ def get_nlp():
             # errors). If neither model is available, fall back to the DummyNLP
             # which provides a graceful degradation.
             import os
-            preferred = os.environ.get("SPACY_MODEL", "fr_core_news_lg")
+            preferred = os.environ.get("SPACY_MODEL", "fr_core_news_md")
             tried = []
             # Determine disabled components to save RAM
             disable_env = os.environ.get("SPACY_DISABLE", "parser,ner").strip()
             disable = [c.strip() for c in disable_env.split(",") if c.strip()]
 
-            for model in (preferred, "fr_core_news_md"):
+            for model in (preferred, "fr_core_news_sm"):
                 if model in tried:
                     continue
                 tried.append(model)

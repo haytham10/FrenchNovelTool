@@ -16,7 +16,7 @@ _flask_app = create_app()
 
 # Preload spaCy model in the parent process to take advantage of copy-on-write
 # memory sharing across forked Celery workers. This can consume a significant
-# amount of memory for large models (e.g., fr_core_news_lg) and in constrained
+# amount of memory for large models (e.g., fr_core_news_md) and in constrained
 # environments (like small Railway containers) may cause the worker to be OOM-killed.
 # Make this behavior opt-in via the PRELOAD_SPACY env var (default: false).
 try:

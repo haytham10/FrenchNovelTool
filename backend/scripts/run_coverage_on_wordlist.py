@@ -13,7 +13,7 @@ Outputs are written to ./logs/ by default:
  - coverage_covered_*.txt and coverage_uncovered_*.txt (created by the service)
 
 Notes:
- - For best results install a spaCy French model (e.g., fr_core_news_lg) in the environment.
+ - For best results install a spaCy French model (e.g., fr_core_news_md) in the environment.
  - If spaCy is not present, the code will fall back to a very small tokenizer/lemmatizer with limited POS info which may reduce coverage.
 """
 import argparse
