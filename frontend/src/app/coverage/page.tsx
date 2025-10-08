@@ -798,8 +798,9 @@ export default function CoveragePage() {
               Filter Mode (Recommended for Drilling)
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Finds sentences with high vocabulary density (≥95% common words) and 4-8 words in length. 
-              Perfect for creating ~500 high-quality sentences for daily repetition drills.
+              Finds sentences with at least 4 vocabulary words (nouns, verbs, adjectives, adverbs) from your list
+              and 4-8 words in length. Ignores &ldquo;glue words&rdquo; like pronouns, determiners, and conjunctions.
+              Perfect for creating high-quality sentences for daily repetition drills.
             </Typography>
           </Box>
           
@@ -808,8 +809,9 @@ export default function CoveragePage() {
               Coverage Mode (Comprehensive Learning)
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Selects a minimal set of sentences that covers all words in your vocabulary list. 
-              Useful for ensuring complete vocabulary exposure.
+              Selects a minimal set of sentences that covers all vocabulary words in your list, 
+              prioritizing shorter sentences with more content words. Focuses on nouns, verbs, adjectives,
+              and adverbs while ignoring function words. Useful for ensuring complete vocabulary exposure.
             </Typography>
           </Box>
         </Stack>
