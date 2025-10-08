@@ -1,5 +1,7 @@
 """Service for vocabulary coverage analysis (Coverage and Filter modes)"""
 import logging
+import os
+import datetime
 from typing import Dict, List, Set, Tuple, Optional, Callable, Any
 from collections import defaultdict
 import heapq
@@ -440,14 +442,15 @@ class CoverageService:
             })
         
         # Calculate statistics
+        covered_words = set(word_to_sentence.keys())
         stats = {
             'words_total': len(self.wordlist_keys),
-            'words_covered': len(word_to_sentence),
-            'words_uncovered': len(uncovered_words),
-            'uncovered_words': sorted(list(uncovered_words))[:50],  # Sample
-            'selected_sentence_count': len(set(word_to_sentence.values())),
-            'total_sentences': len(sentences),
+            'words_covered': len(covered_words),
+            'uncovered_words': len(uncovered_words),
+            'selected_sentence_count': len(selected_sentence_set),
             'learning_set_count': len(selected_sentence_order),
+            'pruned_sentence_count': len(pruned_sentence_ids),
+            'pruned_sentence_threshold': prune_threshold,
             'learning_set': [
                 {
                     'rank': rank,
@@ -459,12 +462,17 @@ class CoverageService:
                 }
                 for rank, idx in enumerate(selected_sentence_order, start=1)
             ],
-            'coverage_quality_weight': self.coverage_quality_weight,
-            'coverage_length_penalty': self.coverage_length_penalty,
-            'coverage_prune_max_tokens': prune_threshold,
-            'pruned_sentence_count': len(pruned_sentence_ids),
+            'parameters': {
+                'quality_weight': self.coverage_quality_weight,
+                'length_penalty': self.coverage_length_penalty,
+                'prune_max_tokens': self.coverage_prune_max_tokens,
+                'max_learning_sentences': self.max_learning_sentences,
+            },
         }
-        
+
+        # Log covered and uncovered words to files
+        self._log_word_sets(covered_words, uncovered_words)
+
         if progress_callback:
             try:
                 progress_callback(95)
@@ -476,6 +484,32 @@ class CoverageService:
         
         return assignments, stats
     
+    def _log_word_sets(self, covered_words: Set[str], uncovered_words: Set[str]):
+        """Logs covered and uncovered words to timestamped text files."""
+        log_dir = 'logs'
+        try:
+            if not os.path.exists(log_dir):
+                os.makedirs(log_dir)
+
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+            # Write covered words
+            covered_filename = os.path.join(log_dir, f"coverage_covered_{timestamp}.txt")
+            with open(covered_filename, 'w', encoding='utf-8') as f:
+                for word in sorted(list(covered_words)):
+                    f.write(f"{word}\n")
+            logger.info(f"Wrote {len(covered_words)} covered words to {covered_filename}")
+
+            # Write uncovered words
+            uncovered_filename = os.path.join(log_dir, f"coverage_uncovered_{timestamp}.txt")
+            with open(uncovered_filename, 'w', encoding='utf-8') as f:
+                for word in sorted(list(uncovered_words)):
+                    f.write(f"{word}\n")
+            logger.info(f"Wrote {len(uncovered_words)} uncovered words to {uncovered_filename}")
+
+        except IOError as e:
+            logger.error(f"Error writing coverage word lists to file: {e}")
+
     def filter_mode(
         self,
         sentences: List[str],
