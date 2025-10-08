@@ -15,15 +15,13 @@ import {
   Typography,
   Box,
   Chip,
-  IconButton,
-  Tooltip,
   TextField,
   InputAdornment,
   TablePagination,
   Stack,
   LinearProgress,
 } from '@mui/material';
-import { Search, Block, Star } from '@mui/icons-material';
+import { Search, Star } from '@mui/icons-material';
 import type { CoverageAssignment } from '@/lib/api';
 
 interface FilterResultsTableProps {
@@ -34,7 +32,6 @@ interface FilterResultsTableProps {
 
 export default function FilterResultsTable({
   assignments,
-  onExclude,
   loading = false,
 }: FilterResultsTableProps) {
   const [search, setSearch] = useState('');
@@ -195,7 +192,7 @@ export default function FilterResultsTable({
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell width="8%">
+              <TableCell width="10%">
                 <Typography variant="subtitle2" fontWeight={600}>
                   Rank
                 </Typography>
@@ -205,19 +202,14 @@ export default function FilterResultsTable({
                   Sentence
                 </Typography>
               </TableCell>
-              <TableCell width="10%" align="center">
+              <TableCell align="center">
                 <Typography variant="subtitle2" fontWeight={600}>
                   Score
                 </Typography>
               </TableCell>
-              <TableCell width="10%" align="center">
+              <TableCell align="center">
                 <Typography variant="subtitle2" fontWeight={600}>
                   Length
-                </Typography>
-              </TableCell>
-              <TableCell width="7%" align="center">
-                <Typography variant="subtitle2" fontWeight={600}>
-                  Actions
                 </Typography>
               </TableCell>
             </TableRow>
@@ -267,18 +259,6 @@ export default function FilterResultsTable({
                       size="small"
                       color={wordCount === 4 ? 'success' : wordCount === 3 ? 'primary' : 'default'}
                     />
-                  </TableCell>
-                  <TableCell align="center">
-                    {onExclude && (
-                      <Tooltip title="Exclude from results">
-                        <IconButton
-                          size="small"
-                          onClick={() => onExclude(assignment)}
-                        >
-                          <Block fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    )}
                   </TableCell>
                 </TableRow>
               );

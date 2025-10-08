@@ -269,7 +269,7 @@ class WordListService:
         """Get the global default word list."""
         return WordList.query.filter_by(is_global_default=True).first()
     
-    def refresh_wordlist_from_source(self, wordlist: WordList, user=None) -> Dict:
+    def refresh_wordlist_from_source(self, wordlist: WordList, user=None, include_header: bool = True) -> Dict:
         """
         Refresh/populate words_json for a wordlist from its original source.
         Useful for wordlists created before words_json was added.
@@ -306,7 +306,7 @@ class WordListService:
                 words = sheets_service.fetch_words_from_spreadsheet(
                     creds,
                     spreadsheet_id=wordlist.source_ref,
-                    include_header=True
+                    include_header=include_header
                 )
                 logger.info(f"Fetched {len(words)} words from Google Sheet {wordlist.source_ref}")
             except Exception as e:

@@ -1269,7 +1269,8 @@ def coverage_build_async(self, run_id: int):
                     user = User.query.get(coverage_run.user_id)
                     if user and user.google_access_token:
                         wordlist_service = WordListService()
-                        refresh_report = wordlist_service.refresh_wordlist_from_source(wordlist, user)
+                        # Use default include_header=True for automated refresh in tasks
+                        refresh_report = wordlist_service.refresh_wordlist_from_source(wordlist, user, include_header=True)
                         safe_db_commit(db)
                         if refresh_report['status'] == 'refreshed':
                             wordlist_keys = set(wordlist.words_json)

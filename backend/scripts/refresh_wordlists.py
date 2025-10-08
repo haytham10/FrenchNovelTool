@@ -53,7 +53,8 @@ def refresh_wordlist(wordlist_id: int, app):
         
         try:
             wordlist_service = WordListService()
-            refresh_report = wordlist_service.refresh_wordlist_from_source(wordlist, user)
+            # Use default include_header=True for script-run refreshes
+            refresh_report = wordlist_service.refresh_wordlist_from_source(wordlist, user, include_header=True)
             db.session.commit()
             
             logger.info(f"  ✓ Refresh successful: {refresh_report}")

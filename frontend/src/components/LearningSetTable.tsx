@@ -87,27 +87,35 @@ export default function LearningSetTable({ entries, loading = false, disablePagi
                   Sentence
                 </Typography>
               </TableCell>
+			  <TableCell align='center' width="10%">
+				<Typography variant="subtitle2" fontWeight={600}>
+					Words
+				</Typography>
+			  </TableCell>
+			  <TableCell align='center' width="15%">
+				<Typography variant="subtitle2" fontWeight={600}>
+					New Words
+				</Typography>
+			  </TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {paginatedEntries.map((entry) => (
               <TableRow key={`learning-set-${entry.rank}-${entry.sentence_index ?? 'na'}`} hover>
                 <TableCell>
-                  <Typography variant="body2" fontWeight={500}>
+                  <Typography sx={{ color: 'text.secondary' }} variant="body2" fontWeight={500}>
                     {entry.rank}
                   </Typography>
                 </TableCell>
                 <TableCell>
                   <Typography variant="body2">{entry.sentence_text}</Typography>
-                  <Box sx={{ display: 'flex', gap: 1, mt: 0.5, flexWrap: 'wrap' }}>
-                    {typeof entry.token_count === 'number' && entry.token_count > 0 && (
-                      <Chip label={`${entry.token_count} words`} size="small" color="default" />
-                    )}
-                    {typeof entry.new_word_count === 'number' && entry.new_word_count > 0 && (
-                      <Chip label={`${entry.new_word_count} new words`} size="small" color="primary" />
-                    )}
-                  </Box>
                 </TableCell>
+				<TableCell align='center'>
+				  <Chip label={`${entry.token_count}w`} size="small" color="default" />
+				</TableCell>
+				<TableCell align='center'>
+				  <Chip label={`${entry.new_word_count}w`} size="small" color="primary" />
+				</TableCell>
               </TableRow>
             ))}
           </TableBody>

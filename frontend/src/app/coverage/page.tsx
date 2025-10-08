@@ -858,13 +858,6 @@ export default function CoveragePage() {
                     </Box>
                     <LinearProgress variant="determinate" value={coverageRun.progress_percent} sx={{ height: 8, borderRadius: 1 }} />
                   </Box>
-                  
-                  {/* {ws.connected ? (
-                    <Chip label="Live Updates" color="success" size="small" icon={<CircularProgress size={12} sx={{ color: 'inherit' }} />} />
-                  ) : (
-                    <Chip label="Reconnecting..." color="warning" size="small" />
-                  )} */}
-                  
                   <Box sx={{ mt: 4 }}>
                     <Button
                       variant="outlined"
@@ -978,46 +971,46 @@ export default function CoveragePage() {
                   
                 <Box>
                     {mode === 'coverage' && learningSetDisplay.length > 0 ? (
-                          <>
-                            {/* Page-level search that applies to the whole result set */}
-                            <Box sx={{ mb: 2 }}>
-                              <TextField
-                                fullWidth
-                                size="small"
-                                placeholder="Search by rank or sentence..."
-                                value={resultsSearch}
-                                onChange={(e) => { setResultsSearch(e.target.value); setResultsPage(1); }}
-                                InputProps={{
-                                  startAdornment: (
-                                    <InputAdornment position="start">
-                                      <SearchIcon fontSize="small" />
-                                    </InputAdornment>
-                                  ),
-                                }}
-                              />
-                            </Box>
+						<>
+						  {/* Page-level search that applies to the whole result set */}
+						  <Box sx={{ mb: 2 }}>
+							<TextField
+							  fullWidth
+							  size="small"
+							  placeholder="Search by rank or sentence..."
+							  value={resultsSearch}
+							  onChange={(e) => { setResultsSearch(e.target.value); setResultsPage(1); }}
+							  InputProps={{
+								startAdornment: (
+								  <InputAdornment position="start">
+									<SearchIcon fontSize="small" />
+								  </InputAdornment>
+								),
+							  }}
+							/>
+						  </Box>
 
-                            <LearningSetTable
-                              // pass full entries and let the table know an externalSearchQuery is active
-                              entries={learningSetDisplay}
-                              loading={loadingRun}
-                              disablePagination
-                              externalSearchQuery={resultsSearch}
-                              // we still slice at the page-level for visible rows
-                              pageSliceStart={(resultsPage - 1) * RESULTS_PAGE_SIZE}
-                              pageSliceEnd={resultsPage * RESULTS_PAGE_SIZE}
-                            />
-                        {learningSetDisplay.length > RESULTS_PAGE_SIZE && (
-                          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
-                            <Pagination
-                              count={Math.ceil(learningSetDisplay.length / RESULTS_PAGE_SIZE)}
-                              page={resultsPage}
-                              onChange={(_, p) => setResultsPage(p)}
-                              color="primary"
-                            />
-                          </Box>
-                        )}
-                      </>
+						  <LearningSetTable
+							// pass full entries and let the table know an externalSearchQuery is active
+							entries={learningSetDisplay}
+							loading={loadingRun}
+							disablePagination
+							externalSearchQuery={resultsSearch}
+							// we still slice at the page-level for visible rows
+							pageSliceStart={(resultsPage - 1) * RESULTS_PAGE_SIZE}
+							pageSliceEnd={resultsPage * RESULTS_PAGE_SIZE}
+						  />
+					  {learningSetDisplay.length > RESULTS_PAGE_SIZE && (
+						<Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+						  <Pagination
+							count={Math.ceil(learningSetDisplay.length / RESULTS_PAGE_SIZE)}
+							page={resultsPage}
+							onChange={(_, p) => setResultsPage(p)}
+							color="primary"
+						  />
+						</Box>
+					  )}
+						</>
                     ) : mode === 'filter' && assignments.length > 0 ? (
                       <FilterResultsTable
                         assignments={assignments}
