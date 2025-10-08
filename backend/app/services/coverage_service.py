@@ -473,11 +473,7 @@ class CoverageService:
                 pass
 
         logger.info(f"Coverage mode: {stats['words_covered']}/{stats['words_total']} words covered "
-                   f"with {stats['selected_sentence_count']} sentences"
-                   f"{' (exceeded cap of ' + str(self.max_learning_sentences) + ')' if stats.get('exceeded_sentence_cap') else ''}")
-        
-        if uncovered_words:
-            logger.warning(f"Coverage incomplete: {len(uncovered_words)} words not found in any sentence")
+                   f"with {stats['selected_sentence_count']} sentences")
         
         return assignments, stats
     
@@ -495,14 +491,12 @@ class CoverageService:
             with open(covered_filename, 'w', encoding='utf-8') as f:
                 for word in sorted(list(covered_words)):
                     f.write(f"{word}\n")
-            logger.info(f"Wrote {len(covered_words)} covered words to {covered_filename}")
 
             # Write uncovered words
             uncovered_filename = os.path.join(log_dir, f"coverage_uncovered_{timestamp}.txt")
             with open(uncovered_filename, 'w', encoding='utf-8') as f:
                 for word in sorted(list(uncovered_words)):
                     f.write(f"{word}\n")
-            logger.info(f"Wrote {len(uncovered_words)} uncovered words to {uncovered_filename}")
 
         except IOError as e:
             logger.error(f"Error writing coverage word lists to file: {e}")

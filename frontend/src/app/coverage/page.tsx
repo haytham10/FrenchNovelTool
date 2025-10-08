@@ -739,9 +739,6 @@ export default function CoveragePage() {
                                 ? learningSetDisplay.length
                                 : (getNumberStat('learning_set_count') ?? 'N/A')}
                             </Typography>
-                            <Typography variant="body2">
-                              Pruned sentences (&gt;{getNumberStat('coverage_prune_max_tokens') ?? 'N/A'} words): {getNumberStat('pruned_sentence_count') ?? 'N/A'}
-                            </Typography>
                           </Stack>
                         )}
                       </Box>
