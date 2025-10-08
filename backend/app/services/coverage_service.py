@@ -353,14 +353,6 @@ class CoverageService:
         def _select_from_pool(pool: Dict[int, Dict]) -> None:
             nonlocal uncovered_words
             while uncovered_words and heap:
-                # Stop if learning set cap is reached
-                if len(selected_sentence_set) >= self.max_learning_sentences:
-                    logger.warning(
-                        "Learning set cap of %s reached. %s words remain uncovered.",
-                        self.max_learning_sentences, len(uncovered_words)
-                    )
-                    break
-
                 neg_score, idx = heapq.heappop(heap)
                 # Recompute actual score for current uncovered set
                 score, gain = compute_score_for_idx(idx, uncovered_words)
@@ -451,6 +443,7 @@ class CoverageService:
             'learning_set_count': len(selected_sentence_order),
             'pruned_sentence_count': len(pruned_sentence_ids),
             'pruned_sentence_threshold': prune_threshold,
+            'exceeded_sentence_cap': len(selected_sentence_set) > self.max_learning_sentences,
             'learning_set': [
                 {
                     'rank': rank,
@@ -480,7 +473,11 @@ class CoverageService:
                 pass
 
         logger.info(f"Coverage mode: {stats['words_covered']}/{stats['words_total']} words covered "
-                   f"with {stats['selected_sentence_count']} sentences")
+                   f"with {stats['selected_sentence_count']} sentences"
+                   f"{' (exceeded cap of ' + str(self.max_learning_sentences) + ')' if stats.get('exceeded_sentence_cap') else ''}")
+        
+        if uncovered_words:
+            logger.warning(f"Coverage incomplete: {len(uncovered_words)} words not found in any sentence")
         
         return assignments, stats
     
