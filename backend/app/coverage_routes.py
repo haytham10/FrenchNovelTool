@@ -1,6 +1,6 @@
 """API routes for Vocabulary Coverage Tool"""
 import logging
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, send_from_directory, safe_join, abort, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from marshmallow import ValidationError
 from app import limiter, db
@@ -16,6 +16,7 @@ from app.schemas import (
     CoverageExportSchema
 )
 from app.tasks import coverage_build_async
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -803,3 +804,32 @@ def download_coverage_run(run_id):
     except Exception as e:
         logger.exception(f"Error downloading coverage run as CSV: {e}")
         return jsonify({'error': f'Download failed: {str(e)}'}), 500
+
+
+# Serve coverage logs without authentication (careful: ensure your deployment secures /logs if needed)
+@coverage_bp.route('/logs/<path:filename>', methods=['GET'])
+def serve_coverage_log(filename):
+    """Serve a coverage log file from the backend/logs directory.
+
+    This route intentionally does not require authentication per user's request.
+    It validates the filename to prevent directory traversal and only allows
+    files that match the pattern 'coverage_covered_*.txt' or 'coverage_uncovered_*.txt'.
+    """
+    logs_dir = current_app.config.get('COVERAGE_LOG_DIR', 'logs')
+
+    # Normalize and validate filename to avoid directory traversal
+    # Only allow coverage_covered_YYYYMMDD_HHMMSS.txt and coverage_uncovered_... patterns
+    allowed_pattern = re.compile(r'^(coverage_(?:covered|uncovered)_[0-9]{8}_[0-9]{6}\.txt)$')
+    match = allowed_pattern.match(filename)
+    if not match:
+        # If filename doesn't match the strict timestamped pattern, reject
+        abort(404)
+
+    # Use safe_join to construct the full path
+    try:
+        # send_from_directory will handle safe pathing but we double-check with safe_join
+        safe_path = safe_join(logs_dir, filename)
+        return send_from_directory(logs_dir, filename, as_attachment=True)
+    except Exception as e:
+        logger.exception(f"Error serving log file {filename}: {e}")
+        abort(404)
