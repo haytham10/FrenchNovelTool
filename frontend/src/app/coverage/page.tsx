@@ -969,7 +969,7 @@ export default function CoveragePage() {
                   {/* Results Preview */}
                   <Box>
                     <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-                      Preview Results
+                    Results
                     </Typography>
                     {mode === 'coverage' && learningSetDisplay.length > 0 ? (
                       <LearningSetTable entries={learningSetDisplay.slice(0, 10)} loading={loadingRun} />
@@ -977,19 +977,9 @@ export default function CoveragePage() {
                       <FilterResultsTable assignments={assignments.slice(0, 10)} loading={loadingRun} />
                     ) : (
                       <Typography variant="body2" color="text.secondary">
-                        No preview available
+                        No results
                       </Typography>
                     )}
-                    <Button
-                      variant="text"
-                      size="small"
-                      sx={{ mt: 1 }}
-                      onClick={() => {
-                        document.getElementById('full-results')?.scrollIntoView({ behavior: 'smooth' });
-                      }}
-                    >
-                      View Full Results Below
-                    </Button>
                   </Box>
                   
                   {/* New Analysis Button */}

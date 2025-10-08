@@ -22,6 +22,24 @@ def get_nlp():
     """
     global _nlp
     if _nlp is None:
+        # Allow an environment override to force the DummyNLP (useful on
+        # memory-constrained hosts where loading any spaCy model would cause
+        # worker OOMs). Set SPACY_FORCE_DUMMY=true to enable.
+        import os
+        force_dummy = os.environ.get('SPACY_FORCE_DUMMY', 'false').lower() in ('1', 'true', 'yes')
+        if force_dummy:
+            logger.info('SPACY_FORCE_DUMMY is set; using DummyNLP to avoid loading spaCy model')
+            class DummyNLP:
+                def __call__(self, text):
+                    class DummyDoc:
+                        def __iter__(self):
+                            # Simple whitespace tokenization fallback
+                            for word in text.split():
+                                yield type('Token', (), {'text': word, 'lemma_': word.lower()})()
+                    return DummyDoc()
+            _nlp = DummyNLP()
+            return _nlp
+
         try:
             import spacy
             # Prefer the medium French model, but fall back to the small model if the
