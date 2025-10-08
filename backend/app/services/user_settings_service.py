@@ -10,6 +10,8 @@ DEFAULT_SETTINGS = {
     'preserve_formatting': True,
     'fix_hyphenation': True,
     'min_sentence_length': 2,
+    'default_wordlist_id': None,
+    'coverage_defaults': {},
 }
 
 
@@ -65,6 +67,10 @@ class UserSettingsService:
             settings.preserve_formatting = settings_dict.get('preserve_formatting', settings.preserve_formatting)
             settings.fix_hyphenation = settings_dict.get('fix_hyphenation', settings.fix_hyphenation)
             settings.min_sentence_length = settings_dict.get('min_sentence_length', settings.min_sentence_length)
+            if 'default_wordlist_id' in settings_dict:
+                settings.default_wordlist_id = settings_dict['default_wordlist_id']
+            if 'coverage_defaults' in settings_dict:
+                settings.coverage_defaults_json = settings_dict['coverage_defaults']
         else:
             # Create new settings with provided values or defaults
             new_settings = DEFAULT_SETTINGS | settings_dict
@@ -76,6 +82,8 @@ class UserSettingsService:
                 preserve_formatting=new_settings['preserve_formatting'],
                 fix_hyphenation=new_settings['fix_hyphenation'],
                 min_sentence_length=new_settings['min_sentence_length'],
+                default_wordlist_id=new_settings.get('default_wordlist_id'),
+                coverage_defaults_json=new_settings.get('coverage_defaults', {}),
             )
             db.session.add(settings)
         

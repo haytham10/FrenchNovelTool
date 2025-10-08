@@ -68,14 +68,12 @@ export default function DriveFolderPicker({
       ],
       callbackFunction: (data) => {
         if (data.action === 'cancel') {
-          console.log('[DriveFolderPicker] User cancelled folder selection');
           onPickerCancel?.();
           return;
         }
         
         if (data.action === 'picked' && data.docs && data.docs.length > 0) {
           const folder = data.docs[0];
-          console.log('[DriveFolderPicker] Folder selected:', folder);
           onFolderSelect(folder.id, folder.name);
           enqueueSnackbar(`Folder "${folder.name}" selected`, { variant: 'success' });
         }

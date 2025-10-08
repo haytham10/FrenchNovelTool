@@ -75,10 +75,12 @@ CREDIT_REASON_JOB_RESERVE = 'job_reserve'
 CREDIT_REASON_JOB_FINAL = 'job_final'
 CREDIT_REASON_JOB_REFUND = 'job_refund'
 CREDIT_REASON_ADMIN_ADJUSTMENT = 'admin_adjustment'
+CREDIT_REASON_COVERAGE_RUN = 'coverage_run'
 
 # Pricing Configuration (v1)
 PRICING_VERSION = 'v1.0'
 MONTHLY_CREDIT_GRANT = 50  # Default credits granted per month
+COVERAGE_RUN_COST = 2  # Fixed cost for coverage tool runs
 
 # Model pricing: credits per 1,000 tokens
 # Based on Gemini API pricing and mapped to user-facing model preferences

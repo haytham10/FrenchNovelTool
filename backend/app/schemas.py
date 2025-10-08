@@ -1,5 +1,5 @@
 """Request/Response validation schemas using Marshmallow"""
-from marshmallow import Schema, fields, validate, pre_load
+from marshmallow import Schema, fields, validate, pre_load, validates_schema, ValidationError
 
 
 class GoogleAuthSchema(Schema):
@@ -104,6 +104,8 @@ class UserSettingsSchema(Schema):
         load_default=2,
         validate=validate.Range(min=1, max=10)
     )
+    default_wordlist_id = fields.Integer(allow_none=True, validate=validate.Range(min=1))
+    coverage_defaults = fields.Dict(allow_none=True)
 
 
 class ProcessPdfOptionsSchema(Schema):
@@ -175,4 +177,50 @@ class EstimatePdfResponseSchema(Schema):
     pricing_rate = fields.Float(required=True)
     capped = fields.Boolean(required=True)  # True if page count exceeds cap
     warning = fields.String(allow_none=True)  # Warning message if capped
+
+
+class WordListCreateSchema(Schema):
+    """Schema for creating a word list"""
+    name = fields.String(required=True, validate=validate.Length(min=1, max=255))
+    source_type = fields.String(
+        required=True,
+        validate=validate.OneOf(['csv', 'google_sheet', 'manual'])
+    )
+    source_ref = fields.String(allow_none=True, validate=validate.Length(max=512))
+    words = fields.List(fields.String(), allow_none=True)  # For manual/CSV upload
+    fold_diacritics = fields.Boolean(load_default=True)
+    # Whether the first row in an imported Google Sheet is a header and should be included
+    include_header = fields.Boolean(load_default=True)
+
+
+class WordListUpdateSchema(Schema):
+    """Schema for updating a word list"""
+    name = fields.String(validate=validate.Length(min=1, max=255))
+
+
+class CoverageRunCreateSchema(Schema):
+    """Schema for creating a coverage run"""
+    mode = fields.String(
+        required=True,
+        validate=validate.OneOf(['coverage', 'filter'])
+    )
+    source_type = fields.String(
+        required=True,
+        validate=validate.OneOf(['job', 'history'])
+    )
+    source_id = fields.Integer(required=True, validate=validate.Range(min=1))
+    wordlist_id = fields.Integer(allow_none=True, validate=validate.Range(min=1))
+    config = fields.Dict(allow_none=True)
+
+
+class CoverageSwapSchema(Schema):
+    """Schema for swapping word assignments in coverage mode"""
+    word_key = fields.String(required=True, validate=validate.Length(min=1))
+    new_sentence_index = fields.Integer(required=True, validate=validate.Range(min=0))
+
+
+class CoverageExportSchema(Schema):
+    """Schema for exporting coverage results to Google Sheets"""
+    sheet_name = fields.String(required=True, validate=validate.Length(min=1, max=255))
+    folder_id = fields.String(allow_none=True, validate=validate.Length(max=255))
 

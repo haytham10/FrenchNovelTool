@@ -8,6 +8,7 @@ type Command = { title: string; href: string };
 
 const commands: Command[] = [
   { title: 'Home', href: '/' },
+  { title: 'Coverage Tool', href: '/coverage' },
   { title: 'History', href: '/history' },
   { title: 'Settings', href: '/settings' },
 ];

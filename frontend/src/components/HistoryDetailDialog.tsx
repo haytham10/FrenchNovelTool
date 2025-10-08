@@ -32,11 +32,12 @@ import {
   TextField,
   Skeleton,
 } from '@mui/material';
-import { X, Download, ExternalLink, ChevronDown, CheckCircle, XCircle, Clock, RefreshCw, Copy, Search, Eye, Database } from 'lucide-react';
+import { X, Download, ExternalLink, ChevronDown, CheckCircle, XCircle, Clock, RefreshCw, Copy, Search, Eye, Database, BookOpen } from 'lucide-react';
 import { useHistoryDetail, useHistoryChunks, useExportHistoryToSheets, useRefreshHistoryFromChunks } from '@/lib/queries';
 import { formatDistanceToNow } from 'date-fns';
 import { useSnackbar } from 'notistack';
 import Icon from './Icon';
+import CoverageRunDialog from './CoverageRunDialog';
 
 interface HistoryDetailDialogProps {
   entryId: number | null;
@@ -57,6 +58,7 @@ export default function HistoryDetailDialog({
   const [showSentences, setShowSentences] = useState(false);
   const [showChunks, setShowChunks] = useState(false);
   const [sentenceSearch, setSentenceSearch] = useState('');
+  const [showCoverageDialog, setShowCoverageDialog] = useState(false);
 
   const handleExport = () => {
     if (entryId) {
@@ -558,20 +560,43 @@ export default function HistoryDetailDialog({
           <Stack direction="row" spacing={1}>
             <Button onClick={onClose}>Close</Button>
             {entry && entry.sentences && entry.sentences.length > 0 && (
-              <Tooltip title={entry.exported_to_sheets ? "Export to a new spreadsheet" : "Export to Google Sheets"}>
-                <Button
-                  startIcon={exportMutation.isPending ? <CircularProgress size={16} /> : <Download />}
-                  onClick={handleExport}
-                  variant="contained"
-                  disabled={exportMutation.isPending}
-                >
-                  {entry.exported_to_sheets ? 'Re-export' : 'Export to Sheets'}
-                </Button>
-              </Tooltip>
+              <>
+                <Tooltip title="Run vocabulary coverage analysis on this entry">
+                  <Button
+                    startIcon={<BookOpen />}
+                    onClick={() => setShowCoverageDialog(true)}
+                    variant="outlined"
+                    color="primary"
+                  >
+                    Vocabulary Coverage
+                  </Button>
+                </Tooltip>
+                <Tooltip title={entry.exported_to_sheets ? "Export to a new spreadsheet" : "Export to Google Sheets"}>
+                  <Button
+                    startIcon={exportMutation.isPending ? <CircularProgress size={16} /> : <Download />}
+                    onClick={handleExport}
+                    variant="contained"
+                    disabled={exportMutation.isPending}
+                  >
+                    {entry.exported_to_sheets ? 'Re-export' : 'Export to Sheets'}
+                  </Button>
+                </Tooltip>
+              </>
             )}
           </Stack>
         </Stack>
       </DialogActions>
+      
+      {/* Coverage Run Dialog */}
+      {entryId && (
+        <CoverageRunDialog
+          open={showCoverageDialog}
+          onClose={() => setShowCoverageDialog(false)}
+          sourceType="history"
+          sourceId={entryId}
+          sourceName={entry?.original_filename}
+        />
+      )}
     </Dialog>
   );
 }

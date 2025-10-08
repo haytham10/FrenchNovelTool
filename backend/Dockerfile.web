@@ -34,6 +34,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Install spaCy French model
+COPY scripts/install_spacy_model.sh /tmp/install_spacy_model.sh
+RUN chmod +x /tmp/install_spacy_model.sh && /tmp/install_spacy_model.sh
+
 # Copy application code
 COPY . .
 

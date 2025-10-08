@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Box, Typography, Slider, Paper, Chip, Stack, FormControlLabel, Switch, Select, MenuItem, FormControl, Collapse, Button, TextField, Divider } from '@mui/material';
 import Icon from './Icon';
-import { Sliders, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
+import { Sliders, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface NormalizeControlsProps {
   sentenceLength: number;
@@ -178,7 +178,6 @@ export default function NormalizeControls({
       {onAdvancedOptionsChange && (
         <Box sx={{ mb: 4 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-            <Icon icon={Sparkles} sx={{ fontSize: 20, color: 'primary.main' }} />
             <Typography variant="subtitle1" fontWeight={700}>
               AI Model Selection
             </Typography>

@@ -612,7 +612,7 @@ export default function Home() {
                   Export to Sheets
                 </Button>
               </Box>
-              <ResultsTable sentences={sentences} advancedOptions={advancedOptions} />
+              <ResultsTable sentences={sentences} advancedOptions={advancedOptions} jobId={currentJobId || undefined} />
             </Box>
           </Box>
         )}

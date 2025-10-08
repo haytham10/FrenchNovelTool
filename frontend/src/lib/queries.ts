@@ -147,7 +147,12 @@ export function useUpdateSettings() {
   const { enqueueSnackbar } = useSnackbar();
 
   return useMutation({
-    mutationFn: (settings: Partial<UserSettings>) => updateUserSettings(settings),
+    mutationFn: (settings: Partial<UserSettings>) => {
+      // Merge with cached settings to ensure required fields are preserved
+      const cached = queryClient.getQueryData<UserSettings>(queryKeys.settings) || {};
+      const payload = { ...cached, ...settings } as Partial<UserSettings>;
+      return updateUserSettings(payload);
+    },
     
     // Optimistic update
     onMutate: async (newSettings) => {

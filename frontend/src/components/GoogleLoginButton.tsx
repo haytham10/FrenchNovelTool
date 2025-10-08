@@ -10,11 +10,10 @@ export default function GoogleLoginButton() {
   
   const handleLogin = useGoogleLogin({
     onSuccess: (tokenResponse) => {
-      console.log('[GoogleLoginButton] OAuth success, exchanging code for tokens...');
       loginWithCode(tokenResponse.code);
     },
-    onError: (error) => {
-      console.error('[GoogleLoginButton] Google Login failed:', error);
+    onError: () => {
+      // OAuth login failed; errors are handled by the auth layer
     },
     flow: 'auth-code',
     scope: [

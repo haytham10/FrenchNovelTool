@@ -7,8 +7,8 @@ Flask + Next.js app for processing French novel PDFs using Google Gemini AI to n
 
 ### Backend Structure (Flask + SQLAlchemy)
 - **Application Factory Pattern**: App created via `create_app()` in `backend/app/__init__.py`
-- **Service Layer**: All business logic in `backend/app/services/` (6 services: auth, gemini, pdf, google_sheets, history, user_settings)
-- **Blueprint-based Routing**: Two blueprints registered at `/api/v1` (main_bp) and `/api/v1/auth` (auth_bp)
+- **Service Layer**: All business logic in `backend/app/services/` (e.g., auth, gemini, pdf, google_sheets, history, user_settings, credits, jobs, vocabulary coverage).
+- **Blueprint-based Routing**: Routes organized into multiple blueprints (main, auth, credits, coverage) registered at `/api/v1`.
 - **Database Migrations**: Flask-Migrate only, never use `db.create_all()` (see comment in `__init__.py`)
 - **Extensions**: SQLAlchemy (db), JWT (jwt), Limiter (limiter), Migrate (migrate) - all initialized in `__init__.py`
 
@@ -129,7 +129,8 @@ data = schema.load(request.json)  # Raises ValidationError if invalid
 
 ### Critical Dependencies
 - Backend: Flask 3.x, SQLAlchemy, Flask-JWT-Extended, Flask-Limiter, google-genai SDK, tenacity (retry logic)
-- Frontend: Next.js 15, React 19, Material-UI v7, TanStack Query v5, Zustand, axios
+- **Frontend**: Next.js 15, React 19, Material-UI v7, TanStack Query v5, Zustand, axios
+- **Vocabulary Analysis**: spaCy for NLP tasks (lemmatization).
 
 ## Common Pitfalls
 
@@ -139,7 +140,8 @@ data = schema.load(request.json)  # Raises ValidationError if invalid
 4. **Service Instantiation**: GeminiService takes settings in constructor, create new instance per request with user's settings
 5. **CORS**: Don't add origins manually, use CORS_ORIGINS env var (auto-expands www/apex variants)
 6. **File Validation**: Always use `validate_pdf_file()`, don't rely on extension alone
-7. **Frontend API Calls**: Use functions from `lib/api.ts` or React Query hooks from `lib/queries.ts`, don't create raw axios calls
+- **New Feature**: Vocabulary Coverage tool for linguistic analysis, using `CoverageService` and `WordListService`.
+- **Credit System**: A usage-based credit and job tracking system is managed by `CreditService` and `JobService`.
 
 ## Style & Formatting
 

@@ -1,6 +1,7 @@
 """Celery tasks for asynchronous PDF processing"""
 import logging
 import os
+import time
 from datetime import datetime
 from typing import Dict, List
 from typing import Optional
@@ -11,6 +12,28 @@ from celery import group, chord
 from celery.exceptions import SoftTimeLimitExceeded
 
 logger = logging.getLogger(__name__)
+
+
+def get_memory_usage_kib() -> Optional[int]:
+    """Return RSS memory usage in KiB if available, otherwise None.
+
+    Uses psutil when installed, otherwise attempts /proc/self/status on Linux.
+    """
+    try:
+        import psutil
+        p = psutil.Process()
+        return int(p.memory_info().rss // 1024)
+    except Exception:
+        try:
+            # Linux fallback
+            with open('/proc/self/status', 'r') as f:
+                for line in f:
+                    if line.startswith('VmRSS:'):
+                        parts = line.split()
+                        # VmRSS is typically in kB
+                        return int(parts[1])
+        except Exception:
+            return None
 
 def get_celery():
     """Get celery instance (deferred import to avoid circular dependency)"""
@@ -181,6 +204,9 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
         # Extract text from chunk. Prefer in-memory base64 chunk data
         # (produced by ChunkingService) so workers do not rely on a shared
         # filesystem. Fallback to chunk_info['file_path'] when provided.
+        mem_before_pdf = get_memory_usage_kib()
+        if mem_before_pdf:
+            logger.info(f"process_chunk: memory_before_pdf={mem_before_pdf} KiB")
         text = ""
         if chunk_info.get('file_b64'):
             import io
@@ -237,7 +263,15 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
         )
         
         # Process with Gemini (includes intelligent retry cascade)
+        mem_before_gemini = get_memory_usage_kib()
+        if mem_before_gemini:
+            logger.info(f"process_chunk: memory_before_gemini={mem_before_gemini} KiB text_len={len(text)}")
+
         result = gemini_service.normalize_text(text, prompt)
+
+        mem_after_gemini = get_memory_usage_kib()
+        if mem_after_gemini:
+            logger.info(f"process_chunk: memory_after_gemini={mem_after_gemini} KiB delta={mem_after_gemini - (mem_before_gemini or mem_after_gemini)}")
         
         # Check if a fallback method was used and persist marker to DB
         fallback_method = result.get('_fallback_method')
@@ -1126,3 +1160,247 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
             pass
         except Exception:
             pass
+
+
+@get_celery().task(bind=True, name='app.tasks.coverage_build_async')
+def coverage_build_async(self, run_id: int):
+    """
+    Asynchronously build vocabulary coverage analysis.
+    
+    Args:
+        run_id: CoverageRun ID to process
+    """
+    from app.models import CoverageRun, CoverageAssignment, WordList, History, Job
+    from app.services.coverage_service import CoverageService
+    from app.services.wordlist_service import WordListService
+    from app.utils.metrics import coverage_runs_total, coverage_build_duration_seconds
+    
+    db = get_db()
+    logger.info(f"Starting coverage build for run_id={run_id}")
+    
+    start_time = time.time()
+    mode = None
+    status = 'failed'
+    
+    try:
+        # Get the coverage run
+        coverage_run = CoverageRun.query.get(run_id)
+        if not coverage_run:
+            logger.error(f"CoverageRun {run_id} not found")
+            return
+        
+        mode = coverage_run.mode
+        
+        # Update status
+        coverage_run.status = 'processing'
+        coverage_run.celery_task_id = self.request.id
+        coverage_run.progress_percent = 10
+        safe_db_commit(db)
+        
+        # Emit progress via WebSocket
+        try:
+            from app.socket_events import emit_coverage_progress
+            emit_coverage_progress(run_id)
+        except Exception as e:
+            logger.warning(f"Failed to emit coverage progress for run {run_id}: {e}")
+        
+        # Load word list
+        wordlist_id = coverage_run.wordlist_id
+        if not wordlist_id:
+            # Use global default
+            wordlist = WordListService.get_global_default_wordlist()
+            if not wordlist:
+                raise ValueError("No word list specified and no global default found")
+            wordlist_id = wordlist.id
+            coverage_run.wordlist_id = wordlist_id
+            safe_db_commit(db)
+        else:
+            wordlist = WordList.query.get(wordlist_id)
+            if not wordlist:
+                raise ValueError(f"WordList {wordlist_id} not found")
+        
+        # Get sentences from source
+        sentences = []
+        if coverage_run.source_type == 'history':
+            history = History.query.get(coverage_run.source_id)
+            if not history or not history.sentences:
+                raise ValueError(f"History {coverage_run.source_id} not found or has no sentences")
+            # Extract normalized sentences
+            sentences = [s.get('normalized', s.get('original', '')) for s in history.sentences if s.get('normalized') or s.get('original')]
+        elif coverage_run.source_type == 'job':
+            job = Job.query.get(coverage_run.source_id)
+            if not job or not job.chunk_results:
+                raise ValueError(f"Job {coverage_run.source_id} not found or has no results")
+            # Extract sentences from chunk results
+            for chunk_result in job.chunk_results:
+                chunk_sentences = chunk_result.get('sentences', [])
+                sentences.extend([s.get('normalized', s.get('original', '')) for s in chunk_sentences if s.get('normalized') or s.get('original')])
+        else:
+            raise ValueError(f"Unknown source_type: {coverage_run.source_type}")
+        
+        # Validate sentences
+        if not sentences:
+            raise ValueError("No sentences found in source")
+        
+        # Filter out empty sentences
+        sentences = [s.strip() for s in sentences if s and s.strip()]
+        if not sentences:
+            raise ValueError("All sentences are empty after filtering")
+        
+        logger.info(f"Processing {len(sentences)} sentences with word list '{wordlist.name}'")
+        
+        # Get word list keys from stored words_json
+        wordlist_keys = set()
+        if wordlist.words_json:
+            # Use stored full normalized list
+            wordlist_keys = set(wordlist.words_json)
+            logger.info(f"Loaded {len(wordlist_keys)} words from stored words_json")
+        elif wordlist.canonical_samples:
+            # Fallback to canonical samples if full list not available
+            wordlist_keys = set(wordlist.canonical_samples)
+            logger.warning(f"WordList {wordlist_id} has no words_json, using {len(wordlist_keys)} canonical samples")
+            
+            # Auto-refresh wordlist if it has a Google Sheets source
+            if wordlist.source_type == 'google_sheet' and wordlist.source_ref:
+                logger.info(f"Attempting to refresh WordList {wordlist_id} from Google Sheets source")
+                try:
+                    # Get user for credentials
+                    from app.models import User
+                    user = User.query.get(coverage_run.user_id)
+                    if user and user.google_access_token:
+                        wordlist_service = WordListService()
+                        # Use default include_header=True for automated refresh in tasks
+                        refresh_report = wordlist_service.refresh_wordlist_from_source(wordlist, user, include_header=True)
+                        safe_db_commit(db)
+                        if refresh_report['status'] == 'refreshed':
+                            wordlist_keys = set(wordlist.words_json)
+                            logger.info(f"Successfully refreshed WordList {wordlist_id}: {refresh_report['word_count']} words")
+                    else:
+                        logger.warning(f"Cannot refresh WordList {wordlist_id}: user has no Google access token")
+                except Exception as e:
+                    logger.warning(f"Failed to auto-refresh WordList {wordlist_id}: {e}")
+        else:
+            raise ValueError(f"WordList {wordlist_id} has no words_json or canonical_samples")
+        
+        if not wordlist_keys:
+            raise ValueError(f"WordList {wordlist_id} is empty after loading")
+        
+        # Initialize coverage service
+        config = coverage_run.config_json or {}
+        coverage_service = CoverageService(wordlist_keys, config)
+
+        # Define a progress callback that updates the DB and emits websocket events
+        def _progress_callback(pct: int, step: str | None = None):
+            try:
+                # Refresh coverage_run from DB to avoid stale session data
+                cov = CoverageRun.query.get(run_id)
+                if not cov:
+                    return
+                cov.progress_percent = min(100, max(0, int(pct)))
+                if step:
+                    cov.current_step = step
+                safe_db_commit(db)
+                try:
+                    from app.socket_events import emit_coverage_progress
+                    emit_coverage_progress(run_id)
+                except Exception:
+                    logger.debug("Failed to emit intermediate coverage progress for run %s", run_id)
+            except Exception:
+                logger.exception("progress_callback failed for run %s", run_id)
+        
+        # Run appropriate mode
+        if coverage_run.mode == 'coverage':
+            assignments_data, stats = coverage_service.coverage_mode_greedy(sentences, progress_callback=_progress_callback)
+        elif coverage_run.mode == 'filter':
+            assignments_data, stats = coverage_service.filter_mode(sentences, progress_callback=_progress_callback)
+        else:
+            raise ValueError(f"Unknown mode: {coverage_run.mode}")
+        
+        # Save assignments to database
+        if coverage_run.mode == 'coverage':
+            # Expect word-level assignments with 'word_key'
+            for assignment_data in assignments_data:
+                assignment = CoverageAssignment(
+                    coverage_run_id=run_id,
+                    word_original=assignment_data.get('word_original'),
+                    word_key=assignment_data['word_key'],
+                    lemma=assignment_data.get('lemma'),
+                    matched_surface=assignment_data.get('matched_surface'),
+                    sentence_index=assignment_data['sentence_index'],
+                    sentence_text=assignment_data['sentence_text'],
+                    sentence_score=assignment_data.get('sentence_score')
+                )
+                db.session.add(assignment)
+        else:
+            # Filter mode: store one row per selected sentence with a synthetic key
+            # (model requires non-null word_key). Key is unique per run via sentence index.
+            for assignment_data in assignments_data:
+                synthetic_key = f"filter_sentence_{assignment_data['sentence_index']}"
+                assignment = CoverageAssignment(
+                    coverage_run_id=run_id,
+                    word_original=None,
+                    word_key=synthetic_key,
+                    lemma=None,
+                    matched_surface=None,
+                    sentence_index=assignment_data['sentence_index'],
+                    sentence_text=assignment_data['sentence_text'],
+                    sentence_score=assignment_data.get('sentence_score')
+                )
+                db.session.add(assignment)
+        
+        # Update run with stats
+        coverage_run.stats_json = stats
+        coverage_run.status = 'completed'
+        coverage_run.progress_percent = 100
+        coverage_run.completed_at = datetime.utcnow()
+        
+        safe_db_commit(db)
+
+        # Emit final progress update so any listening clients receive completed status
+        try:
+            from app.socket_events import emit_coverage_progress
+            emit_coverage_progress(run_id)
+        except Exception as e:
+            logger.warning(f"Failed to emit final coverage progress for run {run_id}: {e}")
+
+        # Update metrics
+        status = 'completed'
+        duration = time.time() - start_time
+        coverage_runs_total.labels(mode=coverage_run.mode, status='completed').inc()
+        coverage_build_duration_seconds.labels(mode=coverage_run.mode).observe(duration)
+        
+        logger.info(f"Coverage build completed for run_id={run_id} in {duration:.2f}s")
+    
+    except Exception as e:
+        logger.exception(f"Error in coverage_build_async for run_id={run_id}: {e}")
+
+        # Ensure run record reflects failure if it exists and notify clients
+        try:
+            coverage_run = CoverageRun.query.get(run_id)
+            if coverage_run:
+                coverage_run.status = 'failed'
+                coverage_run.error_message = str(e)
+                coverage_run.progress_percent = min(100, getattr(coverage_run, 'progress_percent', 0) or 0)
+                safe_db_commit(db)
+                try:
+                    from app.socket_events import emit_coverage_progress
+                    emit_coverage_progress(run_id)
+                except Exception:
+                    logger.warning(f"Failed to emit coverage progress for failed run {run_id}")
+        except Exception:
+            logger.exception("Failed to update coverage run failure status in DB")
+
+        # Update metrics
+        if mode:
+            coverage_runs_total.labels(mode=mode, status='failed').inc()
+        
+        try:
+            coverage_run = CoverageRun.query.get(run_id)
+            if coverage_run:
+                coverage_run.status = 'failed'
+                coverage_run.error_message = str(e)[:512]
+                safe_db_commit(db)
+        except Exception:
+            pass
+        raise
+

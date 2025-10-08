@@ -12,7 +12,7 @@ import { getHistoryStatus } from '@/lib/types';
 import { useDebounce } from '@/lib/hooks';
 import Icon from './Icon';
 import IconButton from './IconButton';
-import { CheckCircle, XCircle, Loader2, RefreshCw, Eye, Filter, Send, Calendar, Copy, ExternalLink, RotateCw } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, RefreshCw, Eye, Filter, Send, Calendar, Copy, ExternalLink, RotateCw, BookOpenCheck } from 'lucide-react';
 import ExportDialog from './ExportDialog';
 import { useRouter } from 'next/navigation';
 import HistoryDetailDialog from './HistoryDetailDialog';
@@ -36,8 +36,8 @@ const StyledTableCell = styled(TableCell)(({ theme }) => ({
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
-    // Better spacing for body cells
-    padding: '12px 16px',
+    // Tighter spacing for compact table rows
+    padding: '8px 12px',
     verticalAlign: 'middle',
   },
 }));
@@ -66,21 +66,26 @@ const StyledTableRow = styled(TableRow)(({ theme }) => ({
 
 // Timestamp-specific cell: allow enough space and prevent truncation for dates
 const TimestampCell = styled(StyledTableCell)(() => ({
-  minWidth: 160,
-  maxWidth: 240,
+  minWidth: 140,
+  maxWidth: 220,
   whiteSpace: 'nowrap',
   overflow: 'visible',
   textOverflow: 'clip',
 }));
 
 const ActionCell = styled(StyledTableCell)(() => ({
-  width: 120,
-  maxWidth: 140,
+  width: 100,
+  maxWidth: 120,
   whiteSpace: 'nowrap',
-  paddingRight: 12,
+  paddingRight: 8,
+  // Ensure icon buttons don't force extra width and use tighter padding
+  '& .MuiIconButton-root': {
+    minWidth: 'auto',
+    padding: 6,
+  },
   '& > div': {
     display: 'flex',
-    gap: 4,
+    gap: 2,
     alignItems: 'center',
     justifyContent: 'flex-end',
   }
@@ -624,9 +629,11 @@ export default function HistoryTable() {
       <TableContainer
         component={Paper}
         sx={{
-          overflowX: 'hidden',
+          overflow: 'visible',
+          overflowX: 'auto',
           // hide native webkit scrollbar if it appears
           '&::-webkit-scrollbar': { display: 'none' },
+          p: 0,
         }}
       >
   	<Table sx={{ tableLayout: 'auto', width: '100%' }}>
@@ -653,15 +660,15 @@ export default function HistoryTable() {
                   Filename
                 </TableSortLabel>
               </StyledTableCell>
-              <StyledTableCell>
-                <TableSortLabel
-                  active={orderBy === 'processed_sentences_count'}
-                  direction={orderBy === 'processed_sentences_count' ? order : 'asc'}
-                  onClick={(event) => handleRequestSort(event, 'processed_sentences_count')}
-                  aria-label="Sort by sentence count"
-                >
-                  Sentences
-                </TableSortLabel>
+			  <StyledTableCell align="justify">
+				<TableSortLabel
+				  active={orderBy === 'processed_sentences_count'}
+				  direction={orderBy === 'processed_sentences_count' ? order : 'asc'}
+				  onClick={(event) => handleRequestSort(event, 'processed_sentences_count')}
+				  aria-label="Sort by sentence count"
+				>
+				  Sentences
+				</TableSortLabel>
               </StyledTableCell>
               <StyledTableCell align="center">Cost</StyledTableCell>
               <StyledTableCell>
@@ -674,17 +681,8 @@ export default function HistoryTable() {
                   Spreadsheet
                 </TableSortLabel>
               </StyledTableCell>
-              <StyledTableCell>
-                <TableSortLabel
-                  active={orderBy === 'error_message'}
-                  direction={orderBy === 'error_message' ? order : 'asc'}
-                  onClick={(event) => handleRequestSort(event, 'error_message')}
-                  aria-label="Sort by error"
-                >
-                  Error
-                </TableSortLabel>
-              </StyledTableCell>
-              <StyledTableCell>Actions</StyledTableCell>
+              {/* Error column removed per UI update */}
+              <StyledTableCell align="center">Actions</StyledTableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -693,213 +691,176 @@ export default function HistoryTable() {
               .map((entry) => {
               const status = getHistoryStatus(entry);
               return (
-                <StyledTableRow 
-                  key={entry.id}
-                  onClick={(e) => {
-                    // Don't open details if clicking on action buttons or links
-                    const target = e.target as HTMLElement;
-                    if (target.closest('button') || target.closest('a')) {
-                      return;
-                    }
-                    handleViewDetails(entry);
-                  }}
-                  tabIndex={0}
-                  role="button"
-                  aria-label={`View details for ${entry.original_filename}`}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      handleViewDetails(entry);
-                    }
-                  }}
-                >
-                  <StyledTableCell>
-                    <Chip 
-                      icon={
-                        status === 'complete' ? <Icon icon={CheckCircle} fontSize="small" /> :
-                        status === 'failed' ? <Icon icon={XCircle} fontSize="small" /> :
-                        status === 'exported' ? <Icon icon={Send} fontSize="small" /> :
-                        <Icon icon={Loader2} fontSize="small" />
-                      }
-                      label={status === 'complete' ? 'Complete' : status === 'exported' ? 'Exported' : status}
-                      size="small"
-                      sx={{ 
-                        fontWeight: 600,
-                        textTransform: 'capitalize',
-                        ...(status === 'complete' && {
-                          bgcolor: 'success.main',
-                          color: 'success.contrastText',
-                          '& .MuiChip-icon': { color: 'success.contrastText' }
-                        }),
-                        ...(status === 'failed' && {
-                          bgcolor: 'error.main',
-                          color: 'error.contrastText',
-                          '& .MuiChip-icon': { color: 'error.contrastText' }
-                        }),
-                        ...(status === 'processing' && {
-                          bgcolor: 'primary.main',
-                          color: 'primary.contrastText',
-                          '& .MuiChip-icon': { 
-                            color: 'primary.contrastText',
-                            animation: 'spin 1s linear infinite'
-                          }
-                        }),
-                        ...(status === 'exported' && {
-                          bgcolor: '#9c27b0',  // Purple color for exported
-                          color: '#ffffff',
-                          '& .MuiChip-icon': { color: '#ffffff' }
-                        }),
-                      }}
-                    />
-                  </StyledTableCell>
-                  <TimestampCell>{new Date(entry.timestamp).toLocaleString()}</TimestampCell>
-                  <StyledTableCell>{entry.original_filename}</StyledTableCell>
-                  <StyledTableCell align="center">{entry.processed_sentences_count}</StyledTableCell>
-                  <StyledTableCell>
-                    <JobCost jobId={entry.job_id} />
-                  </StyledTableCell>
-                  <StyledTableCell>
-                    {entry.spreadsheet_url ? (
-                      <Box sx={{ display: 'flex', gap: 0.5 }}>
-                        <Tooltip title="Open spreadsheet in new tab">
-                          <IconButton
-                            size="small"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              window.open(entry.spreadsheet_url!, '_blank', 'noopener,noreferrer');
-                            }}
-                            aria-label="Open spreadsheet"
-                          >
-                            <Icon icon={ExternalLink} fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Copy link to clipboard">
-                          <IconButton
-                            size="small"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleCopyUrl(entry.spreadsheet_url!);
-                            }}
-                            aria-label="Copy spreadsheet link"
-                          >
-                            <Icon icon={Copy} fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      </Box>
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">
-                        Not exported
-                      </Typography>
-                    )}
-                  </StyledTableCell>
-                  <StyledTableCell>
-                    {entry.error_message ? (
-                      <Tooltip 
-                        title={
-                          <Box>
-                            <Typography variant="body2" fontWeight={600} gutterBottom>
-                              Technical Details:
-                            </Typography>
-                            <Typography variant="body2">
-                              {entry.error_message}
-                            </Typography>
-                            {entry.error_code && (
-                              <Typography variant="caption" display="block" sx={{ mt: 1 }}>
-                                Error Code: {entry.error_code}
-                              </Typography>
-                            )}
-                            {entry.failed_step && (
-                              <Typography variant="caption" display="block">
-                                Failed Step: {entry.failed_step}
-                              </Typography>
-                            )}
-                          </Box>
-                        }
-                        arrow
-                        placement="left"
-                      >
-                        <Box sx={{ cursor: 'help' }}>
-                          <Typography variant="body2" color="error.main" sx={{ fontWeight: 500 }}>
-                            {entry.failed_step === 'normalize' ? '❌ AI processing failed' :
-                             entry.failed_step === 'export' ? '❌ Export failed' :
-                             entry.error_code?.includes('INVALID') ? '❌ Invalid file' :
-                             entry.error_code?.includes('AUTH') ? '❌ Authentication error' :
-                             '❌ Processing error'}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                            Hover for details
-                          </Typography>
-                        </Box>
-                      </Tooltip>
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">No errors</Typography>
-                    )}
-                  </StyledTableCell>
-                  <ActionCell>
-                    {(() => {
-                      // Compute visible actions for the row to center when only one action
-                      const buttons: React.ReactNode[] = [];
-                      buttons.push(
-                        <Tooltip title="View details" key="view">
-                          <IconButton 
-                            size="small"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleViewDetails(entry);
-                            }}
-                            aria-label="View details"
-                          >
-                            <Icon icon={Eye} fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      );
-                      if (!entry.spreadsheet_url && status === 'complete') {
-                        buttons.push(
-                          <Tooltip title="Send to Google Sheets" key="send">
-                            <IconButton 
-                              size="small"
-                              color="primary"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleSendToSheets(entry);
-                              }}
-                              aria-label="Send to Google Sheets"
-                            >
-                              <Icon icon={Send} fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        );
-                      }
-                      if (status === 'failed' && entry.failed_step) {
-                        buttons.push(
-                          <Tooltip title="Retry from failed step" key="retry">
-                            <IconButton 
-                              size="small" 
-                              color="primary"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRetry(entry);
-                              }}
-                              aria-label="Retry processing"
-                              disabled={retryMutation.isPending}
-                            >
-                              <Icon icon={RefreshCw} fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        );
-                      }
+				<StyledTableRow 
+				  key={entry.id}
+				  onClick={(e) => {
+					// Don't open details if clicking on action buttons or links
+					const target = e.target as HTMLElement;
+					if (target.closest('button') || target.closest('a')) {
+					  return;
+					}
+					handleViewDetails(entry);
+				  }}
+				  tabIndex={0}
+				  role="button"
+				  aria-label={`View details for ${entry.original_filename}`}
+				  onKeyDown={(e) => {
+					if (e.key === 'Enter' || e.key === ' ') {
+					  e.preventDefault();
+					  handleViewDetails(entry);
+					}
+				  }}
+				>
+				  <StyledTableCell>
+					<Chip 
+					  icon={
+						status === 'complete' ? <Icon icon={CheckCircle} fontSize="small" /> :
+						status === 'failed' ? <Icon icon={XCircle} fontSize="small" /> :
+						status === 'exported' ? <Icon icon={Send} fontSize="small" /> :
+						<Icon icon={Loader2} fontSize="small" />
+					  }
+					  label={status === 'complete' ? 'Complete' : status === 'exported' ? 'Exported' : status}
+					  size="small"
+					  sx={{ 
+						fontWeight: 600,
+						textTransform: 'capitalize',
+						...(status === 'complete' && {
+						  bgcolor: 'success.main',
+						  color: 'success.contrastText',
+						  '& .MuiChip-icon': { color: 'success.contrastText' }
+						}),
+						...(status === 'failed' && {
+						  bgcolor: 'error.main',
+						  color: 'error.contrastText',
+						  '& .MuiChip-icon': { color: 'error.contrastText' }
+						}),
+						...(status === 'processing' && {
+						  bgcolor: 'primary.main',
+						  color: 'primary.contrastText',
+						  '& .MuiChip-icon': { 
+							color: 'primary.contrastText',
+							animation: 'spin 1s linear infinite'
+						  }
+						}),
+						...(status === 'exported' && {
+						  bgcolor: '#9c27b0',  // Purple color for exported
+						  color: '#ffffff',
+						  '& .MuiChip-icon': { color: '#ffffff' }
+						}),
+					  }}
+					/>
+				  </StyledTableCell>
+				  <TimestampCell>{new Date(entry.timestamp).toLocaleString()}</TimestampCell>
+				  <StyledTableCell>{entry.original_filename}</StyledTableCell>
+				  <StyledTableCell align='center'>
+						<Box paddingRight={4}>
+						{entry.processed_sentences_count}
+						</Box>
+					</StyledTableCell>
+				  <StyledTableCell align="center">
+					<JobCost jobId={entry.job_id} />
+				  </StyledTableCell>
+				  <StyledTableCell>
+					{entry.spreadsheet_url ? (
+					  <Box sx={{ display: 'flex', gap: 0.5 }}>
+						<Tooltip title="Open spreadsheet in new tab">
+						  <IconButton
+							size="small"
+							onClick={(e) => {
+							  e.stopPropagation();
+							  window.open(entry.spreadsheet_url!, '_blank', 'noopener,noreferrer');
+							}}
+							aria-label="Open spreadsheet"
+						  >
+							<Icon icon={ExternalLink} fontSize="small" />
+						  </IconButton>
+						</Tooltip>
+						<Tooltip title="Copy link to clipboard">
+						  <IconButton
+							size="small"
+							onClick={(e) => {
+							  e.stopPropagation();
+							  handleCopyUrl(entry.spreadsheet_url!);
+							}}
+							aria-label="Copy spreadsheet link"
+						  >
+							<Icon icon={Copy} fontSize="small" />
+						  </IconButton>
+						</Tooltip>
+					  </Box>
+					) : (
+					  <Typography variant="body2" color="text.secondary">
+						Not exported
+					  </Typography>
+					)}
+				  </StyledTableCell>
+				  {/* Error column removed - keep cell count consistent */}
+				  <ActionCell>
+					<Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', justifyContent: 'flex-end', width: '100%' }}>
+					  <Tooltip title="View details">
+						<IconButton 
+						  size="small"
+						  onClick={(e) => {
+							e.stopPropagation();
+							handleViewDetails(entry);
+						  }}
+						  aria-label="View details"
+						>
+						  <Icon icon={Eye} fontSize="small" />
+						</IconButton>
+					  </Tooltip>
 
-                      // If there is only one visible button, center it; otherwise right-align
-                      const justify = buttons.length === 1 ? 'center' : 'flex-end';
+					  {!entry.spreadsheet_url && status === 'complete' && (
+						<Tooltip title="Send to Google Sheets">
+						  <IconButton 
+							size="small"
+							color="primary"
+							onClick={(e) => {
+							  e.stopPropagation();
+							  handleSendToSheets(entry);
+							}}
+							aria-label="Send to Google Sheets"
+						  >
+							<Icon icon={Send} fontSize="small" />
+						  </IconButton>
+						</Tooltip>
+					  )}
 
-                      return (
-                        <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', justifyContent: justify, width: '100%' }}>
-                          {buttons}
-                        </Box>
-                      );
-                    })()}
-                  </ActionCell>
-                </StyledTableRow>
+                      {(status === 'complete' || status === 'exported') && (
+						<Tooltip title="Run Vocabulary Analysis">
+						  <IconButton
+							size="small"
+							color="secondary"
+							onClick={(e) => {
+							  e.stopPropagation();
+							  router.push(`/coverage?source=history&id=${entry.id}`);
+							}}
+							aria-label="Run vocabulary analysis"
+						  >
+							<Icon icon={BookOpenCheck} fontSize="small" />
+						  </IconButton>
+						</Tooltip>
+					  )}
+
+					  {status === 'failed' && entry.failed_step && (
+						<Tooltip title="Retry from failed step">
+						  <IconButton 
+							size="small" 
+							color="primary"
+							onClick={(e) => {
+							  e.stopPropagation();
+							  handleRetry(entry);
+							}}
+							aria-label="Retry processing"
+							disabled={retryMutation.isPending}
+						  >
+							<Icon icon={RefreshCw} fontSize="small" />
+						  </IconButton>
+						</Tooltip>
+					  )}
+					</Box>
+				  </ActionCell>
+				</StyledTableRow>
               );
             })}
           </TableBody>

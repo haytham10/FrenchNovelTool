@@ -75,11 +75,13 @@ def create_app(config_class=Config):
         from . import routes
         from . import auth_routes
         from . import credit_routes
+        from . import coverage_routes
 
         # Register blueprints
         app.register_blueprint(routes.main_bp, url_prefix='/api/v1')
         app.register_blueprint(auth_routes.auth_bp, url_prefix='/api/v1/auth')
         app.register_blueprint(credit_routes.credit_bp, url_prefix='/api/v1')
+        app.register_blueprint(coverage_routes.coverage_bp)
 
         # Register error handlers
         register_error_handlers(app)
