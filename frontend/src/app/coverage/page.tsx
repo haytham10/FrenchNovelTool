@@ -11,21 +11,18 @@ import {
   Select,
   MenuItem,
   FormControl,
-  InputLabel,
   Alert,
   CircularProgress,
   LinearProgress,
   Chip,
   Stack,
   Divider,
+  Pagination,
   SelectChangeEvent,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  List,
-  ListItemButton,
-  ListItemText,
   InputAdornment,
   Slider,
   Card,
@@ -34,6 +31,9 @@ import {
   IconButton,
   Tooltip,
   Radio,
+  Stepper,
+  Step,
+  StepLabel,
 } from '@mui/material';
 import {
   PlayArrow as PlayIcon,
@@ -45,6 +45,8 @@ import {
   TableChart as SheetsIcon,
   Cancel as CancelIcon,
   CloudUpload as CloudUploadIcon,
+  ArrowBack as ArrowBackIcon,
+  ArrowForward as ArrowForwardIcon,
 } from '@mui/icons-material';
 import { AxiosError } from 'axios';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -73,6 +75,8 @@ import FilterResultsTable from '@/components/FilterResultsTable';
 import { useSettings } from '@/lib/queries';
 import { useCoverageWebSocket } from '@/lib/useCoverageWebSocket';
 
+const WIZARD_STEPS = ['Configure', 'Select Source', 'Run & Review'] as const;
+
 export default function CoveragePage() {
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
@@ -84,13 +88,16 @@ export default function CoveragePage() {
   const urlRunId = searchParams.get('runId'); // Pre-existing run to view
   
   // State
-  const [mode, setMode] = useState<'coverage' | 'filter'>('filter');
+  const [mode, setMode] = useState<'coverage' | 'filter'>('coverage');
   // Source is now only from history (UI removed for Job ID)
   const [sourceId, setSourceId] = useState<string>(urlId || '');
   const [selectedWordListId, setSelectedWordListId] = useState<number | ''>('');
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [currentRunId, setCurrentRunId] = useState<number | null>(urlRunId ? parseInt(urlRunId) : null);
   const [historySearch, setHistorySearch] = useState<string>('');
+  // Pagination for history list (step 2)
+  const [historyPage, setHistoryPage] = useState<number>(1);
+  const HISTORY_PAGE_SIZE = 5;
   const [openSheetDialog, setOpenSheetDialog] = useState<boolean>(false);
   const [sheetUrl, setSheetUrl] = useState<string>('');
   // const [resultSearch, setResultSearch] = useState<string>('');
@@ -99,6 +106,9 @@ export default function CoveragePage() {
   const [sentenceCap, setSentenceCap] = useState<number>(500); // Coverage mode sentence cap (0 = unlimited)
   // Load user settings to know which default wordlist is configured
   const { data: settings } = useSettings();
+  
+  // Wizard step state
+  const [activeStep, setActiveStep] = useState<number>(currentRunId ? 2 : 0);
   
   // Update sourceId when URL params change
   useEffect(() => {
@@ -385,6 +395,11 @@ export default function CoveragePage() {
     );
   });
 
+  // Reset pagination when search changes
+  useEffect(() => {
+    setHistoryPage(1);
+  }, [historySearch]);
+
   // Determine the default word list (user default if set, else global default)
   const defaultWordlistId = settings?.default_wordlist_id ?? null;
   const resolvedDefaultWordlist = defaultWordlistId
@@ -411,6 +426,31 @@ export default function CoveragePage() {
   // Help dialog state
   const [showHelpDialog, setShowHelpDialog] = useState(false);
   
+  // Wizard navigation handlers
+  const handleStepBack = () => {
+    setActiveStep((prev) => Math.max(prev - 1, 0));
+  };
+  
+  const handleStepNext = () => {
+    setActiveStep((prev) => Math.min(prev + 1, WIZARD_STEPS.length - 1));
+  };
+  
+  // Validation for next button
+  const isNextDisabled = React.useMemo(() => {
+    if (activeStep === 0) return false; // Configure step always allows next
+    if (activeStep === 1) return !sourceId; // Select Source requires a source
+    return true; // Run & Review is the final step
+  }, [activeStep, sourceId]);
+  
+  const nextButtonLabel = activeStep === WIZARD_STEPS.length - 1 ? 'Finish' : 'Next';
+  
+  // Update active step when a run is started
+  useEffect(() => {
+    if (currentRunId && activeStep < 2) {
+      setActiveStep(2);
+    }
+  }, [currentRunId, activeStep]);
+  
   return (
     <RouteGuard>
       <Container maxWidth="xl" sx={{ py: 4 }}>
@@ -427,206 +467,228 @@ export default function CoveragePage() {
           </Box>
         </Box>
         
-      {/* Three-Column Wizard Layout */}
-      <Box sx={{ 
-        display: 'grid',
-        gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' },
-        gap: 3,
-        minHeight: '70vh',
-      }}>
-        {/* COLUMN 1: CONFIGURE */}
-        <Box>
-          <Paper sx={{ p: 3, height: '100%', position: 'sticky', top: 80 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
-              <Chip label="1" color="primary" size="small" />
-              <Typography variant="h6" fontWeight={600}>
-                Configure Analysis
-              </Typography>
-            </Box>
+      {/* Wizard Stepper */}
+	<Paper sx={{ mb: 2 }}>
+		<Stepper activeStep={activeStep} sx={{ p: 2 }} alternativeLabel>
+			{WIZARD_STEPS.map((label) => (
+				<Step key={label}>
+					<StepLabel>{label}</StepLabel>
+				</Step>
+			))}
+		</Stepper>
+	</Paper>
+      
+      {/* Step Content */}
+      <Paper sx={{ p: 4, height: '100%', display: 'flex', flexDirection: 'column' }}>
+        {activeStep === 0 && (
+          // STEP 1: CONFIGURE
+          <Box>
+            <Typography variant="h5" fontWeight={600} gutterBottom>
+              Configure Analysis
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
+              Choose your analysis mode and target word list
+            </Typography>
             
-            <Stack spacing={3}>
-              {/* Analysis Mode */}
-              <Box>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                  <Typography variant="subtitle2" fontWeight={600}>
-                    Analysis Mode
-                  </Typography>
-                  <Tooltip title="Click for more information about analysis modes">
-                    <IconButton size="small" onClick={() => setShowHelpDialog(true)}>
-                      <HelpIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                </Box>
-                <FormControl fullWidth size="small">
-                  <Select
-                    value={mode}
-                    onChange={(e: SelectChangeEvent<'coverage' | 'filter'>) => 
-                      setMode(e.target.value as 'coverage' | 'filter')
-                    }
-                    displayEmpty
-                  >
-                    <MenuItem value="coverage">Coverage Mode</MenuItem>
-                    <MenuItem value="filter">Filter Mode</MenuItem>
-                  </Select>
-                </FormControl>
-              </Box>
-              
-              {/* Word List */}
-              <Box>
-                <Typography variant="subtitle2" fontWeight={600} gutterBottom>
-                  Target Word List
-                </Typography>
-                <FormControl fullWidth size="small">
-                  <Select
-                    value={selectedWordListId}
-                    onChange={(e) => setSelectedWordListId(e.target.value as number)}
-                    disabled={loadingWordLists}
-                    displayEmpty
-                  >
-                    {wordlists.map((wl: WordList) => (
-                      <MenuItem key={wl.id} value={wl.id}>
-                        {`${wl.name} (${wl.normalized_count} words)`}
-                        {(resolvedDefaultWordlist && wl.id === resolvedDefaultWordlist.id) && ' ★'}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-                
-                {/* Upload New List */}
-                <Button
-                  component="label"
-                  variant="text"
-                  size="small"
-                  startIcon={<UploadIcon />}
-                  fullWidth
-                  sx={{ mt: 1, justifyContent: 'flex-start' }}
-                >
-                  + Upload New List (.csv)
-                  <input
-                    type="file"
-                    accept=".csv"
-                    hidden
-                    onChange={handleFileUpload}
-                  />
-                </Button>
-                
-                {uploadedFile && (
-                  <Box sx={{ mt: 1, p: 1, bgcolor: 'action.hover', borderRadius: 1 }}>
-                    <Typography variant="caption" display="block">{uploadedFile.name}</Typography>
-                    <Button
-                      size="small"
-                      variant="contained"
-                      onClick={handleUploadWordList}
-                      disabled={uploadMutation.isPending}
-                      sx={{ mt: 0.5 }}
-                    >
-                      {uploadMutation.isPending ? 'Uploading...' : 'Upload'}
-                    </Button>
-                  </Box>
-                )}
-              </Box>
-              
-              {/* Sentence Limit (for Coverage mode) */}
-              {mode === 'coverage' && (
+            <Paper elevation={0} variant="outlined" sx={{ p: 6, mt: 2, bgcolor: 'background.paper' }}>
+              <Stack spacing={6} sx={{ width: 'auto', mx: 'auto' }}>
+                {/* Analysis Mode */}
                 <Box>
-                  <Typography variant="subtitle2" fontWeight={600} gutterBottom>
-                    Learning Set Size
-                  </Typography>
-                  <Box sx={{ px: 1 }}>
-                    <Slider
-                      value={sentenceCap === 0 ? 1000 : sentenceCap}
-                      onChange={(_, value) => setSentenceCap(value as number === 1000 ? 0 : value as number)}
-                      min={100}
-                      max={1000}
-                      step={null}
-                      marks={[
-                        { value: 100, label: '100' },
-                        { value: 250, label: '250' },
-                        { value: 500, label: '500' },
-                        { value: 1000, label: '∞' },
-                      ]}
-                      valueLabelDisplay="auto"
-                      valueLabelFormat={(value) => value === 1000 ? '∞' : value.toString()}
-                    />
-                  </Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
-                    <TextField
-                      size="small"
-                      value={sentenceCap === 0 ? '' : sentenceCap}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value);
-                        if (!isNaN(val) && val >= 50 && val <= 999) {
-                          setSentenceCap(val);
-                        }
-                      }}
-                      type="number"
-                      placeholder="Custom"
-                      sx={{ width: 100 }}
-                      inputProps={{ min: 50, max: 999 }}
-                    />
-                    <Typography variant="caption" color="text.secondary">
-                      {sentenceCap === 0 ? 'Unlimited' : `${sentenceCap} sentences`}
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                    <Typography variant="subtitle1" fontWeight={600}>
+                      Analysis Mode
                     </Typography>
+                    <Tooltip title="Click for more information about analysis modes">
+                      <IconButton size="small" onClick={() => setShowHelpDialog(true)}>
+                        <HelpIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
                   </Box>
+                  <FormControl fullWidth>
+                    <Select
+                      value={mode}
+                      onChange={(e: SelectChangeEvent<'coverage' | 'filter'>) => 
+                        setMode(e.target.value as 'coverage' | 'filter')
+                      }
+                      displayEmpty
+                    >
+                      <MenuItem value="coverage">Coverage Mode</MenuItem>
+                      <MenuItem value="filter">Filter Mode</MenuItem>
+                    </Select>
+                  </FormControl>
                 </Box>
-              )}
-            </Stack>
-          </Paper>
-        </Box>
+                
+                {/* Word List */}
+                <Box>
+                  <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                    Target Word List
+                  </Typography>
+                  <FormControl fullWidth>
+                    <Select
+                      value={selectedWordListId}
+                      onChange={(e) => setSelectedWordListId(e.target.value as number)}
+                      disabled={loadingWordLists}
+                      displayEmpty
+                    >
+                      {wordlists.map((wl: WordList) => (
+                        <MenuItem key={wl.id} value={wl.id}>
+                          {`${wl.name} (${wl.normalized_count} words)`}
+                          {(resolvedDefaultWordlist && wl.id === resolvedDefaultWordlist.id) && ' ★'}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  
+                  {/* Upload New List */}
+                  <Button
+                    component="label"
+                    variant="outlined"
+                    startIcon={<UploadIcon />}
+                    sx={{ mt: 2 }}
+                  >
+                    Upload New Word List (.csv)
+                    <input
+                      type="file"
+                      accept=".csv"
+                      hidden
+                      onChange={handleFileUpload}
+                    />
+                  </Button>
+                  
+                  {uploadedFile && (
+                    <Box sx={{ mt: 2, p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
+                      <Typography variant="body2" gutterBottom>{uploadedFile.name}</Typography>
+                      <Button
+                        variant="contained"
+                        onClick={handleUploadWordList}
+                        disabled={uploadMutation.isPending}
+                        size="small"
+                      >
+                        {uploadMutation.isPending ? 'Confirming...' : 'Confirm Upload'}
+                      </Button>
+                    </Box>
+                  )}
+                </Box>
+                
+                {/* Sentence Limit (for Coverage mode) */}
+                {mode === 'coverage' && (
+				<Box>
+					<Typography variant="subtitle1" fontWeight={600} gutterBottom>
+						Learning Set Size
+					</Typography>
+					<Box sx={{ px: 2 }}>
+						<Slider
+							value={sentenceCap === 0 ? 1000 : sentenceCap}
+							onChange={(_, value) =>
+								setSentenceCap((value as number) === 1000 ? 0 : (value as number))
+							}
+							min={50}
+							max={1000}
+							step={1} // allow any integer value in the range
+							marks={[
+								{ value: 50, label: '50' },
+								{ value: 250, label: '250' },
+								{ value: 500, label: '500' },
+								{ value: 700, label: '700' },
+								{ value: 900, label: '900' },
+								{ value: 1000, label: '∞' },
+							]}
+							valueLabelDisplay="auto"
+							valueLabelFormat={(value) => (value === 1000 ? '∞' : value.toString())}
+						/>
+					</Box>
+
+					<Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2 }}>
+						<TextField
+							size="small"
+							value={sentenceCap === 0 ? '' : sentenceCap}
+							onChange={(e) => {
+								const raw = e.target.value.trim();
+								if (raw === '') {
+									// empty means unlimited
+									setSentenceCap(0);
+									return;
+								}
+								const val = Number(raw);
+								if (!Number.isFinite(val)) return;
+								// interpret 1000 as unlimited (∞), otherwise clamp to allowed range
+								if (val === 1000) {
+									setSentenceCap(0);
+								} else {
+									const clamped = Math.round(Math.max(50, Math.min(999, val)));
+									setSentenceCap(clamped);
+								}
+							}}
+							type="number"
+							placeholder="Custom"
+							sx={{ width: 120 }}
+							inputProps={{ min: 50, max: 1000, step: 1 }}
+						/>
+						<Typography variant="body2" color="text.secondary">
+							{sentenceCap === 0 ? 'Unlimited' : `${sentenceCap} sentences`}
+						</Typography>
+					</Box>
+				</Box>
+                )}
+              </Stack>
+            </Paper>
+          </Box>
+        )}
         
-        {/* COLUMN 2: SELECT SOURCE */}
-        <Box>
-          <Paper sx={{ p: 3, height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
-              <Chip label="2" color="primary" size="small" />
-              <Typography variant="h6" fontWeight={600}>
-                Select a Source
-              </Typography>
-            </Box>
+        {activeStep === 1 && (
+          // STEP 2: SELECT SOURCE
+          <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+            <Typography variant="h5" fontWeight={600} gutterBottom>
+              Select a Source
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
+              Choose a previously processed document or import from Google Sheets
+            </Typography>
             
             {/* Search & Import */}
-            <Stack spacing={2} sx={{ mb: 2 }}>
+            <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
               <TextField
                 fullWidth
-                size="small"
                 placeholder="Search by name or ID..."
                 value={historySearch}
                 onChange={(e) => setHistorySearch(e.target.value)}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <SearchIcon fontSize="small" />
-                    </InputAdornment>
-                  ),
+                slotProps={{
+                  input: {
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon />
+                      </InputAdornment>
+                    ),
+                  },
                 }}
               />
               <Button
                 variant="outlined"
-                size="small"
                 startIcon={<CloudUploadIcon />}
                 onClick={() => setOpenSheetDialog(true)}
-                fullWidth
+                sx={{ flexShrink: 0 }}
               >
-                Import from Google Sheets
+                Import from Sheets
               </Button>
             </Stack>
             
             {/* Source List */}
-            <Box sx={{ flex: 1, overflow: 'auto' }}>
+            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'auto', border: 1, borderColor: 'divider', borderRadius: 1, p: 2 }}>
               {loadingHistory ? (
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', py: 4 }}>
-                  <CircularProgress size={24} />
-                  <Typography variant="body2" sx={{ ml: 2 }}>Loading sources...</Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', py: 8 }}>
+                  <CircularProgress size={32} />
+                  <Typography variant="body1" sx={{ ml: 2 }}>Loading sources...</Typography>
                 </Box>
               ) : filteredHistory.length === 0 ? (
-                <Box sx={{ py: 4, textAlign: 'center' }}>
-                  <Typography variant="body2" color="text.secondary">
+                <Box sx={{ py: 8, textAlign: 'center' }}>
+                  <Typography variant="body1" color="text.secondary">
                     {historySearch ? 'No matches found' : 'No source files available'}
                   </Typography>
                 </Box>
               ) : (
-                <Stack spacing={1}>
-                  {filteredHistory.slice(0, 50).map((h) => {
+                <>
+                <Stack spacing={2}>
+                  {filteredHistory.slice((historyPage - 1) * HISTORY_PAGE_SIZE, historyPage * HISTORY_PAGE_SIZE).map((h) => {
                     const selected = String(h.id) === sourceId;
                     const date = new Date(h.timestamp).toLocaleDateString();
                     const isFromSheets = h.original_filename?.includes('Google Sheets');
@@ -653,10 +715,10 @@ export default function CoveragePage() {
                                 {isFromSheets ? <SheetsIcon /> : <PdfIcon />}
                               </Box>
                               <Box sx={{ flex: 1, minWidth: 0 }}>
-                                <Typography variant="body2" fontWeight={600} noWrap>
+                                <Typography variant="body1" fontWeight={600} noWrap>
                                   {h.original_filename || `Source #${h.id}`}
                                 </Typography>
-                                <Typography variant="caption" color="text.secondary" display="block">
+                                <Typography variant="body2" color="text.secondary" display="block">
                                   ID #{h.id} • {h.processed_sentences_count} sentences • {date}
                                 </Typography>
                               </Box>
@@ -672,95 +734,119 @@ export default function CoveragePage() {
                     );
                   })}
                 </Stack>
+
+                {/* Pagination controls */}
+                {filteredHistory.length > HISTORY_PAGE_SIZE && (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+                    <Pagination
+                      count={Math.ceil(filteredHistory.length / HISTORY_PAGE_SIZE)}
+                      page={historyPage}
+                      onChange={(_, p) => setHistoryPage(p)}
+                      color="primary"
+                    />
+                  </Box>
+                )}
+                </>
               )}
             </Box>
-          </Paper>
-        </Box>
+          </Box>
+        )}
         
-        {/* COLUMN 3: RUN & REVIEW */}
-        <Box>
-          <Paper sx={{ p: 3, height: '100%', display: 'flex', flexDirection: 'column' }}>
+        {activeStep === 2 && (
+          // STEP 3: RUN & REVIEW
+          <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
             {!currentRunId ? (
               // Initial State: Big Run Button
               <>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
-                  <Chip label="3" color="primary" size="small" />
-                  <Typography variant="h6" fontWeight={600}>
-                    Run Analysis
-                  </Typography>
-                </Box>
+                <Typography variant="h5" fontWeight={600} gutterBottom>
+                  Run Analysis
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
+                  Start the vocabulary coverage analysis
+                </Typography>
                 
-                <Box sx={{ 
-                  flex: 1, 
-                  display: 'flex', 
-                  flexDirection: 'column',
-                  alignItems: 'center', 
-                  justifyContent: 'center',
-                  gap: 3,
-                }}>
-                  <Button
-                    variant="contained"
-                    size="large"
-                    startIcon={<PlayIcon />}
-                    onClick={handleRunCoverage}
-                    disabled={!sourceId || runMutation.isPending || (creditsData && costData && creditsData.balance < costData.cost)}
-                    sx={{
-                      py: 3,
-                      px: 6,
-                      fontSize: '1.1rem',
-                      fontWeight: 600,
-                      background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
-                      boxShadow: '0 3px 5px 2px rgba(33, 203, 243, .3)',
-                      '&:hover': {
-                        boxShadow: '0 6px 10px 4px rgba(33, 203, 243, .3)',
-                      },
-                      '&:disabled': {
-                        background: 'action.disabledBackground',
-                        boxShadow: 'none',
-                      },
-                    }}
-                  >
-                    {runMutation.isPending ? 'Starting...' : 'Run Vocabulary Coverage'}
-                  </Button>
-                  
-                  {costData && (
-                    <Chip
-                      label={`Costs ${costData.cost} Credits`}
-                      color="primary"
-                      variant="outlined"
-                    />
-                  )}
-                  
-                  {creditsData && costData && creditsData.balance < costData.cost && (
-                    <Alert severity="warning" sx={{ width: '100%' }}>
-                      Insufficient credits. You have {creditsData.balance} credits, but need {costData.cost}.
-                    </Alert>
-                  )}
-                  
-                  {!sourceId && (
-                    <Typography variant="body2" color="text.secondary" textAlign="center">
-                      Please select a source from Column 2 to continue
+                <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Box sx={{ width: '100%', maxWidth: 640, textAlign: 'center' }}>
+                    <Button
+                      variant="contained"
+                      onClick={handleRunCoverage}
+                      disabled={!sourceId || runMutation.isPending || (creditsData && costData && creditsData.balance < costData.cost)}
+                      startIcon={<PlayIcon sx={{ ml: -0.5 }} />}
+                      sx={{
+                        width: { xs: '100%', sm: '60%', md: '45%' },
+                        py: 2.25,
+                        px: 4,
+                        fontSize: '1.05rem',
+                        fontWeight: 700,
+                        borderRadius: 2,
+                        textTransform: 'none',
+                        background: 'linear-gradient(90deg, #2196F3 0%, #21CBF3 100%)',
+                        boxShadow: '0 8px 24px rgba(33,203,243,0.14)',
+                        '&:hover': {
+                          boxShadow: '0 12px 30px rgba(33,203,243,0.18)',
+                        },
+                        '&:disabled': {
+                          background: 'action.disabledBackground',
+                          boxShadow: 'none',
+                        },
+                      }}
+                    >
+                      {runMutation.isPending ? 'Starting...' : 'Run Vocabulary Coverage'}
+                    </Button>
+
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
+                      This will start the analysis and may take a few minutes.
                     </Typography>
-                  )}
+
+                    <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center', gap: 1, alignItems: 'center', flexDirection: { xs: 'column', sm: 'row' } }}>
+                      {costData && (
+                        <Chip label={`Costs ${costData.cost} Credits`} color="primary" variant="outlined" />
+                      )}
+
+                      {creditsData && costData && creditsData.balance < costData.cost && (
+                        <Alert severity="warning" sx={{ maxWidth: 520 }}>
+                          Insufficient credits. You have {creditsData.balance} credits, but need {costData.cost}.
+                        </Alert>
+                      )}
+                    </Box>
+
+                    {!sourceId && (
+                      <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ mt: 2 }}>
+                        Please select a source from the previous step
+                      </Typography>
+                    )}
+                  </Box>
+                </Box>
+              </>
+            ) : (loadingRun && currentRunId && !coverageRun) ? (
+              // Run exists but is still being fetched from the server
+              <>
+                <Typography variant="h5" fontWeight={600} gutterBottom>
+                  Loading Run...
+                </Typography>
+
+                <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 2 }}>
+                  <CircularProgress />
+                  <Typography variant="body1">Fetching run results...</Typography>
                 </Box>
               </>
             ) : coverageRun?.status === 'processing' ? (
               // Processing State
               <>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
-                  <Chip label="3" color="primary" size="small" />
-                  <Typography variant="h6" fontWeight={600}>
-                    Processing...
-                  </Typography>
-                </Box>
+                <Typography variant="h5" fontWeight={600} gutterBottom>
+                  Processing...
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
+                  Your vocabulary coverage analysis is in progress
+                </Typography>
                 
-                <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  <Box>
+                <Box sx={{ maxWidth: 600, mx: 'auto', width: '100%' }}>
+                  <Box sx={{ mb: 4 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                      <Typography variant="body2">Analyzing vocabulary...</Typography>
-                      <Typography variant="body2" fontWeight={600}>{coverageRun.progress_percent}%</Typography>
+                      <Typography variant="body1">Analyzing vocabulary...</Typography>
+                      <Typography variant="body1" fontWeight={600}>{coverageRun.progress_percent}%</Typography>
                     </Box>
-                    <LinearProgress variant="determinate" value={coverageRun.progress_percent} />
+                    <LinearProgress variant="determinate" value={coverageRun.progress_percent} sx={{ height: 8, borderRadius: 1 }} />
                   </Box>
                   
                   {ws.connected ? (
@@ -769,7 +855,7 @@ export default function CoveragePage() {
                     <Chip label="Reconnecting..." color="warning" size="small" />
                   )}
                   
-                  <Box sx={{ mt: 'auto' }}>
+                  <Box sx={{ mt: 4 }}>
                     <Button
                       variant="outlined"
                       color="error"
@@ -788,17 +874,17 @@ export default function CoveragePage() {
             ) : coverageRun?.status === 'completed' ? (
               // Results State
               <>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
-                  <Chip label="3" color="primary" size="small" />
-                  <Typography variant="h6" fontWeight={600}>
-                    Results
-                  </Typography>
-                </Box>
+                <Typography variant="h5" fontWeight={600} gutterBottom>
+                  Results
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
+                  Your vocabulary coverage analysis is complete
+                </Typography>
                 
-                <Stack spacing={3} sx={{ flex: 1, overflow: 'auto' }}>
+                <Stack spacing={3}>
                   {/* KPI Cards */}
-                  <Stack spacing={2}>
-                    <Card variant="outlined">
+                  <Stack direction="row" spacing={2}>
+                    <Card variant="outlined" sx={{ flex: 1 }}>
                       <CardContent>
                         <Typography variant="caption" color="text.secondary">
                           Sentences Selected
@@ -813,7 +899,7 @@ export default function CoveragePage() {
                     
                     {mode === 'coverage' && (
                       <>
-                        <Card variant="outlined">
+                        <Card variant="outlined" sx={{ flex: 1 }}>
                           <CardContent>
                             <Typography variant="caption" color="text.secondary">
                               Words Covered
@@ -824,10 +910,10 @@ export default function CoveragePage() {
                           </CardContent>
                         </Card>
                         
-                        <Card variant="outlined">
+                        <Card variant="outlined" sx={{ flex: 1 }}>
                           <CardContent>
                             <Typography variant="caption" color="text.secondary">
-                              Vocabulary Coverage %
+                              Coverage %
                             </Typography>
                             <Typography variant="h4" fontWeight={600}>
                               {(() => {
@@ -845,7 +931,7 @@ export default function CoveragePage() {
                     )}
                     
                     {mode === 'filter' && (
-                      <Card variant="outlined">
+                      <Card variant="outlined" sx={{ flex: 1 }}>
                         <CardContent>
                           <Typography variant="caption" color="text.secondary">
                             Acceptance Ratio
@@ -865,6 +951,7 @@ export default function CoveragePage() {
                       startIcon={<DownloadIcon />}
                       onClick={handleDownloadCSV}
                       fullWidth
+                      disabled={loadingRun}
                     >
                       Download CSV
                     </Button>
@@ -873,6 +960,7 @@ export default function CoveragePage() {
                       startIcon={<SheetsIcon />}
                       onClick={() => setShowExportDialog(true)}
                       fullWidth
+                      disabled={loadingRun}
                     >
                       Export to Sheets
                     </Button>
@@ -880,13 +968,13 @@ export default function CoveragePage() {
                   
                   {/* Results Preview */}
                   <Box>
-                    <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+                    <Typography variant="subtitle1" fontWeight={600} gutterBottom>
                       Preview Results
                     </Typography>
                     {mode === 'coverage' && learningSetDisplay.length > 0 ? (
-                      <LearningSetTable entries={learningSetDisplay.slice(0, 10)} loading={false} />
+                      <LearningSetTable entries={learningSetDisplay.slice(0, 10)} loading={loadingRun} />
                     ) : mode === 'filter' && assignments.length > 0 ? (
-                      <FilterResultsTable assignments={assignments.slice(0, 10)} loading={false} />
+                      <FilterResultsTable assignments={assignments.slice(0, 10)} loading={loadingRun} />
                     ) : (
                       <Typography variant="body2" color="text.secondary">
                         No preview available
@@ -897,7 +985,6 @@ export default function CoveragePage() {
                       size="small"
                       sx={{ mt: 1 }}
                       onClick={() => {
-                        // Scroll down to full results
                         document.getElementById('full-results')?.scrollIntoView({ behavior: 'smooth' });
                       }}
                     >
@@ -911,6 +998,7 @@ export default function CoveragePage() {
                     onClick={() => {
                       setCurrentRunId(null);
                       setSourceId('');
+                      setActiveStep(0);
                     }}
                     fullWidth
                   >
@@ -921,14 +1009,11 @@ export default function CoveragePage() {
             ) : (
               // Failed/Other States
               <>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
-                  <Chip label="3" color="primary" size="small" />
-                  <Typography variant="h6" fontWeight={600}>
-                    {coverageRun?.status === 'failed' ? 'Failed' : 'Status Unknown'}
-                  </Typography>
-                </Box>
+                <Typography variant="h5" fontWeight={600} gutterBottom color="error">
+                  {coverageRun?.status === 'failed' ? 'Analysis Failed' : 'Status Unknown'}
+                </Typography>
                 
-                <Alert severity="error">
+                <Alert severity="error" sx={{ mb: 3 }}>
                   {coverageRun?.error_message || 'Analysis failed. Please try again.'}
                 </Alert>
                 
@@ -936,18 +1021,39 @@ export default function CoveragePage() {
                   variant="contained"
                   onClick={() => {
                     setCurrentRunId(null);
+                    setActiveStep(0);
                   }}
-                  sx={{ mt: 2 }}
                 >
-                  Try Again
+                  Start Over
                 </Button>
               </>
             )}
-          </Paper>
-        </Box>
+          </Box>
+        )}
+      </Paper>
+      
+      {/* Navigation Buttons */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 3 }}>
+        <Button
+          startIcon={<ArrowBackIcon />}
+          onClick={handleStepBack}
+          disabled={activeStep === 0}
+          size="large"
+        >
+          Back
+        </Button>
+        <Button
+          endIcon={<ArrowForwardIcon />}
+          onClick={handleStepNext}
+          disabled={isNextDisabled}
+          variant="contained"
+          size="large"
+        >
+          {nextButtonLabel}
+        </Button>
       </Box>
       
-      {/* Full Results Section (below the three columns) */}
+      {/* Full Results Section (below the wizard) */}
       {coverageRun?.status === 'completed' && (
         <Box id="full-results" sx={{ mt: 4 }}>
           <Paper sx={{ p: 3 }}>
@@ -962,7 +1068,7 @@ export default function CoveragePage() {
                 <Typography variant="h6" gutterBottom>
                   Learning Set ({learningSetDisplay.length} sentences)
                 </Typography>
-                <LearningSetTable entries={learningSetDisplay} loading={false} />
+                <LearningSetTable entries={learningSetDisplay} loading={loadingRun} />
               </Box>
             )}
             
@@ -971,7 +1077,7 @@ export default function CoveragePage() {
                 <Typography variant="h6" gutterBottom>
                   Filtered Sentences ({assignments.length} results)
                 </Typography>
-                <FilterResultsTable assignments={assignments} loading={false} />
+                <FilterResultsTable assignments={assignments} loading={loadingRun} />
               </Box>
             )}
           </Paper>
