@@ -1138,7 +1138,17 @@ export default function CoveragePage() {
           About Coverage Modes
         </Typography>
         
-        <Stack spacing={2}>
+        <Stack spacing={2}> 
+          <Box>
+            <Typography variant="subtitle2" gutterBottom>
+              Coverage Mode (Comprehensive Learning)
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Selects a minimal set of sentences that covers all vocabulary words in your list, 
+              prioritizing shorter sentences with more content words. Focuses on nouns, verbs, adjectives,
+              and adverbs while ignoring function words. Useful for ensuring complete vocabulary exposure.
+            </Typography>
+
           <Box>
             <Typography variant="subtitle2" gutterBottom>
               Filter Mode (Recommended for Drilling)
@@ -1149,16 +1159,6 @@ export default function CoveragePage() {
               Perfect for creating high-quality sentences for daily repetition drills.
             </Typography>
           </Box>
-          
-          <Box>
-            <Typography variant="subtitle2" gutterBottom>
-              Coverage Mode (Comprehensive Learning)
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Selects a minimal set of sentences that covers all vocabulary words in your list, 
-              prioritizing shorter sentences with more content words. Focuses on nouns, verbs, adjectives,
-              and adverbs while ignoring function words. Useful for ensuring complete vocabulary exposure.
-            </Typography>
           </Box>
         </Stack>
       </Paper>
