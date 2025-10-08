@@ -44,20 +44,8 @@ class CoverageService:
         self.handle_elisions = self.config.get('handle_elisions', True)
     
     def build_sentence_index(self, sentences: List[str]) -> Dict[int, Dict]:
-        """
-        Build an index of sentences with their token information.
-        
-        Args:
-            sentences: List of sentence strings
-            
-        Returns:
-            Dict mapping sentence_index -> {text, tokens, words_in_list, ratio, ...}
-        """
         index = {}
 
-        # Attempt to batch-process sentences with spaCy's pipe to greatly reduce
-        # overhead when tokenizing many sentences. If spaCy's nlp doesn't support
-        # pipe (e.g., DummyNLP fallback), fall back to per-sentence tokenization.
         try:
             from app.utils.linguistics import get_nlp
             nlp = get_nlp()
@@ -65,47 +53,58 @@ class CoverageService:
             nlp = None
 
         if nlp is not None and hasattr(nlp, 'pipe'):
-            docs = nlp.pipe(sentences)
-            for idx, (sentence, doc) in enumerate(zip(sentences, docs)):
-                tokens = []
-                for token in doc:
-                    if getattr(token, 'is_punct', False) or getattr(token, 'is_space', False):
-                        continue
+            # Process in batches to prevent memory spikes. Batch size can be tuned
+            # at runtime via the COVERAGE_SPACY_BATCH_SIZE environment variable.
+            try:
+                batch_size = int(os.getenv('COVERAGE_SPACY_BATCH_SIZE', '100'))
+            except Exception:
+                batch_size = 100
+            for batch_start in range(0, len(sentences), batch_size):
+                batch_end = min(batch_start + batch_size, len(sentences))
+                batch_sentences = sentences[batch_start:batch_end]
+                
+                docs = nlp.pipe(batch_sentences)
+                for offset, (sentence, doc) in enumerate(zip(batch_sentences, docs)):
+                    idx = batch_start + offset
+                    tokens = []
+                    for token in doc:
+                        if getattr(token, 'is_punct', False) or getattr(token, 'is_space', False):
+                            continue
 
-                    surface = token.text
-                    lemma = getattr(token, 'lemma_', surface).lower()
-                    pos = getattr(token, 'pos_', None)
+                        surface = token.text
+                        lemma = getattr(token, 'lemma_', surface).lower()
+                        pos = getattr(token, 'pos_', None)
 
-                    if self.handle_elisions:
-                        surface_for_norm = LinguisticsUtils.handle_elision(surface)
-                    else:
-                        surface_for_norm = surface
+                        if self.handle_elisions:
+                            surface_for_norm = LinguisticsUtils.handle_elision(surface)
+                        else:
+                            surface_for_norm = surface
 
-                    normalized_source = lemma if lemma else surface_for_norm
-                    normalized = LinguisticsUtils.normalize_text(normalized_source, fold_diacritics=self.fold_diacritics)
+                        normalized_source = lemma if lemma else surface_for_norm
+                        normalized = LinguisticsUtils.normalize_text(normalized_source, fold_diacritics=self.fold_diacritics)
 
-                    if not normalized:
-                        continue
+                        if not normalized:
+                            continue
 
-                    tokens.append({
-                        'surface': surface,
-                        'lemma': lemma,
-                        'normalized': normalized,
-                        'pos': pos
-                    })
+                        tokens.append({
+                            'surface': surface,
+                            'lemma': lemma,
+                            'normalized': normalized,
+                            'pos': pos
+                        })
 
-                matched, unmatched = LinguisticsUtils.match_tokens_to_wordlist(tokens, self.wordlist_keys)
-                ratio = len(matched) / len(tokens) if tokens else 0.0
+                    matched, unmatched = LinguisticsUtils.match_tokens_to_wordlist(tokens, self.wordlist_keys)
+                    ratio = len(matched) / len(tokens) if tokens else 0.0
 
-                index[idx] = {
-                    'text': sentence,
-                    'tokens': tokens,
-                    'token_count': len(tokens),
-                    'words_in_list': set(matched),
-                    'words_not_in_list': set(unmatched),
-                    'in_list_ratio': ratio,
-                    'sentence_obj': sentence
-                }
+                    index[idx] = {
+                        'text': sentence,
+                        'tokens': tokens,
+                        'token_count': len(tokens),
+                        'words_in_list': set(matched),
+                        'words_not_in_list': set(unmatched),
+                        'in_list_ratio': ratio,
+                        'sentence_obj': sentence
+                    }
         else:
             # Fallback: per-sentence tokenization
             for idx, sentence in enumerate(sentences):
@@ -498,6 +497,8 @@ class CoverageService:
                     'sentence_index': idx,
                     'sentence_text': info['text'],
                     'in_list_ratio': round(ratio, 3),
+                    # Backwards-compatible score field expected by frontend components
+                    'sentence_score': round(ratio, 3),
                     'token_count': token_count,
                     'words_in_list': list(matched_content_words),  # Only content words
                     'content_word_count': content_word_count

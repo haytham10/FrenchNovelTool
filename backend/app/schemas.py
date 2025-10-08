@@ -189,6 +189,8 @@ class WordListCreateSchema(Schema):
     source_ref = fields.String(allow_none=True, validate=validate.Length(max=512))
     words = fields.List(fields.String(), allow_none=True)  # For manual/CSV upload
     fold_diacritics = fields.Boolean(load_default=True)
+    # Whether the first row in an imported Google Sheet is a header and should be included
+    include_header = fields.Boolean(load_default=True)
 
 
 class WordListUpdateSchema(Schema):

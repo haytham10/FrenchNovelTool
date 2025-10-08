@@ -13,6 +13,28 @@ from celery.exceptions import SoftTimeLimitExceeded
 
 logger = logging.getLogger(__name__)
 
+
+def get_memory_usage_kib() -> Optional[int]:
+    """Return RSS memory usage in KiB if available, otherwise None.
+
+    Uses psutil when installed, otherwise attempts /proc/self/status on Linux.
+    """
+    try:
+        import psutil
+        p = psutil.Process()
+        return int(p.memory_info().rss // 1024)
+    except Exception:
+        try:
+            # Linux fallback
+            with open('/proc/self/status', 'r') as f:
+                for line in f:
+                    if line.startswith('VmRSS:'):
+                        parts = line.split()
+                        # VmRSS is typically in kB
+                        return int(parts[1])
+        except Exception:
+            return None
+
 def get_celery():
     """Get celery instance (deferred import to avoid circular dependency)"""
     from app import celery
@@ -182,6 +204,9 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
         # Extract text from chunk. Prefer in-memory base64 chunk data
         # (produced by ChunkingService) so workers do not rely on a shared
         # filesystem. Fallback to chunk_info['file_path'] when provided.
+        mem_before_pdf = get_memory_usage_kib()
+        if mem_before_pdf:
+            logger.info(f"process_chunk: memory_before_pdf={mem_before_pdf} KiB")
         text = ""
         if chunk_info.get('file_b64'):
             import io
@@ -238,7 +263,15 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
         )
         
         # Process with Gemini (includes intelligent retry cascade)
+        mem_before_gemini = get_memory_usage_kib()
+        if mem_before_gemini:
+            logger.info(f"process_chunk: memory_before_gemini={mem_before_gemini} KiB text_len={len(text)}")
+
         result = gemini_service.normalize_text(text, prompt)
+
+        mem_after_gemini = get_memory_usage_kib()
+        if mem_after_gemini:
+            logger.info(f"process_chunk: memory_after_gemini={mem_after_gemini} KiB delta={mem_after_gemini - (mem_before_gemini or mem_after_gemini)}")
         
         # Check if a fallback method was used and persist marker to DB
         fallback_method = result.get('_fallback_method')
@@ -1236,7 +1269,8 @@ def coverage_build_async(self, run_id: int):
                     user = User.query.get(coverage_run.user_id)
                     if user and user.google_access_token:
                         wordlist_service = WordListService()
-                        refresh_report = wordlist_service.refresh_wordlist_from_source(wordlist, user)
+                        # Use default include_header=True for automated refresh in tasks
+                        refresh_report = wordlist_service.refresh_wordlist_from_source(wordlist, user, include_header=True)
                         safe_db_commit(db)
                         if refresh_report['status'] == 'refreshed':
                             wordlist_keys = set(wordlist.words_json)

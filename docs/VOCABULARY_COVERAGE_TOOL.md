@@ -81,7 +81,7 @@ Ingestion Reporting
 
 - Backend: Flask app, Celery workers, SQLAlchemy, Marshmallow schemas.
 - Frontend: Next.js (App Router), React Query, Zustand (or current store), MUI.
-- NLP: spaCy `fr_core_news_md` (preferred) with diacritic folding; plus inflection/conjugation table generation; curated irregulars map.
+- NLP: spaCy `fr_core_news_sm` (preferred) with diacritic folding; plus inflection/conjugation table generation; curated irregulars map.
 - External: Google Sheets API for import/export with user OAuth.
 - Persistence: WordList, CoverageRun, CoverageAssignment, and UserSettings.
 

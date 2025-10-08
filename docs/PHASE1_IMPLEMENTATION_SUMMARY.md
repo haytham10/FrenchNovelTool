@@ -139,7 +139,7 @@ python scripts/seed_french_2k.py
 
 **Features**:
 - Automated installation in Docker builds
-- Tries `fr_core_news_md` (preferred)
+- Tries `fr_core_news_sm` (preferred)
 - Falls back to `fr_core_news_sm` if needed
 - Executable shell script
 
@@ -150,7 +150,7 @@ python scripts/seed_french_2k.py
 - `backend/Dockerfile.web` (adds spaCy install step)
 - `backend/Dockerfile.worker` (adds spaCy install step)
 - `backend/Dockerfile.dev` (adds spaCy install step)
-- `backend/requirements.txt` (removed fr_core_news_md, now installed via script)
+- `backend/requirements.txt` (removed fr_core_news_sm, now installed via script)
 
 ### 4. Integration Tests (NEW)
 **Purpose**: End-to-end validation of complete flows
@@ -246,7 +246,7 @@ flask db current
 python -c "from app import create_app, db; from app.models import WordList; app = create_app(); app.app_context().push(); wl = WordList.query.filter_by(is_global_default=True).first(); print(f'Found: {wl.name if wl else \"NOT FOUND\"}')"
 
 # 3. Test spaCy
-python -c "import spacy; nlp = spacy.load('fr_core_news_md'); print('✅ spaCy loaded')"
+python -c "import spacy; nlp = spacy.load('fr_core_news_sm'); print('✅ spaCy loaded')"
 
 # 4. Check metrics endpoint
 curl http://localhost:5000/api/v1/metrics | head -20

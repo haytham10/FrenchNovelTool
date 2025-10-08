@@ -15,7 +15,7 @@ COPY requirements.txt ./
 RUN pip install --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt \
     # Download spaCy French model at build time; it's not a pip package
-    && python -m spacy download fr_core_news_lg
+    && python -m spacy download fr_core_news_md
 
 # Copy application code
 COPY . .

@@ -348,7 +348,7 @@ Returns Prometheus metrics in text format:
 5. **Fold diacritics** (optional, default: true) - removes accents
 6. **Handle elisions** - extract lexical head from l', d', j', n', s', t', c', qu'
 7. **Multi-token handling** - extract head lexical token, flag in report
-8. **Lemmatize** using spaCy `fr_core_news_md` model
+8. **Lemmatize** using spaCy `fr_core_news_sm` model
 9. **Deduplicate** by normalized key
 
 ### Ingestion Report
@@ -423,7 +423,7 @@ All endpoints return standard error responses:
 
 ### French Text Processing
 
-The system uses spaCy's `fr_core_news_md` model for:
+The system uses spaCy's `fr_core_news_sm` model for:
 - **Tokenization**: Split text into tokens
 - **Lemmatization**: Reduce words to base form
 - **POS tagging**: Part-of-speech identification

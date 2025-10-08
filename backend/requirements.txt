@@ -25,3 +25,4 @@ python-socketio
 spacy
 unicodedata2
 prometheus-client
+psutil

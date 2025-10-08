@@ -249,7 +249,14 @@ def refresh_wordlist(wordlist_id):
     
     try:
         wordlist_service = WordListService()
-        refresh_report = wordlist_service.refresh_wordlist_from_source(wordlist, user)
+        # Respect include_header flag from request (default True)
+        include_header = True
+        if request.json:
+            include_header = request.json.get('include_header', True)
+        elif request.form:
+            include_header = request.form.get('include_header', 'true').lower() == 'true'
+
+        refresh_report = wordlist_service.refresh_wordlist_from_source(wordlist, user, include_header=include_header)
         db.session.commit()
         
         return jsonify({

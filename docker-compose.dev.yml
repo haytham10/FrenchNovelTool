@@ -77,7 +77,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile.dev
     container_name: french-novel-celery-worker-dev
-    command: celery -A app.celery_app:celery worker --loglevel=info --concurrency=4 --task-events
+    command: celery -A app.celery_app:celery worker --loglevel=info --concurrency=2 --max-tasks-per-child=10 --max-memory-per-child=512000 --task-events
     environment:
       - FLASK_ENV=development
       - SECRET_KEY=dev-secret-key
@@ -88,6 +88,8 @@ services:
       - DATABASE_URL=${DATABASE_URL:-sqlite:///app.db}
       - REDIS_URL=redis://redis:6379/0
       - LOG_LEVEL=DEBUG
+      - PRELOAD_SPACY=false
+      - WORKER_MAX_MEMORY_MB=512
     volumes:
       - ./backend:/app
       - /app/__pycache__

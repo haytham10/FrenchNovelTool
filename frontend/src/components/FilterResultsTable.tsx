@@ -3,7 +3,7 @@
 /**
  * Filter Results Table - Display ranked sentences for Filter mode
  */
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Table,
   TableBody,
@@ -15,15 +15,13 @@ import {
   Typography,
   Box,
   Chip,
-  IconButton,
-  Tooltip,
   TextField,
   InputAdornment,
   TablePagination,
   Stack,
   LinearProgress,
 } from '@mui/material';
-import { Search, Block, Star } from '@mui/icons-material';
+import { Search, Star } from '@mui/icons-material';
 import type { CoverageAssignment } from '@/lib/api';
 
 interface FilterResultsTableProps {
@@ -34,34 +32,29 @@ interface FilterResultsTableProps {
 
 export default function FilterResultsTable({
   assignments,
-  onExclude,
   loading = false,
 }: FilterResultsTableProps) {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(25);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
 
-  // Sort by score descending and filter
-  const sortedAndFilteredAssignments = useMemo(() => {
-    let filtered = [...assignments].sort((a, b) => 
-      (b.sentence_score || 0) - (a.sentence_score || 0)
-    );
-    
-    if (search.trim()) {
-      const query = search.toLowerCase().trim();
-      filtered = filtered.filter((assignment) => 
-        assignment.sentence_text.toLowerCase().includes(query)
-      );
-    }
-    
-    return filtered;
+  // Filter assignments based on search (copying CoverageResultsTable semantics)
+  const filteredAssignments = useMemo(() => {
+    if (!search.trim()) return assignments;
+
+    const query = search.toLowerCase().trim();
+    return assignments.filter((assignment) =>
+      (assignment.word_key || '').toLowerCase().includes(query) ||
+      (assignment.sentence_text || '').toLowerCase().includes(query) ||
+      (assignment.word_original || '').toLowerCase().includes(query)
+    ).sort((a, b) => (b.sentence_score || 0) - (a.sentence_score || 0));
   }, [assignments, search]);
 
   // Paginate
   const paginatedAssignments = useMemo(() => {
     const start = page * rowsPerPage;
-    return sortedAndFilteredAssignments.slice(start, start + rowsPerPage);
-  }, [sortedAndFilteredAssignments, page, rowsPerPage]);
+    return filteredAssignments.slice(start, start + rowsPerPage);
+  }, [filteredAssignments, page, rowsPerPage]);
 
   const handleChangePage = (_event: unknown, newPage: number) => {
     setPage(newPage);
@@ -72,8 +65,22 @@ export default function FilterResultsTable({
     setPage(0);
   };
 
+  // When the search query or underlying assignments change, keep the table on the first page
+  useEffect(() => {
+    setPage(0);
+  }, [search, assignments]);
+
   // Calculate sentence stats
-  const sentenceStats = useMemo(() => {
+  interface SentenceStats {
+    avgWordCount: string;
+    avgScore: string; // scaled to 5-point display
+    minScore: string; // scaled
+    maxScore: string; // scaled
+    minScoreRaw: number;
+    maxScoreRaw: number;
+  }
+
+  const sentenceStats = useMemo<SentenceStats | null>(() => {
     if (assignments.length === 0) return null;
     
     const wordCounts = assignments.map(a => 
@@ -83,12 +90,20 @@ export default function FilterResultsTable({
     const avgWordCount = wordCounts.reduce((a, b) => a + b, 0) / wordCounts.length;
     const scores = assignments.map(a => a.sentence_score || 0);
     const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
-    
+
+    // Keep raw min/max for visualization, but display scores scaled to 5.0
+    const minRaw = Math.min(...scores);
+    const maxRaw = Math.max(...scores);
+
     return {
       avgWordCount: avgWordCount.toFixed(1),
-      avgScore: avgScore.toFixed(2),
-      minScore: Math.min(...scores).toFixed(2),
-      maxScore: Math.max(...scores).toFixed(2),
+      // display on a 5-point scale with one decimal
+      avgScore: (avgScore * 5).toFixed(1),
+      minScore: (minRaw * 5).toFixed(1),
+      maxScore: (maxRaw * 5).toFixed(1),
+      // raw values for percent calculation
+      minScoreRaw: minRaw,
+      maxScoreRaw: maxRaw,
     };
   }, [assignments]);
 
@@ -177,7 +192,7 @@ export default function FilterResultsTable({
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell width="8%">
+              <TableCell width="10%">
                 <Typography variant="subtitle2" fontWeight={600}>
                   Rank
                 </Typography>
@@ -187,19 +202,14 @@ export default function FilterResultsTable({
                   Sentence
                 </Typography>
               </TableCell>
-              <TableCell width="10%" align="center">
+              <TableCell align="center">
                 <Typography variant="subtitle2" fontWeight={600}>
                   Score
                 </Typography>
               </TableCell>
-              <TableCell width="10%" align="center">
+              <TableCell align="center">
                 <Typography variant="subtitle2" fontWeight={600}>
                   Length
-                </Typography>
-              </TableCell>
-              <TableCell width="7%" align="center">
-                <Typography variant="subtitle2" fontWeight={600}>
-                  Actions
                 </Typography>
               </TableCell>
             </TableRow>
@@ -209,10 +219,10 @@ export default function FilterResultsTable({
               const wordCount = assignment.sentence_text.split(/\s+/).length;
               const rank = page * rowsPerPage + idx + 1;
               const score = assignment.sentence_score || 0;
-              const scorePercent = sentenceStats 
-                ? ((score - parseFloat(sentenceStats.minScore)) / 
-                   (parseFloat(sentenceStats.maxScore) - parseFloat(sentenceStats.minScore))) * 100
-                : 0;
+          const scorePercent = sentenceStats
+           ? ((score - sentenceStats.minScoreRaw) /
+             ((sentenceStats.maxScoreRaw - sentenceStats.minScoreRaw) || 1)) * 100
+           : 0;
               
               return (
                 <TableRow key={assignment.id} hover>
@@ -234,7 +244,7 @@ export default function FilterResultsTable({
                   <TableCell align="center">
                     <Box>
                       <Typography variant="body2" fontWeight={500}>
-                        {score.toFixed(2)}
+                        {(score * 5).toFixed(1)}
                       </Typography>
                       <LinearProgress 
                         variant="determinate" 
@@ -250,18 +260,6 @@ export default function FilterResultsTable({
                       color={wordCount === 4 ? 'success' : wordCount === 3 ? 'primary' : 'default'}
                     />
                   </TableCell>
-                  <TableCell align="center">
-                    {onExclude && (
-                      <Tooltip title="Exclude from results">
-                        <IconButton
-                          size="small"
-                          onClick={() => onExclude(assignment)}
-                        >
-                          <Block fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    )}
-                  </TableCell>
                 </TableRow>
               );
             })}
@@ -272,7 +270,7 @@ export default function FilterResultsTable({
       {/* Pagination */}
       <TablePagination
         component="div"
-        count={sortedAndFilteredAssignments.length}
+        count={filteredAssignments.length}
         page={page}
         onPageChange={handleChangePage}
         rowsPerPage={rowsPerPage}
@@ -283,7 +281,7 @@ export default function FilterResultsTable({
       {/* Summary */}
       <Box sx={{ mt: 2 }}>
         <Typography variant="caption" color="text.secondary">
-          Showing {paginatedAssignments.length} of {sortedAndFilteredAssignments.length} sentences
+          Showing {paginatedAssignments.length} of {filteredAssignments.length} sentences
           {search && ` (filtered from ${assignments.length} total)`}
         </Typography>
       </Box>
