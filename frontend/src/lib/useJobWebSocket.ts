@@ -48,7 +48,7 @@ export function useJobWebSocket({
 
   const handleJobProgress = useCallback((data: Job) => {
     setJob(data);
-    console.log('Job progress received:', data);
+    // Job progress received (no debug logging)
 
     // Use the latest callbacks from the ref
     const { onProgress, onComplete, onError, onCancel } = callbacksRef.current;
@@ -70,7 +70,7 @@ export function useJobWebSocket({
     }
     const token = getAccessToken();
     if (!token) {
-      console.log('No token found, WebSocket connection not established.');
+      // No token available; do not establish WebSocket connection
       return;
     }
 
@@ -85,7 +85,6 @@ export function useJobWebSocket({
     });
 
     socket.on('connect', () => {
-      console.log('WebSocket connected');
       setConnected(true);
       setError(null);
       // Join the job room
@@ -94,7 +93,6 @@ export function useJobWebSocket({
     });
 
     socket.on('disconnect', (reason) => {
-      console.log(`WebSocket disconnected: ${reason}`);
       setConnected(false);
       // Only set an error if it's not a clean disconnect
       if (reason !== 'io client disconnect') {
@@ -103,13 +101,11 @@ export function useJobWebSocket({
     });
 
     socket.on('connect_error', (err) => {
-      console.error('WebSocket connection error:', err);
       setError(new Error(`Connection error: ${err.message}`));
       setConnected(false);
     });
 
     socket.on('error', (data: { message: string }) => {
-      console.error('WebSocket error:', data.message);
       setError(new Error(data.message));
     });
 
@@ -117,19 +113,17 @@ export function useJobWebSocket({
     socket.on('job_progress', handleJobProgress);
 
     // Room status events
-    socket.on('joined_room', (data) => {
-      console.log(`Successfully joined room for job ${data.job_id}`);
-      // You might want to fetch the initial job state here if needed
+    socket.on('joined_room', () => {
+      // joined room - initial state can be fetched if required
     });
 
-    socket.on('left_room', (data) => {
-      console.log(`Left room for job ${data.job_id}`);
+    socket.on('left_room', () => {
+      // left room
     });
 
     // Cleanup on unmount or when dependencies change
     return () => {
       if (socket) {
-        console.log(`Cleaning up WebSocket for job ${jobId}`);
         socket.emit('leave_job', { job_id: jobId });
         socket.disconnect();
       }

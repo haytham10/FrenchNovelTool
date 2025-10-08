@@ -27,6 +27,7 @@ import {
   ListItemButton,
   ListItemText,
   InputAdornment,
+  Slider,
 } from '@mui/material';
 import {
   PlayArrow as PlayIcon,
@@ -84,6 +85,7 @@ export default function CoveragePage() {
   // const [resultSearch, setResultSearch] = useState<string>('');
   const [showExportDialog, setShowExportDialog] = useState<boolean>(false);
   const [exportSheetName, setExportSheetName] = useState<string>('');
+  const [sentenceCap, setSentenceCap] = useState<number>(500); // Coverage mode sentence cap (0 = unlimited)
   // Load user settings to know which default wordlist is configured
   const { data: settings } = useSettings();
   
@@ -208,6 +210,7 @@ export default function CoveragePage() {
             alpha: 0.5,
             beta: 0.3,
             gamma: 0.2,
+            target_count: sentenceCap, // Use user-selected sentence cap
           };
       
       return createCoverageRun({
@@ -450,6 +453,41 @@ export default function CoveragePage() {
               }
             </Alert>
           </Box>
+          
+          {/* Coverage Mode Sentence Cap Slider */}
+          {mode === 'coverage' && (
+            <Box>
+              <Typography variant="subtitle2" gutterBottom>
+                Sentence Limit: {sentenceCap === 1000 ? '∞ (Unlimited)' : sentenceCap}
+              </Typography>
+              <Slider
+                value={sentenceCap === 0 ? 1000 : sentenceCap}
+                onChange={(_, value) => setSentenceCap(value as number === 1000 ? 0 : value as number)}
+                min={50}
+                max={1000}
+                step={null}
+                marks={[
+                  { value: 50, label: '50' },
+                  { value: 100, label: '100' },
+                  { value: 200, label: '200' },
+                  { value: 300, label: '300' },
+                  { value: 400, label: '400' },
+                  { value: 500, label: '500' },
+                  { value: 600, label: '600' },
+                  { value: 700, label: '700' },
+                  { value: 800, label: '800' },
+                  { value: 900, label: '900' },
+                  { value: 1000, label: '∞' },
+                ]}
+                valueLabelDisplay="auto"
+                valueLabelFormat={(value) => value === 1000 ? '∞' : value.toString()}
+                sx={{ mt: 2 }}
+              />
+              <Typography variant="caption" color="text.secondary">
+                Choose a sentence cap (50-900) or set to ∞ (rightmost) for unlimited.
+              </Typography>
+            </Box>
+          )}
           
           {/* Word List Selection */}
           <FormControl fullWidth>

@@ -242,15 +242,17 @@ class CoverageService:
         progress_callback: Optional[Callable[[int], Any]] = None
     ) -> Tuple[List[Dict], Dict]:
         """
-        Coverage Mode: Greedy algorithm to select sentences that cover all words.
-        
+        Coverage Mode: Greedy algorithm to select sentences that cover as many words as possible.
+
         Scoring: Score = (new_words × 10) - sentence_length
-        Goal: Cover all 2000 target words in 500 sentences or less.
-        
+        By default a target_count may be configured; a target_count of 0 or None
+        means "no limit" and the algorithm will run until it can make no further
+        progress (under the length constraints).
+
         Args:
             sentences: List of sentence strings
             progress_callback: Optional progress callback
-            
+
         Returns:
             Tuple of (assignments, stats)
         """
@@ -273,10 +275,18 @@ class CoverageService:
         sentence_contribution = defaultdict(int)
         sentence_selection_score = {}
         
-        max_sentences = 500
-        
+        # Determine maximum sentences to select. If target_count is 0 or None,
+        # treat it as unlimited.
+        if self.target_count in (0, None):
+            max_sentences = None
+        else:
+            try:
+                max_sentences = int(self.target_count)
+            except Exception:
+                max_sentences = None
+
         # Greedy selection loop
-        while uncovered_words and len(selected_sentence_order) < max_sentences:
+        while uncovered_words and (max_sentences is None or len(selected_sentence_order) < max_sentences):
             best_idx = None
             best_score = float('-inf')
             best_new_words = set()

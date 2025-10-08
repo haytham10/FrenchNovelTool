@@ -65,7 +65,6 @@ export function useCoverageWebSocket({
     });
 
     socket.on('connect', () => {
-      console.debug('useCoverageWebSocket: socket connected', { runId, apiUrl });
       setConnected(true);
       setError(null);
       // Use the server-side event to join the run room
@@ -73,7 +72,6 @@ export function useCoverageWebSocket({
     });
 
     socket.on('disconnect', (reason) => {
-      console.debug('useCoverageWebSocket: disconnect', reason);
       setConnected(false);
       if (reason !== 'io client disconnect') {
         setError(new Error(`WebSocket disconnected: ${reason}. Reconnecting...`));
@@ -81,13 +79,11 @@ export function useCoverageWebSocket({
     });
 
     socket.on('connect_error', (err) => {
-      console.debug('useCoverageWebSocket: connect_error', err);
       setConnected(false);
       setError(new Error(`Connection error: ${err.message}`));
     });
 
     socket.on('error', (data: { message: string }) => {
-      console.debug('useCoverageWebSocket: error', data);
       setError(new Error(data.message));
     });
 

@@ -36,14 +36,13 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   // Load user from stored token on mount
   useEffect(() => {
     const loadUser = async () => {
-      const token = getAccessToken();
-      console.log('[AuthContext] Checking for stored token...', token ? 'Found' : 'Not found');
+  const token = getAccessToken();
+  // Check for stored token (no debug logging)
       
       if (token) {
         try {
           setLoadingMessage('Verifying authentication...');
-          console.log('[AuthContext] Fetching user info from /auth/me...');
-          console.log('[AuthContext] Using token:', token.substring(0, 50) + '...');
+          // Fetching user info (no debug logging)
           const userData = await getCurrentUser();
           
           setUser({
@@ -52,7 +51,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
             name: userData.name,
             avatarUrl: userData.picture,
           });
-          console.log('[AuthContext] User restored from token:', userData.email);
+          // User restored from token
         } catch (error) {
           console.error('[AuthContext] Failed to load user:', error);
           if (error && typeof error === 'object' && 'response' in error) {
@@ -60,11 +59,11 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
             console.error('[AuthContext] Error response:', axiosError.response?.data);
             console.error('[AuthContext] Error status:', axiosError.response?.status);
           }
-          console.log('[AuthContext] Clearing invalid tokens');
+          // Clearing invalid tokens
           clearTokens();
         }
       } else {
-        console.log('[AuthContext] No token found, user needs to login');
+        // No token found; user needs to login
       }
       setIsLoading(false);
       setLoadingMessage('');
@@ -81,13 +80,12 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     }
 
     try {
-      setIsAuthenticating(true);
-      setLoadingMessage('Authenticating with Google...');
-      console.log('[AuthContext] Exchanging Google ID token for JWT (legacy flow)...');
+  setIsAuthenticating(true);
+  setLoadingMessage('Authenticating with Google...');
       // Call backend to exchange Google token for our JWT
       const loginResponse = await loginWithGoogle(response.credential);
       
-      console.log('[AuthContext] Storing tokens in localStorage...');
+  // Storing tokens in localStorage
       // Store JWT tokens
       setTokens(loginResponse.access_token, loginResponse.refresh_token);
       
@@ -99,8 +97,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         avatarUrl: loginResponse.user.picture,
       });
 
-      console.log('[AuthContext] Login successful:', loginResponse.user.email);
-      console.log('[AuthContext] Has Sheets access:', loginResponse.has_sheets_access);
+  // Login successful
     } catch (error) {
       console.error('[AuthContext] Login failed:', error);
       enqueueSnackbar(
@@ -118,13 +115,12 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const loginWithCode = useCallback(async (code: string) => {
     // OAuth authorization code flow (recommended - includes Sheets/Drive access)
     try {
-      setIsAuthenticating(true);
-      setLoadingMessage('Completing authentication...');
-      console.log('[AuthContext] Exchanging authorization code for tokens...');
+  setIsAuthenticating(true);
+  setLoadingMessage('Completing authentication...');
       // Call backend to exchange authorization code for our JWT
       const loginResponse = await loginWithGoogle(undefined, code);
       
-      console.log('[AuthContext] Storing tokens in localStorage...');
+  // Storing tokens in localStorage
       // Store JWT tokens
       setTokens(loginResponse.access_token, loginResponse.refresh_token);
       
@@ -136,8 +132,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         avatarUrl: loginResponse.user.picture,
       });
 
-      console.log('[AuthContext] Login successful:', loginResponse.user.email);
-      console.log('[AuthContext] Has Sheets access:', loginResponse.has_sheets_access);
+  // Login successful
     } catch (error) {
       console.error('[AuthContext] Login with code failed:', error);
       enqueueSnackbar(
@@ -153,11 +148,11 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   }, [enqueueSnackbar]);
 
   const logout = useCallback(() => {
-    console.log('[AuthContext] Logging out...');
+    // Logging out
     googleLogout();
     clearTokens();
     setUser(null);
-    console.log('[AuthContext] Logout complete');
+    // Logout complete
   }, []);
 
   const value = useMemo<AuthContextValue>(() => ({ user, isLoading, isAuthenticating, loginWithCredential, loginWithCode, logout }), [user, isLoading, isAuthenticating, loginWithCredential, loginWithCode, logout]);
