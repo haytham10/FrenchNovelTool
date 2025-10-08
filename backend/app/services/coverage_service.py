@@ -28,7 +28,7 @@ class CoverageService:
         self.gamma = self.config.get('gamma', 0.2)  # Length penalty weight
         self.coverage_quality_weight = float(self.config.get('quality_weight', 10))
         self.coverage_length_penalty = float(self.config.get('length_penalty', 1))
-        self.coverage_prune_max_tokens = self.config.get('coverage_prune_max_tokens', 10)
+        self.coverage_prune_max_tokens = self.config.get('coverage_prune_max_tokens', 8)
 
         # Filter mode defaults
         self.len_min = self.config.get('len_min', 3)
@@ -141,6 +141,62 @@ class CoverageService:
         
         return content_count
     
+    @staticmethod
+    def filter_content_words_only(sentence_text: str, wordlist_keys: Set[str],
+                                   fold_diacritics: bool = True,
+                                   handle_elisions: bool = True) -> Set[str]:
+        """
+        Match words from the sentence against the wordlist, but only return content words.
+        This filters out function words (pronouns, determiners, conjunctions) so they don't
+        contribute to vocabulary coverage metrics.
+        
+        Args:
+            sentence_text: The original sentence text
+            wordlist_keys: Set of normalized word keys from word list
+            fold_diacritics: Whether diacritics were folded
+            handle_elisions: Whether elisions were handled
+            
+        Returns:
+            Set of normalized content words that are in the wordlist
+        """
+        from app.utils.linguistics import get_nlp
+        
+        if not wordlist_keys:
+            return set()
+        
+        # Content word POS tags (Universal Dependencies tagset used by spaCy)
+        content_pos_tags = {'NOUN', 'VERB', 'ADJ', 'ADV', 'PROPN'}
+        
+        nlp = get_nlp()
+        doc = nlp(sentence_text)
+        
+        matched_content = set()
+        for token in doc:
+            if token.is_punct or token.is_space:
+                continue
+            
+            # Only process content words
+            if token.pos_ not in content_pos_tags:
+                continue
+            
+            # Get normalized form (same process as tokenize_and_lemmatize)
+            surface = token.text
+            if handle_elisions:
+                from app.utils.linguistics import LinguisticsUtils
+                surface_for_lemma = LinguisticsUtils.handle_elision(surface)
+            else:
+                surface_for_lemma = surface
+            
+            temp_doc = nlp(surface_for_lemma)
+            lemma = temp_doc[0].lemma_.lower() if temp_doc and len(temp_doc) > 0 else surface_for_lemma.lower()
+            normalized = LinguisticsUtils.normalize_text(lemma, fold_diacritics=fold_diacritics)
+            
+            # Check if this normalized token is in the wordlist
+            if normalized in wordlist_keys:
+                matched_content.add(normalized)
+        
+        return matched_content
+    
     def coverage_mode_greedy(
         self,
         sentences: List[str],
@@ -208,7 +264,15 @@ class CoverageService:
                 best_length = None
 
                 for idx, info in pool.items():
-                    covered_by_this = info['words_in_list'] & uncovered_words
+                    # Filter to only content words when evaluating coverage
+                    content_words_in_sentence = self.filter_content_words_only(
+                        info['text'],
+                        self.wordlist_keys,
+                        fold_diacritics=self.fold_diacritics,
+                        handle_elisions=self.handle_elisions
+                    )
+                    
+                    covered_by_this = content_words_in_sentence & uncovered_words
                     if not covered_by_this:
                         continue
 
@@ -381,13 +445,15 @@ class CoverageService:
                         pass
                 continue
             
-            # Count content words among matched words
-            content_word_count = self.count_content_words_in_matched(
+            # Filter to only content words from the matched set
+            matched_content_words = self.filter_content_words_only(
                 info['text'],
                 info['words_in_list'],
                 fold_diacritics=self.fold_diacritics,
                 handle_elisions=self.handle_elisions
             )
+            
+            content_word_count = len(matched_content_words)
             
             if content_word_count >= min_content_words:
                 ratio = info['in_list_ratio'] if token_count > 0 else 0.0
@@ -396,7 +462,7 @@ class CoverageService:
                     'sentence_text': info['text'],
                     'in_list_ratio': round(ratio, 3),
                     'token_count': token_count,
-                    'words_in_list': list(info['words_in_list']),
+                    'words_in_list': list(matched_content_words),  # Only content words
                     'content_word_count': content_word_count
                 })
 
