@@ -285,6 +285,10 @@ class CoverageService:
             for idx, info in sentence_index.items():
                 if idx in selected_sentence_set:
                     continue
+
+                # Only consider sentences of exactly 8 tokens
+                if info.get('token_count', 0) != 8:
+                    continue
                     
                 # Get content words in this sentence that are in wordlist
                 sentence_words = self.filter_content_words_only(
