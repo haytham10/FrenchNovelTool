@@ -11,12 +11,13 @@ RUN apt-get update && apt-get install -y \
 
 # Copy and install Python dependencies
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+# Upgrade pip and install python dependencies in a single layer
+RUN pip install --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt \
+    # Download spaCy French model at build time; it's not a pip package
+    && python -m spacy download fr_core_news_lg
 
-# Install spaCy French model
-COPY scripts/install_spacy_model.sh /tmp/install_spacy_model.sh
-RUN chmod +x /tmp/install_spacy_model.sh && /tmp/install_spacy_model.sh
-
+# Copy application code
 COPY . .
 
 # Copy Railway-optimized entrypoint
