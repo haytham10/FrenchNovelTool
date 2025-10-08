@@ -2,6 +2,7 @@
 import logging
 from typing import Dict, List, Set, Tuple, Optional, Callable, Any
 from collections import defaultdict
+import heapq
 from app.utils.linguistics import LinguisticsUtils
 
 logger = logging.getLogger(__name__)
@@ -62,31 +63,80 @@ class CoverageService:
             Dict mapping sentence_index -> {text, tokens, words_in_list, ratio, ...}
         """
         index = {}
-        
-        for idx, sentence in enumerate(sentences):
-            tokens = LinguisticsUtils.tokenize_and_lemmatize(
-                sentence,
-                fold_diacritics=self.fold_diacritics,
-                handle_elisions=self.handle_elisions
-            )
-            
-            matched, unmatched = LinguisticsUtils.match_tokens_to_wordlist(
-                tokens,
-                self.wordlist_keys
-            )
-            
-            ratio = len(matched) / len(tokens) if tokens else 0.0
-            
-            index[idx] = {
-                'text': sentence,
-                'tokens': tokens,
-                'token_count': len(tokens),
-                'words_in_list': set(matched),
-                'words_not_in_list': set(unmatched),
-                'in_list_ratio': ratio,
-                'sentence_obj': sentence  # Store original for POS analysis if needed
-            }
-        
+
+        # Attempt to batch-process sentences with spaCy's pipe to greatly reduce
+        # overhead when tokenizing many sentences. If spaCy's nlp doesn't support
+        # pipe (e.g., DummyNLP fallback), fall back to per-sentence tokenization.
+        try:
+            from app.utils.linguistics import get_nlp
+            nlp = get_nlp()
+        except Exception:
+            nlp = None
+
+        if nlp is not None and hasattr(nlp, 'pipe'):
+            docs = nlp.pipe(sentences)
+            for idx, (sentence, doc) in enumerate(zip(sentences, docs)):
+                tokens = []
+                for token in doc:
+                    if getattr(token, 'is_punct', False) or getattr(token, 'is_space', False):
+                        continue
+
+                    surface = token.text
+                    lemma = getattr(token, 'lemma_', surface).lower()
+                    pos = getattr(token, 'pos_', None)
+
+                    if self.handle_elisions:
+                        surface_for_norm = LinguisticsUtils.handle_elision(surface)
+                    else:
+                        surface_for_norm = surface
+
+                    normalized_source = lemma if lemma else surface_for_norm
+                    normalized = LinguisticsUtils.normalize_text(normalized_source, fold_diacritics=self.fold_diacritics)
+
+                    if not normalized:
+                        continue
+
+                    tokens.append({
+                        'surface': surface,
+                        'lemma': lemma,
+                        'normalized': normalized,
+                        'pos': pos
+                    })
+
+                matched, unmatched = LinguisticsUtils.match_tokens_to_wordlist(tokens, self.wordlist_keys)
+                ratio = len(matched) / len(tokens) if tokens else 0.0
+
+                index[idx] = {
+                    'text': sentence,
+                    'tokens': tokens,
+                    'token_count': len(tokens),
+                    'words_in_list': set(matched),
+                    'words_not_in_list': set(unmatched),
+                    'in_list_ratio': ratio,
+                    'sentence_obj': sentence
+                }
+        else:
+            # Fallback: per-sentence tokenization
+            for idx, sentence in enumerate(sentences):
+                tokens = LinguisticsUtils.tokenize_and_lemmatize(
+                    sentence,
+                    fold_diacritics=self.fold_diacritics,
+                    handle_elisions=self.handle_elisions
+                )
+
+                matched, unmatched = LinguisticsUtils.match_tokens_to_wordlist(tokens, self.wordlist_keys)
+                ratio = len(matched) / len(tokens) if tokens else 0.0
+
+                index[idx] = {
+                    'text': sentence,
+                    'tokens': tokens,
+                    'token_count': len(tokens),
+                    'words_in_list': set(matched),
+                    'words_not_in_list': set(unmatched),
+                    'in_list_ratio': ratio,
+                    'sentence_obj': sentence
+                }
+
         return index
     
     @staticmethod
@@ -266,67 +316,75 @@ class CoverageService:
             )
             pool_token_counts[idx] = info['token_count']
 
+        # Build inverted index: word -> set(sentence_idx)
+        inverted_index: Dict[str, Set[int]] = defaultdict(set)
+        for idx, words in pool_content_words.items():
+            for w in words:
+                inverted_index[w].add(idx)
+
+        # Initialize a max-heap (as min-heap with negative scores) for lazy greedy.
+        # Each heap entry is ( -score, sentence_idx ). We also allow stale entries
+        # and recompute score on pop until it's up-to-date.
+        heap: List[Tuple[float, int]] = []
+
+        def compute_score_for_idx(idx: int, uncovered: Set[str]) -> Tuple[float, int]:
+            words = pool_content_words.get(idx, set())
+            covered = words & uncovered
+            gain = len(covered)
+            if gain == 0:
+                return (float('-inf'), 0)
+            length_penalty = pool_token_counts.get(idx, candidate_sentence_index[idx]['token_count']) * self.coverage_length_penalty
+            score = (gain * self.coverage_quality_weight) - length_penalty
+            return (score, gain)
+
+        # Seed heap with initial scores
+        for idx in pool_content_words:
+            score, gain = compute_score_for_idx(idx, uncovered_words)
+            if gain > 0:
+                heapq.heappush(heap, (-score, idx))
+
+        # Lazy greedy selection using heap and inverted index
         def _select_from_pool(pool: Dict[int, Dict]) -> None:
             nonlocal uncovered_words
-            while uncovered_words:
-                best_sentence_idx = None
-                best_score = float('-inf')
-                best_covered_words: Set[str] = set()
-                best_length = None
+            while uncovered_words and heap:
+                neg_score, idx = heapq.heappop(heap)
+                # Recompute actual score for current uncovered set
+                score, gain = compute_score_for_idx(idx, uncovered_words)
+                if gain == 0:
+                    continue  # stale or no longer useful
 
-                for idx, info in pool.items():
-                    # Use precomputed content-word sets when available
-                    content_words_in_sentence = pool_content_words.get(idx)
-                    if content_words_in_sentence is None:
-                        # Fall back to computing it once
-                        content_words_in_sentence = self.filter_content_words_only(
-                            info,
-                            self.wordlist_keys,
-                            fold_diacritics=self.fold_diacritics,
-                            handle_elisions=self.handle_elisions
-                        )
-                        pool_content_words[idx] = content_words_in_sentence
-                    
-                    covered_by_this = content_words_in_sentence & uncovered_words
-                    if not covered_by_this:
-                        continue
+                # If the recomputed score differs from popped score, re-push updated
+                if -neg_score != score:
+                    heapq.heappush(heap, (-score, idx))
+                    continue
 
-                    gain = len(covered_by_this)
-                    length_penalty = pool_token_counts.get(idx, info['token_count']) * self.coverage_length_penalty
-                    score = (gain * self.coverage_quality_weight) - length_penalty
+                # Select this sentence
+                content_words_in_sentence = pool_content_words.get(idx, set())
+                covered_by_this = content_words_in_sentence & uncovered_words
 
-                    if (
-                        best_sentence_idx is None
-                        or score > best_score
-                        or (
-                            score == best_score
-                            and (
-                                gain > len(best_covered_words)
-                                or (
-                                    gain == len(best_covered_words)
-                                    and (best_length is None or info['token_count'] < best_length)
-                                )
-                            )
-                        )
-                    ):
-                        best_sentence_idx = idx
-                        best_score = score
-                        best_covered_words = covered_by_this
-                        best_length = info['token_count']
-
-                if best_sentence_idx is None:
-                    break
-
-                for word_key in best_covered_words:
-                    word_to_sentence[word_key] = best_sentence_idx
+                for word_key in covered_by_this:
+                    word_to_sentence[word_key] = idx
                     uncovered_words.discard(word_key)
 
-                sentence_contribution[best_sentence_idx] += len(best_covered_words)
-                sentence_selection_score[best_sentence_idx] = best_score
+                sentence_contribution[idx] += len(covered_by_this)
+                sentence_selection_score[idx] = score
 
-                if best_sentence_idx not in selected_sentence_set:
-                    selected_sentence_set.add(best_sentence_idx)
-                    selected_sentence_order.append(best_sentence_idx)
+                if idx not in selected_sentence_set:
+                    selected_sentence_set.add(idx)
+                    selected_sentence_order.append(idx)
+
+                # Update heap entries for sentences that lost coverage due to removal
+                # of words: we lazily let their popped entries be stale; but to speed
+                # up convergence, we can push updated scores for sentences that
+                # shared words with this selection.
+                for w in covered_by_this:
+                    for other_idx in inverted_index.get(w, set()):
+                        if other_idx == idx:
+                            continue
+                        # Recompute and push updated score if still covers something
+                        s_score, s_gain = compute_score_for_idx(other_idx, uncovered_words)
+                        if s_gain > 0:
+                            heapq.heappush(heap, (-s_score, other_idx))
 
                 if progress_callback:
                     try:
