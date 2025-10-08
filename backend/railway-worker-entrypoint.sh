@@ -104,55 +104,6 @@ for i in {1..3}; do
     fi
 done
 
-
-# Create and switch to a dedicated non-root user for running the worker
-if [ "$(id -u)" -eq 0 ] && [ -z "$RUN_AS_WORKER_USER" ]; then
-	CELERY_USER="${CELERY_USER:-celery}"
-	CELERY_UID="${CELERY_UID:-1001}"
-	CELERY_GID="${CELERY_GID:-1001}"
-	PROJECT_DIR="${PROJECT_DIR:-/app}"
-
-	echo "🔐 Creating non-root user '${CELERY_USER}' (uid:${CELERY_UID} gid:${CELERY_GID})..."
-
-	# Create group if missing
-	if ! getent group "${CELERY_USER}" >/dev/null 2>&1; then
-		groupadd -g "${CELERY_GID}" "${CELERY_USER}" >/dev/null 2>&1 || true
-	fi
-
-	# Create user if missing
-	if ! id -u "${CELERY_USER}" >/dev/null 2>&1; then
-		if command -v useradd >/dev/null 2>&1; then
-			useradd -m -u "${CELERY_UID}" -g "${CELERY_GID}" -s /bin/sh "${CELERY_USER}" >/dev/null 2>&1 || true
-		else
-			# fallback for busybox/adduser minimal images
-			addgroup -g "${CELERY_GID}" "${CELERY_USER}" >/dev/null 2>&1 || true
-			adduser -D -u "${CELERY_UID}" -G "${CELERY_USER}" -s /bin/sh "${CELERY_USER}" >/dev/null 2>&1 || true
-		fi
-	fi
-
-	# Ensure project dir and common runtime dirs are writable by the worker user
-	for d in "${PROJECT_DIR}" /tmp /var/tmp /var/run; do
-		[ -e "$d" ] && chown -R "${CELERY_USER}:${CELERY_USER}" "$d" >/dev/null 2>&1 || true
-	done
-
-	# Mark that we've switched to avoid infinite recursion and re-exec the script as the non-root user
-	export RUN_AS_WORKER_USER=1
-
-	if command -v gosu >/dev/null 2>&1; then
-		exec gosu "${CELERY_USER}" "$0" "$@"
-	elif command -v su-exec >/dev/null 2>&1; then
-		exec su-exec "${CELERY_USER}" "$0" "$@"
-	elif command -v runuser >/dev/null 2>&1; then
-		exec runuser -u "${CELERY_USER}" -- "$0" "$@"
-	elif command -v sudo >/dev/null 2>&1; then
-		exec sudo -E -u "${CELERY_USER}" "$0" "$@"
-	else
-		# Last-resort with su (may not preserve environment)
-		exec su -s /bin/sh - "${CELERY_USER}" -c "RUN_AS_WORKER_USER=1 exec \"$0\" $*"
-	fi
-fi
-
-
 # Start Celery worker with production settings
 echo "🎯 Starting Celery worker..."
 exec celery -A celery_worker.celery worker \
