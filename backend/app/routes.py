@@ -44,22 +44,25 @@ def health_check():
     from app.constants import API_VERSION, API_SERVICE_NAME
     import redis
     import os
-    
+
+    strict_mode = os.getenv('HEALTHCHECK_STRICT', 'false').lower() == 'true'
+
     health = {
         'status': 'healthy',
         'service': API_SERVICE_NAME,
         'version': API_VERSION,
         'checks': {}
     }
-    
+    degraded_checks = []
+
     # Check database connection
     try:
         db.session.execute(db.text('SELECT 1'))
         health['checks']['database'] = 'ok'
     except Exception as e:
+        degraded_checks.append('database')
         health['checks']['database'] = f'error: {str(e)[:100]}'
-        health['status'] = 'unhealthy'
-    
+
     # Check Redis connection (if configured)
     redis_url = os.getenv('REDIS_URL')
     if redis_url and redis_url != 'memory://':
@@ -68,12 +71,21 @@ def health_check():
             r.ping()
             health['checks']['redis'] = 'ok'
         except Exception as e:
+            degraded_checks.append('redis')
             health['checks']['redis'] = f'error: {str(e)[:100]}'
-            health['status'] = 'unhealthy'
     else:
         health['checks']['redis'] = 'not configured (using memory)'
-    
-    status_code = 200 if health['status'] == 'healthy' else 503
+
+    if degraded_checks:
+        health['status'] = 'degraded'
+        health['checks']['degraded_components'] = degraded_checks
+    else:
+        health['status'] = 'healthy'
+
+    status_code = 200
+    if strict_mode and degraded_checks:
+        status_code = 503
+
     return jsonify(health), status_code
 
 

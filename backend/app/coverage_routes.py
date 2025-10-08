@@ -1,6 +1,7 @@
 """API routes for Vocabulary Coverage Tool"""
 import logging
-from flask import Blueprint, request, jsonify, send_from_directory, safe_join, abort, current_app
+from flask import Blueprint, request, jsonify, send_from_directory, abort, current_app
+from werkzeug.utils import safe_join
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from marshmallow import ValidationError
 from app import limiter, db
