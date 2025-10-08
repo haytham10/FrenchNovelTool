@@ -44,21 +44,8 @@ class CoverageService:
         self.handle_elisions = self.config.get('handle_elisions', True)
     
     def build_sentence_index(self, sentences: List[str]) -> Dict[int, Dict]:
-        """
-        Build an index of sentences with their token information.
-        
-        Args:
-            sentences: List of sentence strings
-            
-        Returns:
-            Dict mapping sentence_index -> {text, tokens, words_in_list, ratio, ...}
-        """
         index = {}
 
-        # Attempt to batch-process sentences with spaCy's pipe to greatly reduce
-        # overhead when tokenizing many sentences. Process in chunks to avoid OOM.
-        # If spaCy's nlp doesn't support pipe (e.g., DummyNLP fallback), fall back 
-        # to per-sentence tokenization.
         try:
             from app.utils.linguistics import get_nlp
             nlp = get_nlp()
