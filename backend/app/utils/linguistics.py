@@ -11,7 +11,15 @@ _nlp = None
 
 
 def get_nlp():
-    """Lazy load spaCy French model."""
+    """Lazy load spaCy French model.
+
+    Notes:
+        - To reduce memory usage, we disable heavy components not needed for our
+          use-cases (parser, ner). POS tagging and lemmatization remain enabled.
+        - Model name can be controlled via SPACY_MODEL env var.
+        - Components to disable can be controlled via SPACY_DISABLE env var
+          (comma-separated), defaults to "parser,ner".
+    """
     global _nlp
     if _nlp is None:
         try:
@@ -25,13 +33,17 @@ def get_nlp():
             import os
             preferred = os.environ.get("SPACY_MODEL", "fr_core_news_md")
             tried = []
+            # Determine disabled components to save RAM
+            disable_env = os.environ.get("SPACY_DISABLE", "parser,ner").strip()
+            disable = [c.strip() for c in disable_env.split(",") if c.strip()]
+
             for model in (preferred, "fr_core_news_sm"):
                 if model in tried:
                     continue
                 tried.append(model)
                 try:
-                    _nlp = spacy.load(model)
-                    logger.info("Loaded spaCy French model: %s", model)
+                    _nlp = spacy.load(model, disable=disable)
+                    logger.info("Loaded spaCy French model: %s (disable=%s)", model, ",".join(disable))
                     break
                 except OSError:
                     logger.warning("spaCy model %s not found, will try next fallback", model)
@@ -48,6 +60,28 @@ def get_nlp():
                     return DummyDoc()
             _nlp = DummyNLP()
     return _nlp
+
+
+def preload_spacy(model_name: Optional[str] = None) -> None:
+    """Preload spaCy model to enable copy-on-write memory sharing in forked workers.
+
+    Call this in the Celery parent process before worker processes are forked so
+    that model memory pages are shared among children (dramatically reducing RSS).
+
+    Args:
+        model_name: Optional explicit model to load; if not provided, env var
+            SPACY_MODEL or the default inside get_nlp() will be used.
+    """
+    # If a specific model is requested, honor it via environment override for this load
+    if model_name:
+        import os
+        os.environ.setdefault("SPACY_MODEL", model_name)
+    nlp = get_nlp()
+    # Touch the pipeline to ensure it's fully initialized
+    try:
+        _ = nlp.pipe_names  # noqa: F841
+    except Exception:  # pragma: no cover
+        pass
 
 
 class LinguisticsUtils:
