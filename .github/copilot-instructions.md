@@ -32,127 +32,48 @@ Flask + Next.js app for processing French novel PDFs using Google Gemini AI to n
 # ALWAYS use migrations, never db.create_all()
 docker-compose -f docker-compose.dev.yml exec backend flask db migrate -m "Description"
 docker-compose -f docker-compose.dev.yml exec backend flask db upgrade
-```
+# Copilot instructions — French Novel Tool (concise)
 
-### Running the Stack
-```bash
-# Development (hot reload, debug mode)
-./dev-setup.sh  # Unix
-dev-setup.bat   # Windows
-# Or: docker-compose -f docker-compose.dev.yml up
+Purpose: make AI coding agents productive quickly by summarizing architecture, key files, commands, and project-specific conventions.
 
-# Production
-docker-compose up --build
-# Or: make prod
-```
+- Big picture: a Flask backend (SQLAlchemy + Flask-Migrate) + Celery workers for async PDF processing, and a Next.js (TS) frontend.
+- Core data flow: upload PDF -> PDFService (extract/metadata) -> ChunkingService -> Celery tasks (process_chunk) -> GeminiService (LLM normalize) -> finalize_job_results -> History -> optional Google Sheets export.
 
-### Testing & Linting
-```bash
-# Backend (from backend/)
-pytest --cov=app --cov-report=html
-# Pre-commit hooks run Black (100 char line limit), Flake8, Bandit
+Key files (quick jump):
+- `backend/app/__init__.py` — create_app(), extension init (db, jwt, limiter, socketio, celery).
+- `backend/app/routes.py` — main REST endpoints (process-pdf, estimate-pdf, extract-pdf-text) and admin endpoints that trigger Celery tasks.
+- `backend/app/tasks.py` — Celery tasks (names: `app.tasks.process_chunk`, `app.tasks.finalize_job_results`, `app.tasks.chunk_watchdog`) and orchestration patterns (chord, retry, watchdog).
+- `backend/app/services/` — business logic (PDFService, GeminiService, ChunkingService, JobService, GoogleSheetsService).
+- `backend/app/schemas.py` — Marshmallow validation for requests/responses.
+- `backend/config.py` — environment-driven configuration (CORS origin expansion, Celery/Redis, DB pooling, GEMINI_* vars).
 
-# Frontend (from frontend/)
-npm run lint
-```
+Developer workflows & explicit commands:
+- Start dev stack (hot reload): `./dev-setup.sh` (Unix) or `dev-setup.bat` (Windows); or `docker-compose -f docker-compose.dev.yml up`.
+- DB migrations (inside dev container):
+    - `docker-compose -f docker-compose.dev.yml exec backend flask db migrate -m "msg"`
+    - `docker-compose -f docker-compose.dev.yml exec backend flask db upgrade`
+- Tests / lint:
+    - Backend: `cd backend && pytest --cov=app --cov-report=html`
+    - Frontend lint: `cd frontend && npm run lint`
+    - Install pre-commit hooks: `cd backend && pre-commit install`.
 
-## Project-Specific Conventions
+Project-specific conventions (do not deviate):
+- Always use Flask-Migrate; `db.create_all()` is disabled in `backend/app/__init__.py`.
+- Services are instantiated per-request (see `routes.py` where GeminiService is created from user settings). HistoryService and UserSettingsService are the few module-level instances.
+- JWT: `get_jwt_identity()` returns a string; convert to int (e.g., `user_id = int(get_jwt_identity())`).
+- Rate limiting: always put `@jwt_required()` before `@limiter.limit()` on protected endpoints (see `routes.py`).
+- File validation: use `utils/validators.validate_pdf_file()` (checks magic bytes, size), not filename extension alone.
 
-### Authentication Flow
-- **JWT + Google OAuth**: Frontend gets Google token → backend validates with AuthService → creates JWT access/refresh tokens
-- **Token Storage**: Access token in memory/localStorage, refresh token in httpOnly cookie (see `frontend/src/lib/auth.ts`)
-- **Protected Routes**: Use `@jwt_required()` decorator, current user via `get_jwt_identity()` (returns user_id as string, must convert to int)
-- **Token Refresh**: Automatic via axios interceptor on 401 responses
+Celery + reliability notes (practical patterns):
+- Tasks use chords and group patterns; finalization is idempotent: `finalize_job_results` will early-exit if job already finalized.
+- Chunks may be delivered as base64 in `chunk_info['file_b64']` (workers prefer in-memory bytes over shared FS).
+- DB writes use `safe_db_commit()` retry helper — treat DB operations as potentially transient in cloud deployments.
 
-### Rate Limiting Pattern
-```python
-@main_bp.route('/process-pdf', methods=['POST'])
-@jwt_required()
-@limiter.limit("10 per hour")  # Applied AFTER @jwt_required
-def process_pdf():
-    # Limits are per-endpoint, configured in route decorator
-```
+Integration & secrets:
+- GEMINI_API_KEY controls LLM calls (`config.py`), model selection via user settings maps to internal model names in `JobService`.
+- Google OAuth tokens (access/refresh) are stored on the `User` model and used for Google Sheets exports via `GoogleSheetsService`.
+- Redis (REDIS_URL) used for Celery broker/result backend and for rate limiter storage in production.
 
-### Validation Pattern
-- **Marshmallow Schemas**: All request/response validation in `backend/app/schemas.py`
-- **File Uploads**: Use `validate_pdf_file()` from `utils/validators.py` (checks extension, size, and PDF magic bytes)
-- **Example**:
-```python
-from .schemas import ExportToSheetSchema
-schema = ExportToSheetSchema()
-data = schema.load(request.json)  # Raises ValidationError if invalid
-```
+When making changes: reference these files for examples and tests: `backend/app/tasks.py` (retry/watchdog patterns), `backend/app/routes.py` (auth + rate limiting + job flow), and `backend/app/services/gemini_service.py` (LLM retries and fallbacks).
 
-### Service Instantiation
-- Services are instantiated per-request (NOT singletons): `gemini_service = GeminiService(sentence_length_limit=12)`
-- Exception: HistoryService and UserSettingsService created at module level in routes.py
-
-### Error Handling
-- Centralized handlers in `backend/app/utils/error_handlers.py` (registered in `create_app()`)
-- Custom CORS handling in `backend/app/utils/cors_handlers.py` (adds OPTIONS preflight support)
-- Frontend: ErrorBoundary component for React errors, toast notifications via notistack
-
-### Configuration Pattern
-- **Environment Variables**: Backend loads from `.env` via python-dotenv, frontend from `.env.local`
-- **CORS Handling**: Auto-includes www/apex variants (see `config.py` `_with_www_variants()`)
-- **Constants**: Centralized in `backend/app/constants.py` (API_VERSION, SERVICE_NAME, status codes)
-
-## Key Files to Reference
-
-### When Adding New Endpoints
-- `backend/app/routes.py` - Main API routes (process-pdf, export-to-sheet, history, settings)
-- `backend/app/auth_routes.py` - Auth routes (login, refresh, logout, google-auth)
-- `backend/app/schemas.py` - Add validation schema for new endpoint
-
-### When Modifying Database Schema
-- `backend/app/models.py` - User, History, UserSettings models
-- Run migrations (see Database Changes above)
-- Update corresponding schemas in `schemas.py`
-
-### When Adding Frontend Features
-- `frontend/src/lib/api.ts` - Add API function (auto-includes auth header)
-- `frontend/src/lib/queries.ts` - Add React Query hooks if needed
-- State in Zustand stores (`frontend/src/stores/`) for complex state
-
-### Docker & Deployment
-- `docker-compose.dev.yml` - Development stack (hot reload, exposed ports)
-- `docker-compose.yml` - Production stack (health checks, restart policies)
-- `Makefile` - Convenient commands (make dev, make prod, make test)
-- `backend/vercel.json` + `frontend/vercel.json` - Serverless deployment config
-
-## Dependencies & Integration Points
-
-### External APIs
-- **Google Gemini AI**: Configured via `GEMINI_API_KEY`, model selection in UserSettings (balanced/quality/speed maps to gemini-2.5-flash/pro/lite)
-- **Google Sheets API**: Uses user's OAuth tokens, scopes defined in `config.py` (spreadsheets + drive.file)
-- **Redis**: Required for rate limiting in production (RATELIMIT_STORAGE_URI), optional in dev (falls back to memory://)
-
-### Critical Dependencies
-- Backend: Flask 3.x, SQLAlchemy, Flask-JWT-Extended, Flask-Limiter, google-genai SDK, tenacity (retry logic)
-- **Frontend**: Next.js 15, React 19, Material-UI v7, TanStack Query v5, Zustand, axios
-- **Vocabulary Analysis**: spaCy for NLP tasks (lemmatization).
-
-## Common Pitfalls
-
-1. **Database Migration**: Never call `db.create_all()` - it's explicitly disabled (see `backend/app/__init__.py:55`)
-2. **User ID Type**: `get_jwt_identity()` returns string, must convert to int: `user_id = int(get_jwt_identity())`
-3. **Rate Limiting Order**: Apply `@limiter.limit()` AFTER `@jwt_required()` decorator
-4. **Service Instantiation**: GeminiService takes settings in constructor, create new instance per request with user's settings
-5. **CORS**: Don't add origins manually, use CORS_ORIGINS env var (auto-expands www/apex variants)
-6. **File Validation**: Always use `validate_pdf_file()`, don't rely on extension alone
-- **New Feature**: Vocabulary Coverage tool for linguistic analysis, using `CoverageService` and `WordListService`.
-- **Credit System**: A usage-based credit and job tracking system is managed by `CreditService` and `JobService`.
-
-## Style & Formatting
-
-- **Python**: Black formatter (100 char line), PEP 8, type hints encouraged, docstrings required for services
-- **TypeScript**: ESLint config in `eslint.config.mjs`, strict mode enabled
-- **Commit Messages**: Conventional commits (feat/fix/docs/style/refactor/test/chore)
-- **Pre-commit Hooks**: Auto-format with Black, Flake8, Bandit (install: `cd backend && pre-commit install`)
-
-## Testing Notes
-
-- Backend: pytest with coverage (`pytest --cov=app --cov-report=html`)
-- Test config in `backend/pyproject.toml` ([tool.pytest.ini_options])
-- Coverage reports in `htmlcov/` (gitignored)
-- Frontend: ESLint only (no test suite currently)
+If anything here is unclear or you want deeper examples (small patches, tests, or expanded task wiring), tell me which area to expand and I will iterate.
