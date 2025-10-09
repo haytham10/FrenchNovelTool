@@ -24,41 +24,20 @@ def add_cors_headers(response):
     """
     Add CORS headers to a response object.
     This can be used in an after_request handler.
+
+    NOTE: This function is kept for backwards compatibility but should NOT be used
+    when Flask-CORS is already configured, as it will cause duplicate headers.
     """
-    origin = request.headers.get('Origin', '')
-    allowed_origins = current_app.config.get('CORS_ORIGINS', [])
-    
-    # Check if origin matches any allowed origins (supporting wildcards)
-    origin_allowed = False
-    for allowed in allowed_origins:
-        if allowed == '*' or origin == allowed:
-            origin_allowed = True
-            break
-    
-    if origin_allowed:
-        response.headers.add('Access-Control-Allow-Origin', origin)
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
-        response.headers.add('Access-Control-Allow-Headers', 
-                          'Content-Type, Authorization, X-Requested-With')
-        response.headers.add('Access-Control-Allow-Methods',
-                          'GET, POST, PUT, PATCH, DELETE, OPTIONS')
-        
+    # Disabled to prevent duplicate CORS headers when Flask-CORS is active
     return response
 
 
 def setup_cors_handling(app):
     """
     Configure enhanced CORS handling for a Flask app.
-    Adds an after_request handler to ensure all responses have proper CORS headers.
+
+    NOTE: This function is now a no-op since Flask-CORS extension handles
+    all CORS headers. Kept for backwards compatibility.
     """
-    @app.after_request
-    def apply_cors_headers(response):
-        return add_cors_headers(response)
-    
-    # Globally handle OPTIONS requests
-    @app.route('/', defaults={'path': ''}, methods=['OPTIONS'])
-    @app.route('/<path:path>', methods=['OPTIONS'])
-    def options_handler(path):
-        response = jsonify({})
-        response.status_code = 204
-        return response
+    # No-op: Flask-CORS extension (configured in __init__.py) handles everything
+    pass

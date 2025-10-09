@@ -86,6 +86,9 @@ def create_app(config_class=Config):
         # Register error handlers
         register_error_handlers(app)
 
+        # Set up enhanced CORS handling (currently no-op, Flask-CORS handles everything)
+        setup_cors_handling(app)
+
         # Register SocketIO event handlers
         from . import socket_events  # Import to register handlers
 
