@@ -64,7 +64,7 @@ def normalize_text(text: str, fold_diacritics: bool = True) -> str:
 
 
 def normalize_word_OLD(word: str) -> str:
-    """OLD normalization (before the fix) - just extracts after elision"""
+    """Word list normalization - extracts lexical head from elisions"""
     import re
     import unicodedata
     
@@ -73,7 +73,7 @@ def normalize_word_OLD(word: str) -> str:
     
     word = word.strip()
     
-    # OLD: Just extract the part after elision
+    # Extract the part after elision (e.g., "l'homme" → "homme")
     elision_pattern = r"^(?:l'|d'|j'|n'|s'|t'|c'|qu')\s*(.+)$"
     match = re.match(elision_pattern, word, re.IGNORECASE)
     if match:
@@ -92,49 +92,42 @@ def normalize_word_OLD(word: str) -> str:
     return word.strip()
 
 
-def normalize_word_NEW(word: str) -> str:
-    """NEW normalization (after the fix) - uses normalize_french_lemma"""
-    # Apply French lemma normalization then text normalization
-    word_normalized = normalize_french_lemma(word)
-    return normalize_text(word_normalized, fold_diacritics=True)
-
-
 def test_coverage_improvement():
     """
     Test coverage improvement by comparing OLD vs NEW normalization.
     
-    Scenario: We have a word list with base vocabulary words, and we want to
-    match them against lemmas from spaCy. The key improvement is handling
-    reflexive verbs correctly.
+    The KEY IMPROVEMENT is handling reflexive pronouns in lemma normalization.
+    Word list normalization stays the same (extracts head words from elisions).
     """
     
     print("=" * 80)
     print("Coverage Improvement Demonstration")
     print("=" * 80)
     print()
+    print("Key Improvement: French lemma normalization now handles reflexive pronouns!")
+    print("This allows base verb forms in word lists to match reflexive lemmas from spaCy")
+    print()
     
-    # Sample word list (base vocabulary forms as they should appear)
-    # Note: Good word lists contain BASE FORMS, not elided forms
+    # Sample word list (base vocabulary forms)
     word_list_raw = [
-        "ami",         # friend (not "l'ami")
-        "accord",      # agreement (not "d'accord")
-        "être",        # to be (with diacritic)
+        "ami",         # friend
+        "accord",      # agreement  
+        "être",        # to be
         "laver",       # to wash (BASE FORM, not "se laver")
         "appeler",     # to call (BASE FORM, not "s'appeler")
-        "aujourd'hui", # today (compound word)
+        "aujourd'hui", # today
         "avoir",       # to have
     ]
     
-    # Sample lemmas (as they come from spaCy after lemmatization)
-    # These represent how spaCy lemmatizes reflexive verbs and other forms
+    # Sample lemmas (as spaCy lemmatizes them, INCLUDING reflexive forms)
     sentence_lemmas = [
         "ami",         # from "l'ami"
         "accord",      # from "d'accord"
-        "etre",        # "être" normalized
+        "etre",        # from "être"
         "se_laver",    # REFLEXIVE: spaCy lemmatizes "il se lave" to "se_laver"
         "se_appeler",  # REFLEXIVE: spaCy lemmatizes "il s'appelle" to "se_appeler"
-        "aujourdhui",  # normalized
-        "avoir",       # regular verb
+        "aujourdhui",  # from "aujourd'hui"
+        "avoir",       # from "avoir"
     ]
     
     print("Word List (base vocabulary forms):")
@@ -147,67 +140,71 @@ def test_coverage_improvement():
         print(f"  • {lemma}")
     print()
     
-    # OLD approach: doesn't handle reflexive pronouns properly
+    # OLD approach: lemmas don't handle reflexive pronouns
     print("=" * 80)
-    print("OLD APPROACH (Before Fix - no reflexive handling)")
+    print("OLD APPROACH (Before Fix - no reflexive handling in lemmas)")
     print("=" * 80)
     wordlist_normalized_OLD = {normalize_word_OLD(w): w for w in word_list_raw}
+    # OLD: No reflexive handling in lemmas
     lemmas_normalized_OLD = {normalize_text(l, True): l for l in sentence_lemmas}
     
-    print("\nNormalized Word List (OLD):")
+    print("\nNormalized Word List:")
     for norm, orig in sorted(wordlist_normalized_OLD.items()):
         print(f"  '{orig}' → '{norm}'")
     
-    print("\nNormalized Lemmas (OLD):")
+    print("\nNormalized Lemmas (OLD - no reflexive handling):")
     for norm, orig in sorted(lemmas_normalized_OLD.items()):
         print(f"  '{orig}' → '{norm}'")
     
-    # Find matches
     matches_OLD = set(wordlist_normalized_OLD.keys()) & set(lemmas_normalized_OLD.keys())
     coverage_OLD = len(matches_OLD) / len(wordlist_normalized_OLD) * 100
     
     print(f"\nMatches: {len(matches_OLD)}/{len(wordlist_normalized_OLD)}")
     print(f"Coverage: {coverage_OLD:.1f}%")
     for match in sorted(matches_OLD):
-        print(f"  ✓ '{match}' (word: {wordlist_normalized_OLD[match]} ← lemma: {lemmas_normalized_OLD[match]})")
+        print(f"  ✓ '{match}'")
     
-    print("\nMissed words:")
+    print("\nMissed words (reflexive verbs don't match):")
     missed_OLD = set(wordlist_normalized_OLD.keys()) - matches_OLD
     for norm in sorted(missed_OLD):
-        print(f"  ✗ '{wordlist_normalized_OLD[norm]}' (normalized: '{norm}') - NOT MATCHED")
+        print(f"  ✗ '{wordlist_normalized_OLD[norm]}' (normalized: '{norm}')")
     
-    # NEW approach: handles reflexive pronouns correctly
+    # NEW approach: lemmas now handle reflexive pronouns
     print()
     print("=" * 80)
-    print("NEW APPROACH (After Fix - with reflexive pronoun handling)")
+    print("NEW APPROACH (After Fix - with reflexive pronoun handling in lemmas)")
     print("=" * 80)
-    wordlist_normalized_NEW = {normalize_word_NEW(w): w for w in word_list_raw}
+    wordlist_normalized_NEW = {normalize_word_OLD(w): w for w in word_list_raw}  # Same as OLD
+    # NEW: Reflexive handling in lemmas via normalize_french_lemma
     lemmas_normalized_NEW = {
         normalize_text(normalize_french_lemma(l), True): l 
         for l in sentence_lemmas
     }
     
-    print("\nNormalized Word List (NEW):")
+    print("\nNormalized Word List (unchanged):")
     for norm, orig in sorted(wordlist_normalized_NEW.items()):
         print(f"  '{orig}' → '{norm}'")
     
-    print("\nNormalized Lemmas (NEW):")
+    print("\nNormalized Lemmas (NEW - with reflexive handling):")
     for norm, orig in sorted(lemmas_normalized_NEW.items()):
-        print(f"  '{orig}' → '{norm}'")
+        marker = "⭐" if orig.startswith("se_") or orig.startswith("s'") else "  "
+        print(f"{marker} '{orig}' → '{norm}'")
     
-    # Find matches
     matches_NEW = set(wordlist_normalized_NEW.keys()) & set(lemmas_normalized_NEW.keys())
     coverage_NEW = len(matches_NEW) / len(wordlist_normalized_NEW) * 100
     
     print(f"\nMatches: {len(matches_NEW)}/{len(wordlist_normalized_NEW)}")
     print(f"Coverage: {coverage_NEW:.1f}%")
     for match in sorted(matches_NEW):
-        print(f"  ✓ '{match}' (word: {wordlist_normalized_NEW[match]} ← lemma: {lemmas_normalized_NEW[match]})")
+        print(f"  ✓ '{match}'")
     
     print("\nMissed words:")
     missed_NEW = set(wordlist_normalized_NEW.keys()) - matches_NEW
-    for norm in sorted(missed_NEW):
-        print(f"  ✗ '{wordlist_normalized_NEW[norm]}' (normalized: '{norm}') - NOT MATCHED")
+    if missed_NEW:
+        for norm in sorted(missed_NEW):
+            print(f"  ✗ '{wordlist_normalized_NEW[norm]}' (normalized: '{norm}')")
+    else:
+        print("  None! All words matched.")
     
     # Summary
     print()
@@ -223,7 +220,7 @@ def test_coverage_improvement():
     # Highlight the key improvement
     new_matches = matches_NEW - matches_OLD
     if new_matches:
-        print("NEW MATCHES (thanks to reflexive pronoun handling):")
+        print("⭐ NEW MATCHES (thanks to reflexive pronoun handling):")
         for match in sorted(new_matches):
             orig_word = wordlist_normalized_NEW[match]
             orig_lemma = lemmas_normalized_NEW[match]
@@ -231,9 +228,16 @@ def test_coverage_improvement():
         print()
     
     if improvement > 0:
-        print("✓ The French lemma normalization improves coverage!")
-        print("  Key improvement: Reflexive verbs (se_laver, se_appeler) are now")
-        print("  matched correctly against their base forms (laver, appeler)")
+        print("✅ SUCCESS! The French lemma normalization improves coverage!")
+        print()
+        print("What changed:")
+        print("  • normalize_french_lemma() now strips reflexive pronouns (se_, s')")
+        print("  • Applied in tokenize_and_lemmatize() before matching")
+        print("  • Reflexive verbs (se_laver, se_appeler) now match base forms (laver, appeler)")
+        print()
+        print("Result:")
+        print(f"  • {len(new_matches)} additional words matched")
+        print(f"  • Coverage improved by {improvement:.1f} percentage points")
     
     print("=" * 80)
 

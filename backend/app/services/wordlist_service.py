@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 from app import db
 from app.models import WordList, CoverageRun, UserSettings
 from app.utils.metrics import wordlists_created_total, wordlist_ingestion_errors_total
-from app.utils.linguistics import LinguisticsUtils
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +23,8 @@ class WordListService:
         """
         Normalize a single word to its canonical form.
         
-        Uses the same French-specific normalization logic as lemma normalization
-        to ensure consistent matching between word lists and sentence processing.
+        For word lists, this extracts the lexical head from elided forms
+        (e.g., "l'homme" → "homme") to match against lemmatized text.
 
         Args:
             word: Input word to normalize
@@ -49,12 +48,26 @@ class WordListService:
         # Remove leading numbers and punctuation (e.g. "1. avoir" -> "avoir")
         word = re.sub(r'^\d+[.:\-)]?\s*', '', word)
 
-        # Apply French-specific lemma normalization for consistent matching
-        # This handles elisions, reflexive pronouns, and other French quirks
-        word = LinguisticsUtils.normalize_french_lemma(word)
-        
-        # Apply general text normalization (diacritics, apostrophes, etc.)
-        word = LinguisticsUtils.normalize_text(word, fold_diacritics=fold_diacritics)
+        # Handle elisions BEFORE removing apostrophes (l', d', j', n', s', t', c', qu')
+        # Extract the lexical head after elision for word list matching
+        elision_pattern = r"^(?:l'|d'|j'|n'|s'|t'|c'|qu')\s*(.+)$"
+        match = re.match(elision_pattern, word, re.IGNORECASE)
+        if match:
+            word = match.group(1)
+        else:
+            # Remove internal apostrophes only if not an elision (aujourd'hui -> aujourdhui)
+            word = word.replace("'", "")
+
+        # Unicode casefold for case-insensitive matching
+        word = word.casefold()
+
+        # Fold diacritics if requested
+        if fold_diacritics:
+            # Decompose and remove combining marks
+            word = ''.join(
+                c for c in unicodedata.normalize('NFD', word)
+                if unicodedata.category(c) != 'Mn'
+            )
 
         return word.strip()
     
