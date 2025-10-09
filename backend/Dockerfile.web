@@ -24,21 +24,21 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Install runtime dependencies (include poppler-utils for pdftotext)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    poppler-utils \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+# and clean up in a single layer
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl poppler-utils && \
+    rm -rf /var/lib/apt/lists/* && \
+    apt-get clean
 
-# Copy requirements and install them system-wide
+# Copy only requirements first to leverage Docker cache
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install spaCy French model
-COPY scripts/install_spacy_model.sh /tmp/install_spacy_model.sh
+# Copy spaCy model installation script
+COPY backend/scripts/install_spacy_model.sh /tmp/install_spacy_model.sh
 RUN chmod +x /tmp/install_spacy_model.sh && /tmp/install_spacy_model.sh
 
-# Copy application code
+# Now copy the rest of the application code
 COPY . .
 
 # Create non-root user
