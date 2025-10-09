@@ -74,12 +74,17 @@ export default function Home() {
       // Job completed - extract sentences from chunk_results
       if (job.chunk_results && Array.isArray(job.chunk_results)) {
         const allSentences: string[] = [];
-        job.chunk_results.forEach((chunk) => {
+        
+        interface ChunkResult {
+          status: string;
+          sentences: { normalized?: string }[];
+        }
+        
+        job.chunk_results.forEach((chunk: ChunkResult) => {
           if (chunk.status === 'success' && chunk.sentences && Array.isArray(chunk.sentences)) {
-            chunk.sentences.forEach((s) => {
-              const sentence = s as { normalized?: string };
-              if (sentence.normalized) {
-                allSentences.push(sentence.normalized);
+            chunk.sentences.forEach((s: { normalized?: string }) => {
+              if (s.normalized) {
+                allSentences.push(s.normalized);
               }
             });
           }

@@ -437,6 +437,24 @@ export const listWordLists = async (): Promise<{ wordlists: WordList[] }> => {
   return response.data;
 };
 
+export const createWordListFromWords = async (
+  name: string,
+  words: string[],
+  foldDiacritics: boolean
+): Promise<{ wordlist: WordList; report: Record<string, unknown> }> => {
+  const response = await api.post('/coverage/wordlists/from-words', {
+    name,
+    words,
+    fold_diacritics: foldDiacritics,
+  });
+  return response.data;
+};
+
+export const deleteWordList = async (wordlistId: number): Promise<{ message: string }> => {
+  const response = await api.delete(`/coverage/wordlists/${wordlistId}`);
+  return response.data;
+};
+
 export const createWordListFromFile = async (
   file: File,
   name: string,
