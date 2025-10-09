@@ -824,9 +824,10 @@ export const getCoverageCost = async (): Promise<{ cost: number; currency: strin
  * Create and start a coverage run
  */
 export const createCoverageRun = async (params: {
-  mode: 'coverage' | 'filter';
+  mode: 'coverage' | 'filter' | 'batch';
   source_type: 'job' | 'history';
-  source_id: number;
+  source_id?: number;
+  source_ids?: number[];
   wordlist_id?: number;
   config?: Record<string, unknown>;
 }): Promise<{ coverage_run: CoverageRun; task_id: string; credits_charged: number }> => {

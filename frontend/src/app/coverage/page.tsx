@@ -34,6 +34,9 @@ import {
   Stepper,
   Step,
   StepLabel,
+  Checkbox,
+  FormControlLabel,
+  Switch,
 } from '@mui/material';
 import {
   PlayArrow as PlayIcon,
@@ -91,6 +94,8 @@ export default function CoveragePage() {
   const [mode, setMode] = useState<'coverage' | 'filter'>('coverage');
   // Source is now only from history (UI removed for Job ID)
   const [sourceId, setSourceId] = useState<string>(urlId || '');
+  const [selectedSourceIds, setSelectedSourceIds] = useState<number[]>([]);
+  const [isBatchMode, setIsBatchMode] = useState<boolean>(false);
   const [selectedWordListId, setSelectedWordListId] = useState<number | ''>('');
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [currentRunId, setCurrentRunId] = useState<number | null>(urlRunId ? parseInt(urlRunId) : null);
@@ -235,19 +240,31 @@ export default function CoveragePage() {
             target_count: sentenceCap, // Use user-selected sentence cap
           };
       
-      return createCoverageRun({
-        mode,
-        source_type: 'history',
-        source_id: parseInt(sourceId),
-        wordlist_id: selectedWordListId || undefined,
-        config,
-      });
+      // Batch mode or single mode
+      if (isBatchMode && selectedSourceIds.length >= 2) {
+        return createCoverageRun({
+          mode: 'batch',
+          source_type: 'history',
+          source_ids: selectedSourceIds,
+          wordlist_id: selectedWordListId || undefined,
+          config,
+        });
+      } else {
+        return createCoverageRun({
+          mode,
+          source_type: 'history',
+          source_id: parseInt(sourceId),
+          wordlist_id: selectedWordListId || undefined,
+          config,
+        });
+      }
     },
     onSuccess: (data) => {
       setCurrentRunId(data.coverage_run.id);
       queryClient.invalidateQueries({ queryKey: ['credits'] }); // Refresh credit balance
+      const modeDisplay = isBatchMode ? `Batch (${selectedSourceIds.length} sources)` : mode;
       enqueueSnackbar(
-        `Coverage run started! ${data.credits_charged} credits charged.`,
+        `Coverage run started (${modeDisplay})! ${data.credits_charged} credits charged.`,
         { variant: 'success' }
       );
     },
@@ -345,8 +362,38 @@ export default function CoveragePage() {
   };
   
   const handleRunCoverage = () => {
-    if (sourceId) {
+    if (isBatchMode && selectedSourceIds.length >= 2) {
       runMutation.mutate();
+    } else if (!isBatchMode && sourceId) {
+      runMutation.mutate();
+    }
+  };
+  
+  const handleToggleSourceSelection = (historyId: number) => {
+    if (isBatchMode) {
+      setSelectedSourceIds((prev) => {
+        if (prev.includes(historyId)) {
+          return prev.filter((id) => id !== historyId);
+        } else {
+          return [...prev, historyId];
+        }
+      });
+    } else {
+      setSourceId(String(historyId));
+    }
+  };
+  
+  const handleBatchModeToggle = () => {
+    const newBatchMode = !isBatchMode;
+    setIsBatchMode(newBatchMode);
+    
+    // Clear selections when toggling
+    if (newBatchMode) {
+      setSourceId('');
+      setSelectedSourceIds([]);
+    } else {
+      setSelectedSourceIds([]);
+      setSourceId('');
     }
   };
   
@@ -448,9 +495,16 @@ export default function CoveragePage() {
   // Validation for next button
   const isNextDisabled = React.useMemo(() => {
     if (activeStep === 0) return false; // Configure step always allows next
-    if (activeStep === 1) return !sourceId; // Select Source requires a source
+    if (activeStep === 1) {
+      // Select Source requires at least one source (single) or 2+ sources (batch)
+      if (isBatchMode) {
+        return selectedSourceIds.length < 2;
+      } else {
+        return !sourceId;
+      }
+    }
     return true; // Run & Review is the final step
-  }, [activeStep, sourceId]);
+  }, [activeStep, sourceId, selectedSourceIds, isBatchMode]);
   
   const nextButtonLabel = activeStep === WIZARD_STEPS.length - 1 ? 'Finish' : 'Next';
   
@@ -649,11 +703,43 @@ export default function CoveragePage() {
           // STEP 2: SELECT SOURCE
           <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
             <Typography variant="h5" fontWeight={600} gutterBottom>
-              Select a Source
+              Select Source{isBatchMode ? 's' : ''}
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
-              Choose a previously processed document or import from Google Sheets
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              {isBatchMode 
+                ? 'Select multiple novels for batch analysis (minimum 2 required)' 
+                : 'Choose a previously processed document or import from Google Sheets'}
             </Typography>
+            
+            {/* Batch Mode Toggle */}
+            <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={isBatchMode}
+                    onChange={handleBatchModeToggle}
+                    color="primary"
+                  />
+                }
+                label={
+                  <Box>
+                    <Typography variant="body1" fontWeight={600}>
+                      Batch Analysis Mode
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Process multiple novels sequentially for maximum coverage efficiency
+                    </Typography>
+                  </Box>
+                }
+              />
+              {isBatchMode && (
+                <Chip 
+                  label={`${selectedSourceIds.length} selected`}
+                  color={selectedSourceIds.length >= 2 ? 'success' : 'default'}
+                  size="small"
+                />
+              )}
+            </Box>
             
             {/* Search & Import */}
             <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
@@ -699,7 +785,9 @@ export default function CoveragePage() {
                 <>
                 <Stack spacing={2}>
                   {filteredHistory.slice((historyPage - 1) * HISTORY_PAGE_SIZE, historyPage * HISTORY_PAGE_SIZE).map((h) => {
-                    const selected = String(h.id) === sourceId;
+                    const selected = isBatchMode 
+                      ? selectedSourceIds.includes(h.id)
+                      : String(h.id) === sourceId;
                     const date = new Date(h.timestamp).toLocaleDateString();
                     const isFromSheets = h.original_filename?.includes('Google Sheets');
                     
@@ -718,7 +806,7 @@ export default function CoveragePage() {
                           },
                         }}
                       >
-                        <CardActionArea onClick={() => setSourceId(String(h.id))}>
+                        <CardActionArea onClick={() => handleToggleSourceSelection(h.id)}>
                           <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
                             <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
                               <Box sx={{ color: 'primary.main', mt: 0.5 }}>
@@ -732,11 +820,19 @@ export default function CoveragePage() {
                                   ID #{h.id} • {h.processed_sentences_count} sentences • {date}
                                 </Typography>
                               </Box>
-                              <Radio
-                                checked={selected}
-                                size="small"
-                                sx={{ p: 0 }}
-                              />
+                              {isBatchMode ? (
+                                <Checkbox
+                                  checked={selected}
+                                  size="small"
+                                  sx={{ p: 0 }}
+                                />
+                              ) : (
+                                <Radio
+                                  checked={selected}
+                                  size="small"
+                                  sx={{ p: 0 }}
+                                />
+                              )}
                             </Box>
                           </CardContent>
                         </CardActionArea>
@@ -780,7 +876,11 @@ export default function CoveragePage() {
                     <Button
                       variant="contained"
                       onClick={handleRunCoverage}
-                      disabled={!sourceId || runMutation.isPending || (creditsData && costData && creditsData.balance < costData.cost)}
+                      disabled={
+                        runMutation.isPending || 
+                        (isBatchMode ? selectedSourceIds.length < 2 : !sourceId) ||
+                        (creditsData && costData && creditsData.balance < costData.cost)
+                      }
                       startIcon={<PlayIcon sx={{ ml: -0.5 }} />}
                       sx={{
                         width: { xs: '100%', sm: '60%', md: '45%' },
@@ -801,11 +901,17 @@ export default function CoveragePage() {
                         },
                       }}
                     >
-                      {runMutation.isPending ? 'Starting...' : 'Start'}
+                      {runMutation.isPending 
+                        ? 'Starting...' 
+                        : isBatchMode 
+                          ? `Run Batch Analysis` 
+                          : 'Start'}
                     </Button>
 
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
-                      This will start the analysis and may take a few minutes.
+                      {isBatchMode 
+                        ? `Batch mode will process ${selectedSourceIds.length} sources sequentially for maximum coverage.`
+                        : 'This will start the analysis and may take a few minutes.'}
                     </Typography>
 
                     <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center', gap: 1, alignItems: 'center', flexDirection: { xs: 'column', sm: 'row' } }}>
@@ -946,6 +1052,60 @@ export default function CoveragePage() {
                       </Card>
                     )}
                   </Stack>
+                  
+                  {/* Batch Mode Summary */}
+                  {coverageRun?.mode === 'batch' && coverageRun?.stats_json && (
+                    <Card variant="outlined" sx={{ bgcolor: 'primary.50', borderColor: 'primary.main' }}>
+                      <CardContent>
+                        <Typography variant="h6" fontWeight={600} gutterBottom>
+                          Batch Analysis Summary
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>
+                          Sequential processing of {(coverageRun.stats_json as any).sources_count || 'multiple'} sources
+                        </Typography>
+                        
+                        {(coverageRun.stats_json as any).source_breakdown && (
+                          <Box sx={{ mt: 2 }}>
+                            <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                              Coverage by Source:
+                            </Typography>
+                            <Stack spacing={1} sx={{ mt: 1 }}>
+                              {((coverageRun.stats_json as any).source_breakdown as any[]).map((source: any, idx: number) => (
+                                <Box 
+                                  key={idx}
+                                  sx={{ 
+                                    display: 'flex', 
+                                    justifyContent: 'space-between',
+                                    p: 1,
+                                    bgcolor: 'background.paper',
+                                    borderRadius: 1,
+                                    border: 1,
+                                    borderColor: 'divider'
+                                  }}
+                                >
+                                  <Typography variant="body2">
+                                    Source {idx + 1} (ID: {source.source_id})
+                                  </Typography>
+                                  <Stack direction="row" spacing={2}>
+                                    <Chip 
+                                      label={`${source.selected_sentences} sentences`}
+                                      size="small"
+                                      variant="outlined"
+                                    />
+                                    <Chip 
+                                      label={`${source.words_covered} new words`}
+                                      size="small"
+                                      color="success"
+                                    />
+                                  </Stack>
+                                </Box>
+                              ))}
+                            </Stack>
+                          </Box>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
                   
                   {/* Action Buttons */}
                   <Stack direction="row" spacing={2}>
