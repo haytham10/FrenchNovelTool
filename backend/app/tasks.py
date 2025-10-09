@@ -2,7 +2,7 @@
 import logging
 import os
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Dict, List
 from typing import Optional
 import base64
@@ -165,7 +165,7 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
                 chunk_db_record.status = 'processing'
                 chunk_db_record.celery_task_id = self.request.id
                 chunk_db_record.attempts += 1
-                chunk_db_record.updated_at = datetime.now(timezone.utc)
+                chunk_db_record.updated_at = datetime.utcnow()
                 safe_db_commit(db)
                 # Schedule a per-chunk watchdog to detect stuck processing tasks.
                 try:
@@ -245,7 +245,7 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
                     chunk_db_record.status = 'failed'
                     chunk_db_record.last_error = 'No extractable text in PDF chunk'
                     chunk_db_record.last_error_code = 'NO_TEXT'
-                    chunk_db_record.updated_at = datetime.now(timezone.utc)
+                    chunk_db_record.updated_at = datetime.utcnow()
                     safe_db_commit(db)
                 except Exception as e:
                     logger.warning(f"Failed to persist chunk error to DB: {e}")
@@ -296,7 +296,7 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
                 
                 chunk_db_record.last_error = error_msg[:1000]
                 chunk_db_record.last_error_code = error_code
-                chunk_db_record.updated_at = datetime.now(timezone.utc)
+                chunk_db_record.updated_at = datetime.utcnow()
                 safe_db_commit(db)
                 logger.info(
                     'Chunk %s (job %s) processed with fallback: %s',
@@ -328,8 +328,8 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
             try:
                 chunk_db_record.status = 'success'
                 chunk_db_record.result_json = result_dict
-                chunk_db_record.processed_at = datetime.now(timezone.utc)
-                chunk_db_record.updated_at = datetime.now(timezone.utc)
+                chunk_db_record.processed_at = datetime.utcnow()
+                chunk_db_record.updated_at = datetime.utcnow()
                 chunk_db_record.last_error = None
                 chunk_db_record.last_error_code = None
                 safe_db_commit(db)
@@ -387,7 +387,7 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
                 chunk_db_record.status = 'failed'
                 chunk_db_record.last_error = 'Processing timeout exceeded'
                 chunk_db_record.last_error_code = 'TIMEOUT'
-                chunk_db_record.updated_at = datetime.now(timezone.utc)
+                chunk_db_record.updated_at = datetime.utcnow()
                 safe_db_commit(db)
             except Exception as e:
                 logger.warning(f"Failed to persist chunk error to DB: {e}")
@@ -418,6 +418,16 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
         max_retries = int(current_app.config.get('CHUNK_TASK_MAX_RETRIES', current_app.config.get('GEMINI_MAX_RETRIES', 3)))
         base_delay = int(current_app.config.get('CHUNK_TASK_RETRY_DELAY', current_app.config.get('GEMINI_RETRY_DELAY', 1)))
 
+        # CRITICAL: Check if chunk DB record has exceeded max_retries
+        # This prevents Celery-level retries from conflicting with job-level retries
+        if chunk_db_record and chunk_db_record.attempts >= chunk_db_record.max_retries:
+            logger.warning(
+                f"Chunk {chunk_info.get('chunk_id')} (job {job_id}) has exhausted all retry attempts "
+                f"({chunk_db_record.attempts}/{chunk_db_record.max_retries}). Failing permanently."
+            )
+            # Force fail without retry
+            _is_transient = lambda x: False
+        
         if _is_transient(e) and self.request.retries < max_retries:
             # Exponential backoff with jitter-like cap
             delay = min(base_delay * (2 ** self.request.retries), 60)
@@ -458,7 +468,7 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
                 elif 'rate limit' in str(e).lower():
                     error_code = 'RATE_LIMIT'
                 chunk_db_record.last_error_code = error_code
-                chunk_db_record.updated_at = datetime.now(timezone.utc)
+                chunk_db_record.updated_at = datetime.utcnow()
                 safe_db_commit(db)
             except Exception as db_err:
                 logger.warning(f"Failed to persist chunk error to DB: {db_err}")
@@ -566,7 +576,7 @@ def finalize_job_results(self, chunk_results, job_id):
                         chunk.status = 'failed'
                         chunk.last_error = 'Chunk stuck in processing state - force-finalized'
                         chunk.last_error_code = 'FINALIZE_TIMEOUT'
-                        chunk.updated_at = datetime.now(timezone.utc)
+                        chunk.updated_at = datetime.utcnow()
                     safe_db_commit(db)
         
         # Build chunk results from DB if available, else use in-memory results
@@ -618,6 +628,20 @@ def finalize_job_results(self, chunk_results, job_id):
                         chunks_to_retry.append(chunk)
                         should_retry = True
         
+        # CRITICAL: Don't retry if we have enough successful chunks (>= 50% success rate)
+        # This prevents infinite retry loops on problematic PDFs
+        if should_retry and chunks_to_retry:
+            total_chunks = len(db_chunks) if db_chunks else len(chunk_results)
+            success_rate = success_count / total_chunks if total_chunks > 0 else 0
+            
+            if success_rate >= 0.5 and success_count > 0:
+                logger.info(
+                    f"Job {job_id}: skipping retry - success rate {success_rate:.1%} "
+                    f"({success_count}/{total_chunks} chunks) is acceptable"
+                )
+                should_retry = False
+                chunks_to_retry = []
+        
         if should_retry and chunks_to_retry:
             # Orchestrate automatic retry round
             logger.info(f"Job {job_id}: starting retry round {job.retry_count + 1}/{job.max_retries} for {len(chunks_to_retry)} chunks")
@@ -626,32 +650,45 @@ def finalize_job_results(self, chunk_results, job_id):
             job.retry_count += 1
             job.current_step = f"Retrying {len(chunks_to_retry)} failed chunks (attempt {job.retry_count}/{job.max_retries})"
             
-            # Mark chunks as retry_scheduled
+            # Mark chunks as retry_scheduled and increment their attempt counter
             retry_tasks = []
             settings = job.processing_settings or {}
             
             for chunk in chunks_to_retry:
+                # CRITICAL: Double-check retry eligibility before scheduling
+                if not chunk.can_retry():
+                    logger.warning(
+                        f"Job {job_id}: skipping chunk {chunk.chunk_id} - cannot retry "
+                        f"(attempts={chunk.attempts}, age={(datetime.utcnow() - chunk.created_at).total_seconds():.0f}s)"
+                    )
+                    continue
+                
                 chunk.status = 'retry_scheduled'
-                chunk.updated_at = datetime.now(timezone.utc)
+                chunk.updated_at = datetime.utcnow()
                 db.session.add(chunk)
                 retry_tasks.append(
                     process_chunk.s(chunk.get_chunk_metadata(), job.user_id, settings)
                 )
             
-            safe_db_commit(db)
-            emit_progress(job_id)
-            
-            # Dispatch retry tasks with new finalization callback
-            from celery import group, chord
-            callback = finalize_job_results.s(job_id=job_id)
-            chord(retry_tasks)(callback)
-            
-            logger.info(f"Job {job_id}: dispatched {len(retry_tasks)} retry tasks")
-            return {
-                'status': 'retrying',
-                'message': f'Retrying {len(chunks_to_retry)} failed chunks',
-                'retry_round': job.retry_count
-            }
+            # If no eligible chunks after filtering, skip retry
+            if not retry_tasks:
+                logger.warning(f"Job {job_id}: no eligible chunks for retry after filtering")
+                should_retry = False
+            else:
+                safe_db_commit(db)
+                emit_progress(job_id)
+                
+                # Dispatch retry tasks with new finalization callback
+                from celery import group, chord
+                callback = finalize_job_results.s(job_id=job_id)
+                chord(retry_tasks)(callback)
+                
+                logger.info(f"Job {job_id}: dispatched {len(retry_tasks)} retry tasks")
+                return {
+                    'status': 'retrying',
+                    'message': f'Retrying {len(retry_tasks)} failed chunks',
+                    'retry_round': job.retry_count
+                }
         
         # No more retries - finalize job with current results
         if success_count == 0:
@@ -670,7 +707,7 @@ def finalize_job_results(self, chunk_results, job_id):
         job.actual_tokens = total_tokens
         job.gemini_tokens_used = total_tokens
         job.gemini_api_calls = success_count
-        job.completed_at = datetime.now(timezone.utc)
+        job.completed_at = datetime.utcnow()
         job.chunk_results = chunk_results
         job.failed_chunks = failed_chunks if failed_chunks else None
         
@@ -760,7 +797,7 @@ def finalize_job_results(self, chunk_results, job_id):
             if job:
                 job.status = JOB_STATUS_FAILED
                 job.error_message = f"Finalization error: {str(e)[:512]}"
-                job.completed_at = datetime.now(timezone.utc)
+                job.completed_at = datetime.utcnow()
                 safe_db_commit(db)
                 emit_progress(job_id)
         except Exception:
@@ -802,7 +839,7 @@ def chunk_watchdog(self, job_id: int, chunk_id: int):
             # Schedule a retry by marking the chunk for retry and dispatching process_chunk
             try:
                 chunk.status = 'retry_scheduled'
-                chunk.updated_at = datetime.now(timezone.utc)
+                chunk.updated_at = datetime.utcnow()
                 db.session.add(chunk)
                 safe_db_commit(db)
 
@@ -821,7 +858,7 @@ def chunk_watchdog(self, job_id: int, chunk_id: int):
             chunk.status = 'failed'
             chunk.last_error = 'Chunk stuck in processing - watchdog marked failed'
             chunk.last_error_code = 'WATCHDOG_FORCED_FAIL'
-            chunk.updated_at = datetime.now(timezone.utc)
+            chunk.updated_at = datetime.utcnow()
             db.session.add(chunk)
             safe_db_commit(db)
             logger.error("chunk_watchdog: marked job %s chunk %s as failed (no retries left)", job_id, chunk_id)
@@ -847,7 +884,7 @@ def reconcile_stuck_chunks(self, age_seconds: Optional[int] = None, limit: int =
 
     try:
         threshold = int(age_seconds or current_app.config.get('CHUNK_STUCK_THRESHOLD_SECONDS', 900))
-        cutoff = datetime.now(timezone.utc).timestamp() - int(threshold)
+        cutoff = datetime.utcnow().timestamp() - int(threshold)
 
         # Find stuck chunks
         stuck = db.session.execute(
@@ -859,7 +896,7 @@ def reconcile_stuck_chunks(self, age_seconds: Optional[int] = None, limit: int =
         for row in stuck:
             chunk_id_db, job_id_db, chunk_num, status, attempts, updated_at = row
             # Compute age
-            age = (datetime.now(timezone.utc) - updated_at).total_seconds() if updated_at else None
+            age = (datetime.utcnow() - updated_at).total_seconds() if updated_at else None
             if age is None or age < threshold:
                 continue
 
@@ -872,7 +909,7 @@ def reconcile_stuck_chunks(self, age_seconds: Optional[int] = None, limit: int =
             max_retries = int(current_app.config.get('CHUNK_TASK_MAX_RETRIES', 3))
             if chunk.attempts < chunk.max_retries and chunk.attempts < max_retries:
                 chunk.status = 'retry_scheduled'
-                chunk.updated_at = datetime.now(timezone.utc)
+                chunk.updated_at = datetime.utcnow()
                 db.session.add(chunk)
                 safe_db_commit(db)
                 from app.tasks import process_chunk as process_chunk_task
@@ -882,7 +919,7 @@ def reconcile_stuck_chunks(self, age_seconds: Optional[int] = None, limit: int =
                 chunk.status = 'failed'
                 chunk.last_error = 'Reconciler: marked stuck chunk failed'
                 chunk.last_error_code = 'RECONCILE_FAIL'
-                chunk.updated_at = datetime.now(timezone.utc)
+                chunk.updated_at = datetime.utcnow()
                 db.session.add(chunk)
                 safe_db_commit(db)
                 actions.append({'chunk_id': chunk.chunk_id, 'job_id': chunk.job_id, 'action': 'marked_failed'})
@@ -891,6 +928,83 @@ def reconcile_stuck_chunks(self, age_seconds: Optional[int] = None, limit: int =
         return {'status': 'ok', 'actions': actions}
     except Exception as e:
         logger.exception('reconcile_stuck_chunks: failed: %s', e)
+        return {'status': 'error', 'error': str(e)}
+
+
+@get_celery().task(bind=True, name='app.tasks.terminate_stuck_jobs')
+def terminate_stuck_jobs(self, max_age_hours: int = 3):
+    """
+    Emergency task to terminate jobs that have been stuck in 'processing' state
+    for longer than max_age_hours. This prevents runaway jobs from consuming
+    resources indefinitely.
+    
+    Args:
+        max_age_hours: Maximum age in hours for a processing job (default: 3)
+        
+    Returns:
+        dict: Summary of terminated jobs
+    """
+    db = get_db()
+    Job, User = get_models()
+    JOB_STATUS_PROCESSING, JOB_STATUS_COMPLETED, JOB_STATUS_FAILED, _ = get_constants()
+    
+    try:
+        from datetime import timedelta
+        threshold = datetime.utcnow() - timedelta(hours=max_age_hours)
+        
+        # Find jobs stuck in processing state
+        stuck_jobs = Job.query.filter(
+            Job.status == JOB_STATUS_PROCESSING,
+            Job.started_at < threshold
+        ).all()
+        
+        terminated = []
+        for job in stuck_jobs:
+            age_hours = (datetime.utcnow() - job.started_at).total_seconds() / 3600
+            logger.warning(
+                f"Terminating stuck job {job.id} (age: {age_hours:.1f}h, "
+                f"user: {job.user_id}, filename: {job.original_filename})"
+            )
+            
+            # Mark job as failed
+            job.status = JOB_STATUS_FAILED
+            job.error_message = f"Job terminated - exceeded {max_age_hours}h processing limit"
+            job.current_step = "Terminated"
+            job.progress_percent = 100
+            job.completed_at = datetime.utcnow()
+            
+            # Mark all pending/processing chunks as failed
+            from app.models import JobChunk
+            stuck_chunks = JobChunk.query.filter(
+                JobChunk.job_id == job.id,
+                JobChunk.status.in_(['pending', 'processing', 'retry_scheduled'])
+            ).all()
+            
+            for chunk in stuck_chunks:
+                chunk.status = 'failed'
+                chunk.last_error = 'Job terminated due to timeout'
+                chunk.last_error_code = 'JOB_TIMEOUT'
+                chunk.updated_at = datetime.utcnow()
+                db.session.add(chunk)
+            
+            db.session.add(job)
+            safe_db_commit(db)
+            
+            # Emit progress update
+            emit_progress(job.id)
+            
+            terminated.append({
+                'job_id': job.id,
+                'user_id': job.user_id,
+                'age_hours': age_hours,
+                'filename': job.original_filename
+            })
+        
+        logger.info(f"Terminated {len(terminated)} stuck jobs")
+        return {'status': 'ok', 'terminated': terminated, 'count': len(terminated)}
+        
+    except Exception as e:
+        logger.exception(f"Failed to terminate stuck jobs: {e}")
         return {'status': 'error', 'error': str(e)}
 
 
@@ -930,7 +1044,7 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
             return {'status': 'cancelled'}
         
         job.status = JOB_STATUS_PROCESSING
-        job.started_at = datetime.now(timezone.utc)
+        job.started_at = datetime.utcnow()
         job.current_step = "Analyzing PDF"
         job.progress_percent = 5
         safe_db_commit(db)
@@ -1006,7 +1120,7 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
             job.status = JOB_STATUS_FAILED
             job.current_step = "Failed: No chunks produced"
             job.error_message = "Chunking produced zero chunks for a non-empty PDF."
-            job.completed_at = datetime.now(timezone.utc)
+            job.completed_at = datetime.utcnow()
             safe_db_commit(db)
             logger.error("Job %s: split_pdf returned zero chunks", job_id)
             return {'status': 'failed', 'error': 'No chunks produced'}
@@ -1087,7 +1201,7 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
             job = Job.query.get(job_id)
             job.status = JOB_STATUS_FAILED
             job.error_message = "No chunks processed. See worker logs for details."
-            job.completed_at = datetime.now(timezone.utc)
+            job.completed_at = datetime.utcnow()
             job.progress_percent = 100
             safe_db_commit(db)
             emit_progress(job_id)
@@ -1115,7 +1229,7 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
         job.actual_tokens = total_tokens
         job.gemini_tokens_used = total_tokens
         job.gemini_api_calls = success_count
-        job.completed_at = datetime.now(timezone.utc)
+        job.completed_at = datetime.utcnow()
         job.chunk_results = chunk_results
         job.failed_chunks = failed_chunks if failed_chunks else None
         
@@ -1140,7 +1254,7 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
         if job:
             job.status = JOB_STATUS_FAILED
             job.error_message = str(e)[:512]
-            job.completed_at = datetime.now(timezone.utc)
+            job.completed_at = datetime.utcnow()
             safe_db_commit(db)
         raise
         
@@ -1358,7 +1472,7 @@ def coverage_build_async(self, run_id: int):
         coverage_run.stats_json = stats
         coverage_run.status = 'completed'
         coverage_run.progress_percent = 100
-        coverage_run.completed_at = datetime.now(timezone.utc)
+        coverage_run.completed_at = datetime.utcnow()
         safe_db_commit(db)
         db_commit_duration = time.time() - db_commit_start
         logger.info("coverage_build_async: DB commit completed for run %s in %.2fs", run_id, db_commit_duration)
@@ -1410,78 +1524,4 @@ def coverage_build_async(self, run_id: int):
         except Exception:
             pass
         raise
-
-
-@get_celery().task(bind=True, name='app.tasks.batch_coverage_build_async')
-def batch_coverage_build_async(self, run_id: int):
-    """Task to run batch coverage analysis"""
-    db = get_db()
-    from app.models import CoverageRun, WordList, History, CoverageAssignment
-    from app.services.coverage_service import CoverageService
-    
-    run = db.session.get(CoverageRun, run_id)
-    if not run:
-        logger.error(f"batch_coverage_build_async: CoverageRun {run_id} not found")
-        return
-
-    try:
-        run.status = 'processing'
-        run.started_at = datetime.now(timezone.utc)
-        db.session.commit()
-
-        wordlist = db.session.get(WordList, run.wordlist_id)
-        if not wordlist or not wordlist.words_json:
-            raise ValueError(f"WordList {run.wordlist_id} not found or is empty")
-            
-        wordlist_keys = set(wordlist.words_json)
-        
-        # Get sources from config
-        source_ids = run.config_json.get('source_ids', [])
-        sources = []
-        for source_id in source_ids:
-            history = db.session.get(History, source_id)
-            if history and history.processed_sentences:
-                sources.append((source_id, history.processed_sentences))
-        
-        if not sources:
-            raise ValueError("No valid sources found for batch coverage run")
-
-        config = run.config_json or {}
-        service = CoverageService(wordlist_keys=wordlist_keys, config=config)
-        
-        assignments, stats, learning_set = service.batch_coverage_mode(sources)
-        
-        # Update run with results
-        run.status = 'completed'
-        run.completed_at = datetime.now(timezone.utc)
-        run.stats_json = stats
-        run.learning_set_json = learning_set
-        
-        # Clear existing assignments and add new ones
-        run.assignments = []
-        db.session.flush()
-        
-        new_assignments = []
-        for a in assignments:
-            new_assignments.append(CoverageAssignment(
-                run_id=run.id,
-                word_key=a['word_key'],
-                surface_form=a['surface_form'],
-                sentence_text=a['sentence_text'],
-                sentence_index=a['sentence_index'],
-                source_id=a.get('source_id')
-            ))
-        db.session.bulk_save_objects(new_assignments)
-        
-        db.session.commit()
-        logger.info(f"Batch coverage run {run_id} completed successfully")
-
-    except Exception as e:
-        logger.exception(f"Error in batch_coverage_build_async for run {run_id}: {e}")
-        if 'run' in locals() and run:
-            run.status = 'failed'
-            run.error_message = str(e)
-            db.session.commit()
-    finally:
-        db.session.remove()
 

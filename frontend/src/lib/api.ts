@@ -3,35 +3,27 @@
  */
 
 import axios, { AxiosError } from 'axios';
-import {
-  User,
-  LoginResponse,
-  HistoryEntry,
-  HistoryDetail,
-  ChunkDetail,
-  UserSettings,
-  CreditSummary,
-  CreditLedgerEntry,
-  CostEstimate,
-  Job,
-  JobConfirmRequest,
-  JobConfirmResponse,
-  JobFinalizeRequest,
-  JobFinalizeResponse,
-  WordList,
-  CoverageRun,
-  CoverageAssignment,
-  LearningSetEntry,
-  EstimatePdfResponse,
-  ProcessPdfAsyncRequest,
-  ProcessPdfAsyncResponse,
-  CancelJobResponse,
-  ExportHistoryRequest,
-} from './types';
 import { getAccessToken, getRefreshToken, setTokens, clearTokens } from './auth';
 
+const _rawApiBase = (() => {
+  const explicitBase = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const legacyUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (explicitBase) return explicitBase;
+  if (legacyUrl) {
+    return legacyUrl.replace(/\/+$/,'') + '/api/v1';
+  }
+  return 'http://localhost:5000/api/v1';
+})();
+const API_BASE_URL = (() => {
+  if (/^https?:\/\//i.test(_rawApiBase)) return _rawApiBase;
+  // If no scheme provided, default to https in production and http in dev
+  const scheme = process.env.NODE_ENV === 'production' ? 'https://' : 'http://';
+  return `${scheme}${_rawApiBase}`;
+})();
+
+// Create axios instance with default config
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api/v1',
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -50,14 +42,13 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
-    const originalRequest = error.config as (typeof error.config) & { _retry?: boolean };
+    const originalRequest = error.config;
     
     // If 401 and we have a refresh token, try to refresh
-    if (error.response?.status === 401 && getRefreshToken() && originalRequest && !originalRequest._retry) {
-      originalRequest._retry = true;
+    if (error.response?.status === 401 && getRefreshToken() && originalRequest) {
       try {
         const refreshToken = getRefreshToken();
-        const response = await axios.post(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api/v1'}/auth/refresh`, {
+        const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
           refresh_token: refreshToken,
         });
         
@@ -65,14 +56,11 @@ api.interceptors.response.use(
         setTokens(access_token, refresh_token);
         
         // Retry original request with new token
-        if (originalRequest.headers) {
-          originalRequest.headers.Authorization = `Bearer ${access_token}`;
-        }
+        originalRequest.headers.Authorization = `Bearer ${access_token}`;
         return api(originalRequest);
       } catch (refreshError) {
         // Refresh failed, clear tokens
         clearTokens();
-        window.location.href = '/login'; // Redirect to login
         throw refreshError;
       }
     }
@@ -80,6 +68,73 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+// Types
+export interface User {
+  id: number;
+  email: string;
+  name: string;
+  picture?: string;
+}
+
+export interface LoginResponse {
+  access_token: string;
+  refresh_token: string;
+  user: User;
+  has_sheets_access: boolean;
+}
+
+export interface ProcessingHistory {
+  id: number;
+  job_id?: number;
+  timestamp: string;
+  original_filename: string;
+  processed_sentences_count: number;
+  spreadsheet_url?: string;
+  error_message?: string;
+  error_code?: string;
+  failed_step?: 'upload' | 'extract' | 'analyze' | 'normalize' | 'export';
+  settings?: {
+    sentence_length_limit?: number;
+    gemini_model?: string;
+    advanced_options?: Record<string, unknown>;
+  };
+  exported_to_sheets?: boolean;
+  export_sheet_url?: string;
+}
+
+export interface HistoryDetail extends ProcessingHistory {
+  sentences: Array<{ normalized: string; original: string }>;
+  chunk_ids: number[];
+  chunks: ChunkDetail[];
+  sentences_source?: 'snapshot' | 'live_chunks';
+}
+
+export interface ChunkDetail {
+  id: number;
+  job_id: number;
+  chunk_id: number;
+  start_page: number;
+  end_page: number;
+  page_count: number;
+  has_overlap: boolean;
+  status: 'pending' | 'processing' | 'success' | 'failed' | 'retry_scheduled';
+  attempts: number;
+  max_retries: number;
+  last_error?: string;
+  last_error_code?: string;
+  processed_at?: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface UserSettings {
+  sentence_length_limit: number;
+  default_folder_id?: string;
+  default_sheet_name_pattern?: string;
+  // Optional ID of the default word list for vocabulary coverage
+  default_wordlist_id?: number | null;
+}
 
 /**
  * Authentication APIs
@@ -126,6 +181,19 @@ export async function extractPdfText(file: File): Promise<{ text: string; page_c
 export interface EstimatePdfRequest {
   file: File;
   model_preference?: 'balanced' | 'quality' | 'speed';
+}
+
+export interface EstimatePdfResponse {
+  page_count: number;
+  file_size: number;
+  image_count: number;
+  estimated_tokens: number;
+  estimated_credits: number;
+  model: string;
+  model_preference: string;
+  pricing_rate: number;
+  capped: boolean;
+  warning?: string;
 }
 
 export async function estimatePdfCost(request: EstimatePdfRequest): Promise<EstimatePdfResponse> {
@@ -199,10 +267,13 @@ export async function exportToSheet(data: ExportToSheetRequest): Promise<string>
  * History APIs
  */
 
-export async function getProcessingHistory(): Promise<{ history: HistoryEntry[] }> {
+export async function getProcessingHistory(): Promise<ProcessingHistory[]> {
   const response = await api.get('/history');
-  return response.data || { history: [] };
+  return response.data || [];
 }
+
+// Alias for backward compatibility
+export const fetchHistory = getProcessingHistory;
 
 /**
  * Get detailed history entry with sentences and chunk information
@@ -235,6 +306,11 @@ export async function refreshHistoryFromChunks(entryId: number): Promise<{
 /**
  * Export history entry to Google Sheets
  */
+export interface ExportHistoryRequest {
+  sheetName?: string;
+  folderId?: string | null;
+}
+
 export async function exportHistoryToSheets(entryId: number, data?: ExportHistoryRequest): Promise<{ 
   spreadsheet_url: string;
   sentences_source?: string;
@@ -275,9 +351,23 @@ export async function updateUserSettings(settings: Partial<UserSettings>): Promi
   return response.data.settings || response.data;
 }
 
+// Aliases for backward compatibility
+export const fetchSettings = getUserSettings;
+export const saveSettings = updateUserSettings;
+
 /**
  * Credit System APIs
  */
+
+export interface CreditSummary {
+  balance: number;
+  granted: number;
+  used: number;
+  refunded: number;
+  adjusted: number;
+  month: string;
+  next_reset: string;
+}
 
 export async function getCredits(): Promise<CreditSummary> {
   const response = await api.get('/me/credits');
@@ -289,9 +379,36 @@ export interface CostEstimateRequest {
   model_preference: 'balanced' | 'quality' | 'speed';
 }
 
+export interface CostEstimate {
+  model: string;
+  model_preference: string;
+  estimated_tokens: number;
+  estimated_credits: number;
+  pricing_rate: number;
+  pricing_version: string;
+  estimation_method: 'api' | 'heuristic';
+  current_balance: number;
+  allowed: boolean;
+  message?: string;
+}
+
 export async function estimateCost(request: CostEstimateRequest): Promise<CostEstimate> {
   const response = await api.post('/estimate', request);
   return response.data;
+}
+
+export interface JobConfirmRequest {
+  estimated_credits: number;
+  model_preference: string;
+  processing_settings?: Record<string, unknown>;
+}
+
+export interface JobConfirmResponse {
+  job_id: number;
+  status: string;
+  estimated_credits: number;
+  reserved: boolean;
+  message: string;
 }
 
 export async function confirmJob(request: JobConfirmRequest): Promise<JobConfirmResponse> {
@@ -299,9 +416,74 @@ export async function confirmJob(request: JobConfirmRequest): Promise<JobConfirm
   return response.data;
 }
 
+export interface JobFinalizeRequest {
+  actual_tokens: number;
+  success: boolean;
+  error_message?: string;
+  error_code?: string;
+}
+
+export interface JobFinalizeResponse {
+  job_id: number;
+  status: string;
+  estimated_credits: number;
+  actual_credits: number;
+  adjustment: number;
+  refunded: boolean;
+  refund_amount?: number;
+  message: string;
+}
+
 export async function finalizeJob(jobId: number, request: JobFinalizeRequest): Promise<JobFinalizeResponse> {
   const response = await api.post(`/jobs/${jobId}/finalize`, request);
   return response.data;
+}
+
+export interface Job {
+  id: number;
+  user_id: number;
+  history_id?: number;
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  original_filename: string;
+  model: string;
+  estimated_tokens?: number;
+  actual_tokens?: number;
+  estimated_credits: number;
+  actual_credits?: number;
+  pricing_version: string;
+  pricing_rate: number;
+  processing_settings?: Record<string, unknown>;
+  created_at: string;
+  started_at?: string;
+  completed_at?: string;
+  error_message?: string;
+  error_code?: string;
+  // Async processing fields
+  celery_task_id?: string;
+  progress_percent?: number;
+  current_step?: string;
+  total_chunks?: number;
+  processed_chunks?: number;
+  chunk_results?: Array<{
+    chunk_id: number;
+    sentences?: unknown[];
+    tokens?: number;
+    status: 'success' | 'failed';
+    error?: string;
+  }>;
+  failed_chunks?: number[];
+  retry_count?: number;
+  max_retries?: number;
+  is_cancelled?: boolean;
+  cancelled_at?: string;
+  cancelled_by?: number;
+  processing_time_seconds?: number;
+  gemini_api_calls?: number;
+  gemini_tokens_used?: number;
+  task_state?: {
+    state: string;
+    info: Record<string, unknown>;
+  };
 }
 
 export async function getJob(jobId: number): Promise<Job> {
@@ -317,6 +499,24 @@ export async function getJobs(params?: { limit?: number; status?: string }): Pro
 /**
  * Start async PDF processing
  */
+export interface ProcessPdfAsyncRequest {
+  job_id: number;
+  pdf_file: File;
+  sentence_length_limit?: number;
+  gemini_model?: string;
+  ignore_dialogue?: boolean;
+  preserve_formatting?: boolean;
+  fix_hyphenation?: boolean;
+  min_sentence_length?: number;
+}
+
+export interface ProcessPdfAsyncResponse {
+  job_id: number;
+  task_id: string;
+  status: string;
+  message: string;
+}
+
 export async function processPdfAsync(request: ProcessPdfAsyncRequest): Promise<ProcessPdfAsyncResponse> {
   const formData = new FormData();
   formData.append('pdf_file', request.pdf_file);
@@ -352,9 +552,27 @@ export async function processPdfAsync(request: ProcessPdfAsyncRequest): Promise<
 /**
  * Cancel a running job
  */
+export interface CancelJobResponse {
+  message: string;
+  job_id: number;
+  status: string;
+}
+
 export async function cancelJob(jobId: number): Promise<CancelJobResponse> {
   const response = await api.post(`/jobs/${jobId}/cancel`);
   return response.data;
+}
+
+export interface CreditLedgerEntry {
+  id: number;
+  user_id: number;
+  month: string;
+  delta_credits: number;
+  reason: 'monthly_grant' | 'job_reserve' | 'job_final' | 'job_refund' | 'admin_adjustment';
+  job_id?: number;
+  pricing_version?: string;
+  description?: string;
+  timestamp: string;
 }
 
 export async function getCreditLedger(params?: { month?: string; limit?: number }): Promise<CreditLedgerEntry[]> {
@@ -429,37 +647,88 @@ export function getApiErrorMessage(error: unknown, defaultMessage = 'An unexpect
 }
 
 // ============================================================================
-// Vocabulary Coverage Endpoints
+// Vocabulary Coverage Tool API
 // ============================================================================
 
+export interface WordList {
+  id: number;
+  owner_user_id: number | null;
+  name: string;
+  source_type: 'csv' | 'google_sheet' | 'manual';
+  source_ref?: string;
+  normalized_count: number;
+  canonical_samples: string[];
+  is_global_default: boolean;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface IngestionReport {
+  original_count: number;
+  normalized_count: number;
+  duplicates: Array<{ word: string; normalized: string }>;
+  multi_token_entries: Array<{ original: string; head_token: string }>;
+  variants_expanded: number;
+  anomalies: Array<{ word: string; issue: string }>;
+}
+
+export interface CoverageRun {
+  id: number;
+  user_id: number;
+  mode: 'coverage' | 'filter';
+  source_type: 'job' | 'history';
+  source_id: number;
+  wordlist_id?: number;
+  config_json: Record<string, unknown>;
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  progress_percent: number;
+  stats_json: Record<string, unknown>;
+  created_at: string;
+  completed_at?: string;
+  error_message?: string;
+  celery_task_id?: string;
+}
+
+export interface CoverageAssignment {
+  id: number;
+  coverage_run_id: number;
+  word_original?: string;
+  word_key: string;
+  lemma?: string;
+  matched_surface?: string;
+  sentence_index: number;
+  sentence_text: string;
+  sentence_score?: number;
+  conflicts?: Record<string, unknown>;
+  manual_edit: boolean;
+  notes?: string;
+}
+
+export interface LearningSetEntry {
+  rank: number;
+  sentence_text: string;
+  sentence_index: number | null;
+  token_count?: number | null;
+  new_word_count?: number | null;
+  score?: number | null;
+}
+
+/**
+ * List all word lists accessible to the user (global + user's own)
+ */
 export const listWordLists = async (): Promise<{ wordlists: WordList[] }> => {
-  const response = await api.get('/coverage/wordlists');
+  const response = await api.get('/wordlists');
   return response.data;
 };
 
-export const createWordListFromWords = async (
-  name: string,
-  words: string[],
-  foldDiacritics: boolean
-): Promise<{ wordlist: WordList; report: Record<string, unknown> }> => {
-  const response = await api.post('/coverage/wordlists/from-words', {
-    name,
-    words,
-    fold_diacritics: foldDiacritics,
-  });
-  return response.data;
-};
-
-export const deleteWordList = async (wordlistId: number): Promise<{ message: string }> => {
-  const response = await api.delete(`/coverage/wordlists/${wordlistId}`);
-  return response.data;
-};
-
+/**
+ * Create a new word list from CSV file upload
+ */
 export const createWordListFromFile = async (
   file: File,
   name: string,
-  foldDiacritics: boolean
-): Promise<{ wordlist: WordList; report: Record<string, unknown> }> => {
+  foldDiacritics: boolean = true
+): Promise<{ wordlist: WordList; ingestion_report: IngestionReport }> => {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('name', name);
@@ -473,45 +742,140 @@ export const createWordListFromFile = async (
   return response.data;
 };
 
-export const getCoverageCost = async (): Promise<{ cost: number }> => {
+/**
+ * Create a new word list from array of words
+ */
+export const createWordListFromWords = async (
+  name: string,
+  words: string[],
+  sourceType: 'manual' | 'google_sheet' = 'manual',
+  sourceRef?: string,
+  foldDiacritics: boolean = true,
+  includeHeader: boolean = true
+): Promise<{ wordlist: WordList; ingestion_report: IngestionReport }> => {
+  const response = await api.post('/wordlists', {
+    name,
+    source_type: sourceType,
+    source_ref: sourceRef,
+    words,
+    fold_diacritics: foldDiacritics,
+    include_header: includeHeader,
+  });
+  return response.data;
+};
+
+/**
+ * Get details of a specific word list
+ */
+export const getWordList = async (wordlistId: number): Promise<WordList> => {
+  const response = await api.get(`/wordlists/${wordlistId}`);
+  return response.data;
+};
+
+/**
+ * Update a word list (name only)
+ */
+export const updateWordList = async (
+  wordlistId: number,
+  name: string
+): Promise<WordList> => {
+  const response = await api.patch(`/wordlists/${wordlistId}`, { name });
+  return response.data;
+};
+
+/**
+ * Delete a word list
+ */
+export const deleteWordList = async (wordlistId: number): Promise<void> => {
+  await api.delete(`/wordlists/${wordlistId}`);
+};
+
+/**
+ * Refresh a word list from its source (re-populate words_json)
+ */
+export const refreshWordList = async (
+  wordlistId: number
+): Promise<{ wordlist: WordList; refresh_report: { status: string; word_count: number; source: string } }> => {
+  const response = await api.post(`/wordlists/${wordlistId}/refresh`);
+  return response.data;
+};
+
+/**
+ * Import sentences from Google Sheets URL
+ */
+export const importSentencesFromSheets = async (
+  sheetUrl: string
+): Promise<{ history_id: number; sentence_count: number; filename: string }> => {
+  const response = await api.post('/coverage/import-from-sheets', {
+    sheet_url: sheetUrl,
+  });
+  return response.data;
+};
+
+/**
+ * Get coverage run cost
+ */
+export const getCoverageCost = async (): Promise<{ cost: number; currency: string }> => {
   const response = await api.get('/coverage/cost');
   return response.data;
 };
 
-export const getCoverageRun = async (
-  runId: number
-): Promise<{
-  coverage_run: CoverageRun;
-  assignments: CoverageAssignment[];
-  learning_set: LearningSetEntry[];
-}> => {
-  const response = await api.get(`/coverage/runs/${runId}`);
-  return response.data;
-};
-
-export const importSentencesFromSheets = async (
-  sheetUrl: string
-): Promise<{
-  filename: string;
-  sentence_count: number;
-  history_id: number;
-}> => {
-  const response = await api.post('/coverage/import-from-sheets', { url: sheetUrl });
-  return response.data;
-};
-
+/**
+ * Create and start a coverage run
+ */
 export const createCoverageRun = async (params: {
-  mode: 'coverage' | 'filter' | 'batch';
-  source_type: 'history';
-  source_id?: number;
-  source_ids?: number[];
+  mode: 'coverage' | 'filter';
+  source_type: 'job' | 'history';
+  source_id: number;
   wordlist_id?: number;
-  config: Record<string, unknown>;
-}): Promise<{ coverage_run: CoverageRun; credits_charged: number }> => {
+  config?: Record<string, unknown>;
+}): Promise<{ coverage_run: CoverageRun; task_id: string; credits_charged: number }> => {
   const response = await api.post('/coverage/run', params);
   return response.data;
 };
 
+/**
+ * Get coverage run status and results
+ */
+export const getCoverageRun = async (
+  runId: number,
+  page: number = 1,
+  perPage: number = 50
+): Promise<{
+  coverage_run: CoverageRun;
+  assignments: CoverageAssignment[];
+  pagination: {
+    page: number;
+    per_page: number;
+    total: number;
+    pages: number;
+  };
+  learning_set?: LearningSetEntry[];
+}> => {
+  const response = await api.get(`/coverage/runs/${runId}`, {
+    params: { page, per_page: perPage },
+  });
+  return response.data;
+};
+
+/**
+ * Swap a word assignment to a different sentence (Coverage mode)
+ */
+export const swapCoverageAssignment = async (
+  runId: number,
+  wordKey: string,
+  newSentenceIndex: number
+): Promise<CoverageAssignment> => {
+  const response = await api.post(`/coverage/runs/${runId}/swap`, {
+    word_key: wordKey,
+    new_sentence_index: newSentenceIndex,
+  });
+  return response.data;
+};
+
+/**
+ * Export coverage run to Google Sheets
+ */
 export const exportCoverageRun = async (
   runId: number,
   sheetName: string,
@@ -528,31 +892,6 @@ export const downloadCoverageRunCSV = async (runId: number): Promise<Blob> => {
   const response = await api.get(`/coverage/runs/${runId}/download`, {
     responseType: 'blob',
   });
-  return response.data;
-};
-
-export interface DiagnosisCategory {
-  count: number;
-  sample_words: string[];
-  description: string;
-}
-
-export interface CoverageDiagnosis {
-  total_words: number;
-  covered_words: number;
-  uncovered_words: number;
-  coverage_percentage: number;
-  categories: {
-    not_in_corpus: DiagnosisCategory;
-    only_in_long_sentences: DiagnosisCategory;
-    only_in_short_sentences: DiagnosisCategory;
-    in_valid_but_missed: DiagnosisCategory;
-  };
-  recommendation: string;
-}
-
-export const diagnoseCoverageRun = async (runId: number): Promise<CoverageDiagnosis> => {
-  const response = await api.get(`/coverage/runs/${runId}/diagnosis`);
   return response.data;
 };
 
