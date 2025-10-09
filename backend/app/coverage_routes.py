@@ -470,7 +470,7 @@ def import_sentences_from_sheets():
 @jwt_required()
 @limiter.limit("20 per hour")
 def create_coverage_run():
-    """Create and start a new coverage run"""
+    """Create and start a new coverage run (single source or batch)"""
     user_id = int(get_jwt_identity())
     
     try:
@@ -493,14 +493,26 @@ def create_coverage_run():
             if global_default:
                 wordlist_id = global_default.id
     
+    # For batch mode, store source_ids in config_json and use first source as source_id
+    mode = data['mode']
+    if mode == 'batch':
+        source_ids = data['source_ids']
+        config = data.get('config') or {}
+        config['source_ids'] = source_ids
+        # Use first source_id as the primary source_id for indexing
+        source_id = source_ids[0]
+    else:
+        source_id = data['source_id']
+        config = data.get('config')
+    
     # Create coverage run
     coverage_run = CoverageRun(
         user_id=user_id,
-        mode=data['mode'],
+        mode=mode,
         source_type=data['source_type'],
-        source_id=data['source_id'],
+        source_id=source_id,
         wordlist_id=wordlist_id,
-        config_json=data.get('config'),
+        config_json=config,
         status='pending'
     )
     
@@ -512,11 +524,19 @@ def create_coverage_run():
         from app.services.credit_service import CreditService
         from app.constants import COVERAGE_RUN_COST
         
+        # For batch mode, charge per source (or use a multiplier)
+        if mode == 'batch':
+            cost = COVERAGE_RUN_COST * len(source_ids)
+            description = f'Batch coverage run #{coverage_run.id} ({len(source_ids)} sources)'
+        else:
+            cost = COVERAGE_RUN_COST
+            description = f'Coverage run #{coverage_run.id} ({mode} mode)'
+        
         success, error_msg = CreditService.charge_coverage_run(
             user_id=user_id,
             coverage_run_id=coverage_run.id,
-            amount=COVERAGE_RUN_COST,
-            description=f'Coverage run #{coverage_run.id} ({data["mode"]} mode)'
+            amount=cost,
+            description=description
         )
         
         if not success:
@@ -525,8 +545,12 @@ def create_coverage_run():
             db.session.commit()
             return jsonify({'error': error_msg}), 402  # Payment Required
         
-        # Start async task
-        task = coverage_build_async.apply_async(args=[coverage_run.id])
+        # Start async task - use batch task for batch mode
+        if mode == 'batch':
+            from app.tasks import batch_coverage_build_async
+            task = batch_coverage_build_async.apply_async(args=[coverage_run.id])
+        else:
+            task = coverage_build_async.apply_async(args=[coverage_run.id])
         
         coverage_run.celery_task_id = task.id
         db.session.commit()
@@ -534,7 +558,7 @@ def create_coverage_run():
         return jsonify({
             'coverage_run': coverage_run.to_dict(),
             'task_id': task.id,
-            'credits_charged': COVERAGE_RUN_COST
+            'credits_charged': cost
         }), 201
         
     except Exception as e:

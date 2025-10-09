@@ -416,6 +416,162 @@ class CoverageService:
         
         return assignments, stats
     
+    def batch_coverage_mode(
+        self,
+        sources: List[Tuple[int, List[str]]],
+        progress_callback: Optional[Callable[[int, str], Any]] = None
+    ) -> Tuple[List[Dict], Dict]:
+        """
+        Batch Coverage Mode: Process multiple sources sequentially with shrinking word list.
+        
+        This implements the "smart assembly line" approach:
+        - Process first source to find as many words as possible
+        - For each subsequent source, only search for words not yet covered
+        - Combine all selected sentences into final learning set
+        
+        Args:
+            sources: List of tuples (source_id, sentences_list)
+            progress_callback: Optional progress callback (percent, step_description)
+        
+        Returns:
+            Tuple of (combined_assignments, combined_stats)
+        """
+        logger.info(f"Starting batch coverage mode with {len(sources)} sources")
+        
+        # Track global state across all sources
+        all_assignments = []
+        all_selected_sentences = []
+        uncovered_words = self.wordlist_keys.copy()
+        total_words_initial = len(self.wordlist_keys)
+        
+        # Statistics per source
+        source_stats = []
+        
+        # Process each source sequentially
+        for source_idx, (source_id, sentences) in enumerate(sources):
+            if not uncovered_words:
+                logger.info(f"All words covered after processing {source_idx} sources")
+                break
+            
+            logger.info(f"Processing source {source_idx + 1}/{len(sources)} (ID: {source_id}), "
+                       f"{len(uncovered_words)} words remaining")
+            
+            # Update progress
+            if progress_callback:
+                try:
+                    base_progress = int(10 + (source_idx / len(sources)) * 80)
+                    step_desc = f"Processing source {source_idx + 1}/{len(sources)}"
+                    progress_callback(base_progress, step_desc)
+                except Exception:
+                    pass
+            
+            # Create a temporary CoverageService with current uncovered words
+            temp_service = CoverageService(
+                wordlist_keys=uncovered_words,
+                config=self.config
+            )
+            
+            # Run coverage mode on this source
+            source_assignments, source_stats_dict = temp_service.coverage_mode_greedy(
+                sentences,
+                progress_callback=None  # We handle progress at batch level
+            )
+            
+            # Track which words were covered by this source
+            words_covered_by_source = set()
+            for assignment in source_assignments:
+                word_key = assignment['word_key']
+                words_covered_by_source.add(word_key)
+                
+                # Add source_id to assignment for tracking
+                assignment['source_id'] = source_id
+                assignment['source_index'] = source_idx
+                all_assignments.append(assignment)
+            
+            # Update uncovered words
+            newly_covered = len(words_covered_by_source)
+            uncovered_words -= words_covered_by_source
+            
+            # Record stats for this source
+            source_stats.append({
+                'source_id': source_id,
+                'source_index': source_idx,
+                'sentences_count': len(sentences),
+                'selected_sentences': source_stats_dict['selected_sentence_count'],
+                'words_covered': newly_covered,
+                'words_remaining': len(uncovered_words),
+            })
+            
+            logger.info(f"Source {source_idx + 1} covered {newly_covered} new words, "
+                       f"{len(uncovered_words)} remaining")
+        
+        # Build combined learning set
+        # Sort assignments by source order, then sentence index within each source
+        all_assignments.sort(key=lambda a: (a['source_index'], a['sentence_index']))
+        
+        # Create unique sentence list (deduplicate if same sentence appears in multiple sources)
+        seen_sentences = {}
+        learning_set = []
+        rank = 1
+        
+        for assignment in all_assignments:
+            sentence_key = (assignment['source_id'], assignment['sentence_index'])
+            if sentence_key not in seen_sentences:
+                seen_sentences[sentence_key] = {
+                    'rank': rank,
+                    'source_id': assignment['source_id'],
+                    'source_index': assignment['source_index'],
+                    'sentence_index': assignment['sentence_index'],
+                    'sentence_text': assignment['sentence_text'],
+                    'words_covered': set([assignment['word_key']]),
+                }
+                rank += 1
+            else:
+                # Same sentence covers multiple words
+                seen_sentences[sentence_key]['words_covered'].add(assignment['word_key'])
+        
+        # Convert to list with word counts
+        for sentence_info in seen_sentences.values():
+            learning_set.append({
+                'rank': sentence_info['rank'],
+                'source_id': sentence_info['source_id'],
+                'source_index': sentence_info['source_index'],
+                'sentence_index': sentence_info['sentence_index'],
+                'sentence_text': sentence_info['sentence_text'],
+                'word_count': len(sentence_info['words_covered']),
+            })
+        
+        # Calculate combined statistics
+        covered_words = total_words_initial - len(uncovered_words)
+        stats = {
+            'mode': 'batch',
+            'sources_count': len(sources),
+            'sources_processed': len(source_stats),
+            'words_total': total_words_initial,
+            'words_covered': covered_words,
+            'uncovered_words': len(uncovered_words),
+            'coverage_percentage': (covered_words / total_words_initial * 100) if total_words_initial > 0 else 0,
+            'selected_sentence_count': len(learning_set),
+            'learning_set_count': len(learning_set),
+            'source_breakdown': source_stats,
+            'learning_set': learning_set,
+        }
+        
+        # Log final word sets
+        final_covered = self.wordlist_keys - uncovered_words
+        self._log_word_sets(final_covered, uncovered_words)
+        
+        if progress_callback:
+            try:
+                progress_callback(95, "Finalizing batch results")
+            except Exception:
+                pass
+        
+        logger.info(f"Batch coverage complete: {covered_words}/{total_words_initial} words covered "
+                   f"with {len(learning_set)} sentences from {len(source_stats)} sources")
+        
+        return all_assignments, stats
+    
     def _log_word_sets(self, covered_words: Set[str], uncovered_words: Set[str]):
         """Logs covered and uncovered words to timestamped text files."""
         log_dir = 'logs'
