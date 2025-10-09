@@ -25,7 +25,7 @@ job_confirm_schema = JobConfirmSchema()
 job_finalize_schema = JobFinalizeSchema()
 
 
-@credit_bp.route('/me/credits', methods=['GET'])
+@credit_bp.route('/me', methods=['GET'])
 @jwt_required()
 def get_credits():
     """

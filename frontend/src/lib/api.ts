@@ -370,7 +370,7 @@ export interface CreditSummary {
 }
 
 export async function getCredits(): Promise<CreditSummary> {
-  const response = await api.get('/me/credits');
+  const response = await api.get('/credits/me');
   return response.data;
 }
 
