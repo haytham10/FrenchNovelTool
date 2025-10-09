@@ -1,8 +1,7 @@
 """Tests for chunk persistence and retry system"""
-import pytest
-from datetime import datetime
-from unittest.mock import Mock, patch, MagicMock
-from app.models import Job, JobChunk, User
+from datetime import datetime, timezone
+from unittest.mock import Mock, patch
+from app.models import JobChunk
 from app.services.chunking_service import ChunkingService
 
 

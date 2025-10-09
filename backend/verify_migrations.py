@@ -14,7 +14,7 @@ Environment Variables Required:
 import os
 import sys
 from sqlalchemy import create_engine, inspect, text
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 def get_db_engine():

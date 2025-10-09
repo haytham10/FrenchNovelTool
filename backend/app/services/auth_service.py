@@ -5,7 +5,7 @@ from google.oauth2.credentials import Credentials
 from flask import current_app
 from app import db
 from app.models import User, UserSettings
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from googleapiclient.discovery import build
 
 

@@ -1,7 +1,7 @@
 """Service for managing processing jobs and token estimation"""
 import math
 from typing import Optional, Dict, Any, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import current_app
 from app import db
 from app.models import Job, History
