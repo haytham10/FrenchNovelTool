@@ -3,15 +3,24 @@ import pytest
 from app import create_app, db
 from app.models import User, WordList, CoverageRun, CoverageAssignment
 from app.services.coverage_service import CoverageService
+from config import Config
+
+
+class TestConfig(Config):
+    """Test configuration that works with SQLite"""
+    TESTING = True
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+    # Override engine options for SQLite compatibility
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        'pool_pre_ping': True
+    }
 
 
 @pytest.fixture(scope='function')
 def app():
     """Create application for testing"""
-    app = create_app()
-    app.config['TESTING'] = True
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    app = create_app(config_class=TestConfig)
 
     with app.app_context():
         db.create_all()
@@ -218,3 +227,108 @@ class TestBatchCoverageMode:
         # Batch mode should provide source breakdown
         assert 'source_breakdown' in stats_batch
         assert len(stats_batch['source_breakdown']) == 2
+    
+    def test_batch_coverage_respects_sentence_limit(self, app):
+        """Test that batch coverage respects the target_count (sentence_limit)"""
+        # Define a wordlist with many words to ensure we get more sentences than our limit
+        wordlist_keys = {'un', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit', 'neuf', 'dix'}
+        
+        # Source 1: Several sentences
+        source1 = [
+            "Un chat mange du poisson.",
+            "Deux chiens courent dans le parc.",
+            "Trois oiseaux volent haut.",
+            "Quatre chevaux galopent vite.",
+            "Cinq enfants jouent ensemble."
+        ]
+        
+        # Source 2: More sentences
+        source2 = [
+            "Six livres sont sur la table.",
+            "Sept jours composent une semaine.",
+            "Huit heures du matin arrivent.",
+            "Neuf personnes attendent dehors.",
+            "Dix minutes restent seulement."
+        ]
+        
+        # Set a sentence limit lower than total potential sentences
+        sentence_limit = 6
+        
+        service = CoverageService(
+            wordlist_keys=wordlist_keys,
+            config={'len_min': 2, 'len_max': 15, 'target_count': sentence_limit}
+        )
+        
+        sources = [
+            (1, source1),
+            (2, source2)
+        ]
+        
+        assignments, stats = service.batch_coverage_mode(sources)
+        
+        # Verify the learning set respects the limit
+        assert 'learning_set' in stats
+        learning_set = stats['learning_set']
+        
+        # This is the critical assertion: learning set should not exceed sentence_limit
+        assert len(learning_set) <= sentence_limit, \
+            f"Learning set has {len(learning_set)} sentences, expected <= {sentence_limit}"
+        
+        # Verify all entries have required metadata
+        for entry in learning_set:
+            assert 'rank' in entry
+            assert 'sentence_text' in entry
+            assert 'token_count' in entry, "Missing token_count in learning_set entry"
+            assert 'new_word_count' in entry, "Missing new_word_count in learning_set entry"
+            assert 'score' in entry, "Missing score in learning_set entry"
+        
+        # Verify ranks are sequential starting from 1
+        ranks = [entry['rank'] for entry in learning_set]
+        assert ranks == list(range(1, len(learning_set) + 1)), \
+            "Ranks should be sequential starting from 1"
+        
+        # Verify sentences are sorted by quality score (descending)
+        if len(learning_set) > 1:
+            for i in range(len(learning_set) - 1):
+                # Score should be decreasing or equal (ties allowed)
+                assert learning_set[i]['score'] >= learning_set[i + 1]['score'], \
+                    "Learning set should be sorted by score (descending)"
+    
+    def test_batch_coverage_metadata_completeness(self, app):
+        """Test that batch coverage includes all required metadata in learning_set"""
+        wordlist_keys = {'chat', 'chien', 'maison'}
+        
+        source1 = [
+            "Le chat est sur la maison.",
+            "Le chien court vite."
+        ]
+        
+        service = CoverageService(
+            wordlist_keys=wordlist_keys,
+            config={'len_min': 2, 'len_max': 10, 'target_count': 10}
+        )
+        
+        assignments, stats = service.batch_coverage_mode([(1, source1)])
+        
+        # Verify learning_set has complete metadata
+        assert 'learning_set' in stats
+        learning_set = stats['learning_set']
+        assert len(learning_set) > 0
+        
+        for entry in learning_set:
+            # Check all required fields are present
+            assert 'rank' in entry
+            assert 'source_id' in entry
+            assert 'source_index' in entry
+            assert 'sentence_index' in entry
+            assert 'sentence_text' in entry
+            assert 'token_count' in entry
+            assert 'new_word_count' in entry
+            assert 'score' in entry
+            
+            # Verify types
+            assert isinstance(entry['rank'], int)
+            assert isinstance(entry['token_count'], int)
+            assert isinstance(entry['new_word_count'], int)
+            assert isinstance(entry['score'], (int, float))
+            assert isinstance(entry['sentence_text'], str)
