@@ -21,6 +21,7 @@ def make_celery(app: Flask) -> Celery:
     )
     
     # Update Celery config from Flask config
+    # Optimized for 8GB RAM / 8 vCPU Railway infrastructure
     celery.conf.update(
         task_serializer='json',
         accept_content=['json'],
@@ -30,17 +31,15 @@ def make_celery(app: Flask) -> Celery:
         task_track_started=True,
         task_send_sent_event=True,
         worker_send_task_events=True,
-        result_expires=3600,  # 1 hour
-        task_time_limit=1800,  # 30 minutes max per task
-        task_soft_time_limit=1500,  # Soft limit at 25 minutes
-        worker_prefetch_multiplier=1,  # Fair task distribution
-        worker_max_tasks_per_child=50,  # Prevent memory leaks
+        result_expires=7200,  # 2 hours - longer retention for complex jobs
+        task_time_limit=3600,  # 60 minutes max per task - handle large PDFs
+        task_soft_time_limit=3300,  # Soft limit at 55 minutes
+        worker_prefetch_multiplier=2,  # Prefetch more tasks for better throughput
+        worker_max_tasks_per_child=100,  # More tasks before recycling
         task_acks_late=True,  # Acknowledge after task completion
         task_reject_on_worker_lost=True,  # Re-queue if worker crashes
-    # Optional memory cap (in MiB) for child workers; set via Flask
-    # config WORKER_MAX_MEMORY_MB. If provided, Celery's
-    # `worker_max_memory_per_child` will be set (value in KiB).
-    worker_max_memory_per_child=(int(app.config.get('WORKER_MAX_MEMORY_MB', 0)) * 1024) if app.config.get('WORKER_MAX_MEMORY_MB') else None,
+    # Memory cap: 900MB per worker (8GB / 8 workers with headroom)
+    worker_max_memory_per_child=int(app.config.get('WORKER_MAX_MEMORY_MB', 900)) * 1024,
         # Retain existing startup retry behavior for broker connections.
         # Celery 6.0+ changes how connection retries on startup are handled;
         # setting this to True preserves the previous behavior and silences

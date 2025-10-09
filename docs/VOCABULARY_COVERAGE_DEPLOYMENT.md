@@ -1,1 +1,0 @@
-# Vocabulary Coverage Deployment

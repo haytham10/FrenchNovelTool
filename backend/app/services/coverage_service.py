@@ -93,13 +93,21 @@ class CoverageService:
                             'pos': pos
                         })
 
+                    token_count = len(tokens)
+                    # Skip indexing sentences outside the configured token-length window
+                    # This avoids carrying large numbers of irrelevant candidates into the
+                    # greedy selection loop and can dramatically reduce runtime for large
+                    # corpora. The defaults are defined on the service instance.
+                    if token_count < self.len_min or token_count > self.len_max:
+                        continue
+
                     matched, unmatched = LinguisticsUtils.match_tokens_to_wordlist(tokens, self.wordlist_keys)
-                    ratio = len(matched) / len(tokens) if tokens else 0.0
+                    ratio = len(matched) / token_count if token_count else 0.0
 
                     index[idx] = {
                         'text': sentence,
                         'tokens': tokens,
-                        'token_count': len(tokens),
+                        'token_count': token_count,
                         'words_in_list': set(matched),
                         'words_not_in_list': set(unmatched),
                         'in_list_ratio': ratio,
@@ -114,13 +122,18 @@ class CoverageService:
                     handle_elisions=self.handle_elisions
                 )
 
+                token_count = len(tokens)
+                # Skip sentences that are outside the desired length window early
+                if token_count < self.len_min or token_count > self.len_max:
+                    continue
+
                 matched, unmatched = LinguisticsUtils.match_tokens_to_wordlist(tokens, self.wordlist_keys)
-                ratio = len(matched) / len(tokens) if tokens else 0.0
+                ratio = len(matched) / token_count if token_count else 0.0
 
                 index[idx] = {
                     'text': sentence,
                     'tokens': tokens,
-                    'token_count': len(tokens),
+                    'token_count': token_count,
                     'words_in_list': set(matched),
                     'words_not_in_list': set(unmatched),
                     'in_list_ratio': ratio,

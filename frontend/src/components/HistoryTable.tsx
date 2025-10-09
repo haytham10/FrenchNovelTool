@@ -91,6 +91,20 @@ const ActionCell = styled(StyledTableCell)(() => ({
   }
 }));
 
+// Filename cell: limit width and show ellipsis when overflowing.
+const FilenameCell = styled(StyledTableCell)(() => ({
+  maxWidth: 420,
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  // Ensure child inline-block spans can shrink to fit
+  '& > span': {
+    display: 'inline-block',
+    maxWidth: '100%',
+    verticalAlign: 'middle',
+  }
+}));
+
 // Add keyframes for spinning animation
 const globalStyles = `
   @keyframes spin {
@@ -636,7 +650,7 @@ export default function HistoryTable() {
           p: 0,
         }}
       >
-  	<Table sx={{ tableLayout: 'auto', width: '100%' }}>
+    <Table sx={{ tableLayout: 'fixed', width: '100%' }}>
           <TableHead>
             <TableRow>
               <StyledTableCell>Status</StyledTableCell>
@@ -751,7 +765,11 @@ export default function HistoryTable() {
 					/>
 				  </StyledTableCell>
 				  <TimestampCell>{new Date(entry.timestamp).toLocaleString()}</TimestampCell>
-				  <StyledTableCell>{entry.original_filename}</StyledTableCell>
+          <FilenameCell>
+          <Tooltip title={entry.original_filename} arrow>
+            <span aria-label={entry.original_filename}>{entry.original_filename}</span>
+          </Tooltip>
+          </FilenameCell>
 				  <StyledTableCell align='center'>
 						<Box paddingRight={4}>
 						{entry.processed_sentences_count}

@@ -11,10 +11,10 @@ RUN apt-get update && apt-get install -y \
 
 # Copy and install Python dependencies
 COPY requirements.txt ./
-# Upgrade pip and install python dependencies in a single layer
+# Optimized for 8GB RAM / 8 vCPU: Upgrade pip and install python dependencies in a single layer
 RUN pip install --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt \
-    # Download spaCy French model at build time; it's not a pip package
+    # Download spaCy French model at build time for memory sharing across workers
     && python -m spacy download fr_core_news_md
 
 # Copy application code
