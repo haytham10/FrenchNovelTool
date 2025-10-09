@@ -24,21 +24,35 @@ socketio = SocketIO()
 celery = None  # Will be initialized in create_app
 
 def create_app(config_class=Config):
-    app = Flask(__name__)
+    app = Flask(__name__, instance_relative_config=True)
     app.config.from_object(config_class)
+
+    # Ensure the instance folder exists
+    try:
+        os.makedirs(app.instance_path)
+    except OSError:
+        pass
     
-    # Configure CORS with whitelist and credentials support
-    CORS(
-        app,
-        origins=app.config['CORS_ORIGINS'],
-        supports_credentials=app.config['CORS_SUPPORTS_CREDENTIALS'],
-        allow_headers=[
-            'Content-Type',
-            'Authorization',
-            'X-Requested-With',
-        ],
-        methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    )
+    # --- CORS Configuration ---
+    # Centralize CORS origin parsing to ensure consistency for Flask-CORS and Socket.IO
+    origins_config = app.config.get('CORS_ORIGINS', '')
+    if isinstance(origins_config, str):
+        # Split comma-separated string into a list of origins, filtering out empty strings
+        origins = [origin.strip() for origin in origins_config.split(',') if origin.strip()]
+    elif isinstance(origins_config, list):
+        origins = origins_config
+    else:
+        origins = []
+
+    # Provide a sensible default for development if no origins are configured
+    if not origins and app.config.get('FLASK_ENV') == 'development':
+        origins = ['http://localhost:3000', 'http://127.0.0.1:3000']
+    
+    if not origins and app.config.get('FLASK_ENV') != 'development':
+        app.logger.warning(
+            "CORS_ORIGINS is not set or empty in a non-development environment. "
+            "Frontend applications will not be able to connect."
+        )
     
     # Initialize extensions
     db.init_app(app)
@@ -48,13 +62,14 @@ def create_app(config_class=Config):
     if app.config['RATELIMIT_ENABLED']:
         limiter.init_app(app)
     
-    # Initialize SocketIO
+    # Use the parsed origins list for both Socket.IO and Flask-CORS
     socketio.init_app(
         app,
-        cors_allowed_origins=app.config.get('CORS_ORIGINS', '*'),
+        cors_allowed_origins=origins,
         message_queue=app.config.get('CELERY_BROKER_URL'),
         async_mode='eventlet'
     )
+    CORS(app, origins=origins, supports_credentials=True)
     
     # Initialize Celery
     global celery
@@ -79,7 +94,7 @@ def create_app(config_class=Config):
         # Register blueprints
         app.register_blueprint(routes.main_bp, url_prefix='/api/v1')
         app.register_blueprint(auth_routes.auth_bp, url_prefix='/api/v1/auth')
-        app.register_blueprint(credit_routes.credit_bp, url_prefix='/api/v1')
+        app.register_blueprint(credit_routes.credit_bp, url_prefix='/api/v1/credits')
         app.register_blueprint(coverage_routes.coverage_bp)
 
         # Register error handlers

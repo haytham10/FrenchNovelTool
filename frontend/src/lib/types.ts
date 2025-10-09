@@ -160,11 +160,11 @@ export interface WordList {
   owner_user_id: number | null;
   name: string;
   source_type: 'manual' | 'csv' | 'google_sheet';
-  source_ref: string | null;
+  source_ref?: string | null;
   normalized_count: number;
   canonical_samples: string[];
   created_at: string;
-  updated_at: string;
+  updated_at?: string;
   is_global_default: boolean;
 }
 
@@ -172,18 +172,21 @@ export interface CoverageRun {
   id: number;
   user_id: number;
   mode: 'coverage' | 'filter' | 'batch';
-  source_type: 'history' | 'sheets';
+  source_type: 'history' | 'job';
   source_id: number | null;
-  wordlist_id: number;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  source_ids?: number[];
+  wordlist_id?: number;
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
   progress_percent: number;
   stats_json: Record<string, unknown> | null;
   learning_set_json: Record<string, unknown>[] | null;
   config_json: Record<string, unknown> | null;
   created_at: string;
-  started_at: string | null;
-  completed_at: string | null;
-  error_message: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  error_message?: string | null;
+  celery_task_id?: string;
+  learning_set?: LearningSetEntry[];
 }
 
 export interface CoverageAssignment {
@@ -198,14 +201,33 @@ export interface CoverageAssignment {
 
 export interface LearningSetEntry {
   rank: number;
-  sentence_index: number | null;
-  sentence_text: string;
+  sentence: string;
+  new_words_covered: string[];
+  all_matched_words: string[];
+  sentence_index: number;
   token_count: number;
   new_word_count: number;
   score: number | null;
   source_id?: number;
   words?: string[]; // Added on frontend
 }
+
+export interface CoverageDiagnosis {
+  total_words: number;
+  covered_words: number;
+  uncovered_words: number;
+  coverage_percentage: number;
+  recommendation: string;
+  categories: {
+    [key: string]: {
+      description: string;
+      count: number;
+      sample_words: string[];
+    };
+  };
+}
+
+// (Removed misplaced property declaration)
 
 // Detailed history for drill-down view
 export interface HistoryDetail extends HistoryEntry {

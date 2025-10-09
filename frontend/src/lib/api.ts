@@ -655,7 +655,7 @@ export interface WordList {
   owner_user_id: number | null;
   name: string;
   source_type: 'csv' | 'google_sheet' | 'manual';
-  source_ref?: string;
+  source_ref?: string | null;
   normalized_count: number;
   canonical_samples: string[];
   is_global_default: boolean;
@@ -675,15 +675,18 @@ export interface IngestionReport {
 export interface CoverageRun {
   id: number;
   user_id: number;
-  mode: 'coverage' | 'filter';
+  mode: 'coverage' | 'filter' | 'batch';
   source_type: 'job' | 'history';
   source_id: number;
+  source_ids?: number[];
   wordlist_id?: number;
   config_json: Record<string, unknown>;
   status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
   progress_percent: number;
   stats_json: Record<string, unknown>;
+  learning_set_json?: Record<string, unknown>[] | null;
   created_at: string;
+  started_at?: string | null;
   completed_at?: string;
   error_message?: string;
   celery_task_id?: string;
@@ -691,26 +694,34 @@ export interface CoverageRun {
 
 export interface CoverageAssignment {
   id: number;
-  coverage_run_id: number;
+  coverage_run_id?: number;
+  run_id?: number;
   word_original?: string;
   word_key: string;
   lemma?: string;
   matched_surface?: string;
-  sentence_index: number;
+  surface_form?: string;
+  sentence_index: number | null;
   sentence_text: string;
   sentence_score?: number;
   conflicts?: Record<string, unknown>;
-  manual_edit: boolean;
+  manual_edit?: boolean;
   notes?: string;
+  source_id?: number | null;
 }
 
 export interface LearningSetEntry {
   rank: number;
-  sentence_text: string;
+  sentence?: string;
+  sentence_text?: string;
+  new_words_covered?: string[];
+  all_matched_words?: string[];
   sentence_index: number | null;
   token_count?: number | null;
   new_word_count?: number | null;
   score?: number | null;
+  source_id?: number;
+  words?: string[];
 }
 
 /**
@@ -824,9 +835,10 @@ export const getCoverageCost = async (): Promise<{ cost: number; currency: strin
  * Create and start a coverage run
  */
 export const createCoverageRun = async (params: {
-  mode: 'coverage' | 'filter';
+  mode: 'coverage' | 'filter' | 'batch';
   source_type: 'job' | 'history';
-  source_id: number;
+  source_id?: number;
+  source_ids?: number[];
   wordlist_id?: number;
   config?: Record<string, unknown>;
 }): Promise<{ coverage_run: CoverageRun; task_id: string; credits_charged: number }> => {

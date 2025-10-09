@@ -88,6 +88,15 @@ type LearningSetDisplayEntry = LearningSetEntry & { words: string[] };
 
 const WIZARD_STEPS = ['Configure', 'Select Source', 'Run & Review'] as const;
 
+// Add type for theme color to avoid casting later
+type ThemeColor = 'success' | 'warning' | 'error';
+
+const getColorTheme = (percent: number): { color: ThemeColor; label: string; icon: string } => {
+  if (percent >= 85) return { color: 'success', label: 'Excellent', icon: '✓' };
+  if (percent >= 70) return { color: 'warning', label: 'Good', icon: '!' };
+  return { color: 'error', label: 'Needs Work', icon: '×' };
+};
+
 export default function CoveragePage() {
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
@@ -183,8 +192,16 @@ export default function CoveragePage() {
       onProgress: (run) => {
         // Update only the coverage_run in cache to keep assignments stable while processing
         queryClient.setQueryData<CoverageRunQueryData | undefined>(['coverageRun', run.id], (old) => {
-          if (old) return { ...old, coverage_run: run };
-          return { coverage_run: run };
+          if (old) return { ...old, coverage_run: { ...old.coverage_run, ...run } };
+          return { 
+            coverage_run: {
+              ...run,
+              learning_set_json: run.learning_set_json ?? null,
+              started_at: run.started_at ?? null,
+            }, 
+            assignments: [], 
+            learning_set: [] 
+          };
         });
       },
       onComplete: (run) => {
@@ -281,13 +298,12 @@ export default function CoveragePage() {
     },
     onError: (error: unknown) => {
       let msg = 'Failed to start coverage run';
-      if ((error as AxiosError).isAxiosError) {
-        const axiosErr = error as AxiosError;
-        const data = axiosErr.response?.data;
+      if (error instanceof AxiosError) {
+        const data = error.response?.data;
         if (data && typeof data === 'object' && 'error' in data && typeof data.error === 'string') {
           msg = data.error;
-        } else if (axiosErr.message) {
-          msg = axiosErr.message;
+        } else if (error.message) {
+          msg = error.message;
         }
       } else if (error instanceof Error) {
         msg = error.message;
@@ -308,16 +324,15 @@ export default function CoveragePage() {
       }
       setShowExportDialog(false);
     },
-    onError: (error: AxiosError | unknown) => {
+    onError: (error: unknown) => {
       let msg = 'Export failed';
       // If this is an Axios error, try to read response.data.error safely
-      if ((error as AxiosError).isAxiosError) {
-        const axiosErr = error as AxiosError;
-        const data = axiosErr.response?.data;
+      if (error instanceof AxiosError) {
+        const data = error.response?.data;
         if (data && typeof data === 'object' && 'error' in data && typeof data.error === 'string') {
           msg = data.error;
-        } else if (axiosErr.message) {
-          msg = axiosErr.message;
+        } else if (error.message) {
+          msg = error.message;
         }
       } else if (error instanceof Error) {
         msg = error.message;
@@ -341,13 +356,12 @@ export default function CoveragePage() {
       enqueueSnackbar('CSV downloaded successfully!', { variant: 'success' });
     } catch (error: unknown) {
       let msg = 'Download failed';
-      if ((error as AxiosError).isAxiosError) {
-        const axiosErr = error as AxiosError;
-        const data = axiosErr.response?.data;
+      if (error instanceof AxiosError) {
+        const data = error.response?.data;
         if (data && typeof data === 'object' && 'error' in data && typeof data.error === 'string') {
           msg = data.error;
-        } else if (axiosErr.message) {
-          msg = axiosErr.message;
+        } else if (error.message) {
+          msg = error.message;
         }
       } else if (error instanceof Error) {
         msg = error.message;
@@ -440,7 +454,7 @@ export default function CoveragePage() {
     // In batch mode, the learning_set is already what we need.
     // In single mode, we need to join with assignments.
     if (coverageRun?.mode === 'batch') {
-      return learningSet;
+      return learningSet as LearningSetEntry[];
     }
 
     // Single-mode logic (unchanged)
@@ -455,7 +469,8 @@ export default function CoveragePage() {
       if (assignment.sentence_index !== null) {
         const entry = sentenceMap.get(assignment.sentence_index);
         if (entry) {
-          entry.words.push(assignment.surface_form);
+          const surfaceForm = assignment.surface_form || assignment.matched_surface || assignment.word_key;
+          entry.words.push(surfaceForm);
         }
       }
     }
@@ -472,7 +487,7 @@ export default function CoveragePage() {
   useEffect(() => {
     setResultsPage(1);
   }, [currentRunId, coverageRun?.id]);
-  const history = (historyData?.history || []).slice().sort((a: HistoryEntry, b: HistoryEntry) => (
+  const history = (historyData || []).slice().sort((a: HistoryEntry, b: HistoryEntry) => (
     new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
   ));
 
@@ -782,14 +797,12 @@ export default function CoveragePage() {
                 placeholder="Search by name or ID..."
                 value={historySearch}
                 onChange={(e) => setHistorySearch(e.target.value)}
-                slotProps={{
-                  input: {
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <SearchIcon />
-                      </InputAdornment>
-                    ),
-                  },
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon />
+                    </InputAdornment>
+                  ),
                 }}
               />
               <Button
@@ -1309,7 +1322,7 @@ export default function CoveragePage() {
                     const total = getNumberStat('words_total');
                     const covered = getNumberStat('words_covered');
                     const uncovered = total && covered ? total - covered : 0;
-                    const coveragePercent = total && covered ? (covered / total) * 100 : 0;
+                    // const coveragePercent = total && covered ? (covered / total) * 100 : 0;
 
                     // Only show if coverage is less than 100%
                     if (uncovered > 0) {
@@ -1702,7 +1715,7 @@ export default function CoveragePage() {
                   />
                   <Chip
                     label={`${diagnosisData.coverage_percentage.toFixed(1)}% coverage`}
-                    color="primary"
+                    color={getColorTheme(diagnosisData.coverage_percentage).color}
                     size="medium"
                   />
                   <Chip

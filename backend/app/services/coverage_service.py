@@ -25,7 +25,7 @@ class CoverageService:
             wordlist_keys: Set of normalized word keys from word list
             config: Configuration dict with mode-specific settings
         """
-        self.wordlist_keys = wordlist_keys
+        self.wordlist_keys = {self.normalize_french_lemma(key) for key in wordlist_keys}
         self.config = config or {}
 
         # Filter mode defaults
@@ -81,7 +81,7 @@ class CoverageService:
                             surface_for_norm = surface
 
                         normalized_source = lemma if lemma else surface_for_norm
-                        normalized = LinguisticsUtils.normalize_text(normalized_source, fold_diacritics=self.fold_diacritics)
+                        normalized = self.normalize_french_lemma(LinguisticsUtils.normalize_text(normalized_source, fold_diacritics=self.fold_diacritics))
 
                         if not normalized:
                             continue

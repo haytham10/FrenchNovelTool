@@ -18,7 +18,7 @@ from app.schemas import (
     CoverageSwapSchema,
     CoverageExportSchema
 )
-from app.tasks import coverage_build_async, batch_coverage_build_async
+from app.tasks import coverage_build_async #, batch_coverage_build_async
 
 logger = logging.getLogger(__name__)
 
