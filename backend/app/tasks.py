@@ -418,6 +418,16 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
         max_retries = int(current_app.config.get('CHUNK_TASK_MAX_RETRIES', current_app.config.get('GEMINI_MAX_RETRIES', 3)))
         base_delay = int(current_app.config.get('CHUNK_TASK_RETRY_DELAY', current_app.config.get('GEMINI_RETRY_DELAY', 1)))
 
+        # CRITICAL: Check if chunk DB record has exceeded max_retries
+        # This prevents Celery-level retries from conflicting with job-level retries
+        if chunk_db_record and chunk_db_record.attempts >= chunk_db_record.max_retries:
+            logger.warning(
+                f"Chunk {chunk_info.get('chunk_id')} (job {job_id}) has exhausted all retry attempts "
+                f"({chunk_db_record.attempts}/{chunk_db_record.max_retries}). Failing permanently."
+            )
+            # Force fail without retry
+            _is_transient = lambda x: False
+        
         if _is_transient(e) and self.request.retries < max_retries:
             # Exponential backoff with jitter-like cap
             delay = min(base_delay * (2 ** self.request.retries), 60)
@@ -618,6 +628,20 @@ def finalize_job_results(self, chunk_results, job_id):
                         chunks_to_retry.append(chunk)
                         should_retry = True
         
+        # CRITICAL: Don't retry if we have enough successful chunks (>= 50% success rate)
+        # This prevents infinite retry loops on problematic PDFs
+        if should_retry and chunks_to_retry:
+            total_chunks = len(db_chunks) if db_chunks else len(chunk_results)
+            success_rate = success_count / total_chunks if total_chunks > 0 else 0
+            
+            if success_rate >= 0.5 and success_count > 0:
+                logger.info(
+                    f"Job {job_id}: skipping retry - success rate {success_rate:.1%} "
+                    f"({success_count}/{total_chunks} chunks) is acceptable"
+                )
+                should_retry = False
+                chunks_to_retry = []
+        
         if should_retry and chunks_to_retry:
             # Orchestrate automatic retry round
             logger.info(f"Job {job_id}: starting retry round {job.retry_count + 1}/{job.max_retries} for {len(chunks_to_retry)} chunks")
@@ -626,11 +650,19 @@ def finalize_job_results(self, chunk_results, job_id):
             job.retry_count += 1
             job.current_step = f"Retrying {len(chunks_to_retry)} failed chunks (attempt {job.retry_count}/{job.max_retries})"
             
-            # Mark chunks as retry_scheduled
+            # Mark chunks as retry_scheduled and increment their attempt counter
             retry_tasks = []
             settings = job.processing_settings or {}
             
             for chunk in chunks_to_retry:
+                # CRITICAL: Double-check retry eligibility before scheduling
+                if not chunk.can_retry():
+                    logger.warning(
+                        f"Job {job_id}: skipping chunk {chunk.chunk_id} - cannot retry "
+                        f"(attempts={chunk.attempts}, age={(datetime.utcnow() - chunk.created_at).total_seconds():.0f}s)"
+                    )
+                    continue
+                
                 chunk.status = 'retry_scheduled'
                 chunk.updated_at = datetime.utcnow()
                 db.session.add(chunk)
@@ -638,20 +670,25 @@ def finalize_job_results(self, chunk_results, job_id):
                     process_chunk.s(chunk.get_chunk_metadata(), job.user_id, settings)
                 )
             
-            safe_db_commit(db)
-            emit_progress(job_id)
-            
-            # Dispatch retry tasks with new finalization callback
-            from celery import group, chord
-            callback = finalize_job_results.s(job_id=job_id)
-            chord(retry_tasks)(callback)
-            
-            logger.info(f"Job {job_id}: dispatched {len(retry_tasks)} retry tasks")
-            return {
-                'status': 'retrying',
-                'message': f'Retrying {len(chunks_to_retry)} failed chunks',
-                'retry_round': job.retry_count
-            }
+            # If no eligible chunks after filtering, skip retry
+            if not retry_tasks:
+                logger.warning(f"Job {job_id}: no eligible chunks for retry after filtering")
+                should_retry = False
+            else:
+                safe_db_commit(db)
+                emit_progress(job_id)
+                
+                # Dispatch retry tasks with new finalization callback
+                from celery import group, chord
+                callback = finalize_job_results.s(job_id=job_id)
+                chord(retry_tasks)(callback)
+                
+                logger.info(f"Job {job_id}: dispatched {len(retry_tasks)} retry tasks")
+                return {
+                    'status': 'retrying',
+                    'message': f'Retrying {len(retry_tasks)} failed chunks',
+                    'retry_round': job.retry_count
+                }
         
         # No more retries - finalize job with current results
         if success_count == 0:
@@ -891,6 +928,83 @@ def reconcile_stuck_chunks(self, age_seconds: Optional[int] = None, limit: int =
         return {'status': 'ok', 'actions': actions}
     except Exception as e:
         logger.exception('reconcile_stuck_chunks: failed: %s', e)
+        return {'status': 'error', 'error': str(e)}
+
+
+@get_celery().task(bind=True, name='app.tasks.terminate_stuck_jobs')
+def terminate_stuck_jobs(self, max_age_hours: int = 3):
+    """
+    Emergency task to terminate jobs that have been stuck in 'processing' state
+    for longer than max_age_hours. This prevents runaway jobs from consuming
+    resources indefinitely.
+    
+    Args:
+        max_age_hours: Maximum age in hours for a processing job (default: 3)
+        
+    Returns:
+        dict: Summary of terminated jobs
+    """
+    db = get_db()
+    Job, User = get_models()
+    JOB_STATUS_PROCESSING, JOB_STATUS_COMPLETED, JOB_STATUS_FAILED, _ = get_constants()
+    
+    try:
+        from datetime import timedelta
+        threshold = datetime.utcnow() - timedelta(hours=max_age_hours)
+        
+        # Find jobs stuck in processing state
+        stuck_jobs = Job.query.filter(
+            Job.status == JOB_STATUS_PROCESSING,
+            Job.started_at < threshold
+        ).all()
+        
+        terminated = []
+        for job in stuck_jobs:
+            age_hours = (datetime.utcnow() - job.started_at).total_seconds() / 3600
+            logger.warning(
+                f"Terminating stuck job {job.id} (age: {age_hours:.1f}h, "
+                f"user: {job.user_id}, filename: {job.original_filename})"
+            )
+            
+            # Mark job as failed
+            job.status = JOB_STATUS_FAILED
+            job.error_message = f"Job terminated - exceeded {max_age_hours}h processing limit"
+            job.current_step = "Terminated"
+            job.progress_percent = 100
+            job.completed_at = datetime.utcnow()
+            
+            # Mark all pending/processing chunks as failed
+            from app.models import JobChunk
+            stuck_chunks = JobChunk.query.filter(
+                JobChunk.job_id == job.id,
+                JobChunk.status.in_(['pending', 'processing', 'retry_scheduled'])
+            ).all()
+            
+            for chunk in stuck_chunks:
+                chunk.status = 'failed'
+                chunk.last_error = 'Job terminated due to timeout'
+                chunk.last_error_code = 'JOB_TIMEOUT'
+                chunk.updated_at = datetime.utcnow()
+                db.session.add(chunk)
+            
+            db.session.add(job)
+            safe_db_commit(db)
+            
+            # Emit progress update
+            emit_progress(job.id)
+            
+            terminated.append({
+                'job_id': job.id,
+                'user_id': job.user_id,
+                'age_hours': age_hours,
+                'filename': job.original_filename
+            })
+        
+        logger.info(f"Terminated {len(terminated)} stuck jobs")
+        return {'status': 'ok', 'terminated': terminated, 'count': len(terminated)}
+        
+    except Exception as e:
+        logger.exception(f"Failed to terminate stuck jobs: {e}")
         return {'status': 'error', 'error': str(e)}
 
 
