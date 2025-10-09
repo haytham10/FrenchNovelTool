@@ -511,7 +511,6 @@ class CoverageService:
         
         # Create unique sentence list (deduplicate if same sentence appears in multiple sources)
         seen_sentences = {}
-        learning_set = []
         rank = 1
         
         for assignment in all_assignments:
@@ -524,21 +523,56 @@ class CoverageService:
                     'sentence_index': assignment['sentence_index'],
                     'sentence_text': assignment['sentence_text'],
                     'words_covered': set([assignment['word_key']]),
+                    'sentence_score': assignment.get('sentence_score'),
                 }
                 rank += 1
             else:
                 # Same sentence covers multiple words
                 seen_sentences[sentence_key]['words_covered'].add(assignment['word_key'])
         
-        # Convert to list with word counts
+        # Convert to list with word counts and scores
+        aggregated_sentences = []
         for sentence_info in seen_sentences.values():
+            new_word_count = len(sentence_info['words_covered'])
+            sentence_text = sentence_info['sentence_text']
+            token_count = len(sentence_text.split()) if sentence_text else 0
+            
+            # Calculate quality score: (new_words × 10) - token_count
+            # This prioritizes sentences with more new words and shorter length
+            quality_score = (new_word_count * 10) - token_count
+            
+            aggregated_sentences.append({
+                'rank': sentence_info['rank'],  # Temporary rank, will be re-ranked
+                'source_id': sentence_info['source_id'],
+                'source_index': sentence_info['source_index'],
+                'sentence_index': sentence_info['sentence_index'],
+                'sentence_text': sentence_text,
+                'new_word_count': new_word_count,
+                'token_count': token_count,
+                'quality_score': quality_score,
+            })
+        
+        # Re-sort by quality score (descending) to prioritize best sentences
+        aggregated_sentences.sort(key=lambda x: x['quality_score'], reverse=True)
+        
+        # Apply target_count limit if configured
+        target_count = self.target_count
+        if target_count and target_count > 0 and len(aggregated_sentences) > target_count:
+            logger.info(f"Truncating learning set from {len(aggregated_sentences)} to {target_count} sentences (target_count)")
+            aggregated_sentences = aggregated_sentences[:target_count]
+        
+        # Re-rank after truncation
+        learning_set = []
+        for idx, sentence_info in enumerate(aggregated_sentences, start=1):
             learning_set.append({
-                'rank': sentence_info['rank'],
+                'rank': idx,
                 'source_id': sentence_info['source_id'],
                 'source_index': sentence_info['source_index'],
                 'sentence_index': sentence_info['sentence_index'],
                 'sentence_text': sentence_info['sentence_text'],
-                'word_count': len(sentence_info['words_covered']),
+                'new_word_count': sentence_info['new_word_count'],
+                'token_count': sentence_info['token_count'],
+                'score': sentence_info['quality_score'],
             })
         
         # Calculate combined statistics
