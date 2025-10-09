@@ -105,14 +105,17 @@ for i in {1..3}; do
 done
 
 # Start Celery worker with production settings and capture exit code
-echo "🎯 Starting Celery worker..."
+# Optimized for 8GB RAM / 8 vCPU Railway infrastructure
+echo "🎯 Starting Celery worker (8GB RAM / 8 vCPU optimized)..."
 celery -A celery_worker.celery worker \
     --loglevel=info \
-    --concurrency=${CELERY_CONCURRENCY:-4} \
-    --max-tasks-per-child=50 \
+    --concurrency=${CELERY_CONCURRENCY:-8} \
+    --max-tasks-per-child=100 \
+    --max-memory-per-child=900000 \
     --task-events \
-    --time-limit=1800 \
-    --soft-time-limit=1500
+    --time-limit=3600 \
+    --soft-time-limit=3300 \
+    --prefetch-multiplier=2
 
 rc=$?
 echo "Celery exited with code: $rc"

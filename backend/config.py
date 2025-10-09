@@ -92,15 +92,15 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
     # Database Connection Pool Configuration (critical for Supabase + Railway deployment)
-    # These settings ensure stable connections with cloud-managed Postgres
+    # Optimized for 8GB RAM / 8 vCPU with high concurrency workloads
     SQLALCHEMY_ENGINE_OPTIONS = {
-        'pool_size': int(os.getenv('DB_POOL_SIZE', '10')),           # Max connections per container
+        'pool_size': int(os.getenv('DB_POOL_SIZE', '20')),           # Larger pool for 8 concurrent workers
         'pool_pre_ping': True,                                        # Test connections before use
-        'pool_recycle': int(os.getenv('DB_POOL_RECYCLE', '3600')),  # Recycle connections every hour
-        'max_overflow': int(os.getenv('DB_MAX_OVERFLOW', '5')),      # Allow burst connections
+        'pool_recycle': int(os.getenv('DB_POOL_RECYCLE', '1800')),  # Recycle every 30 min for freshness
+        'max_overflow': int(os.getenv('DB_MAX_OVERFLOW', '10')),     # More burst capacity
         'connect_args': {
-            'connect_timeout': int(os.getenv('DB_CONNECT_TIMEOUT', '10')),  # Connection timeout
-            'options': '-c statement_timeout=30000'  # 30s query timeout to prevent hanging
+            'connect_timeout': int(os.getenv('DB_CONNECT_TIMEOUT', '15')),  # Longer timeout for complex queries
+            'options': '-c statement_timeout=60000'  # 60s query timeout for large operations
         }
     }
     
@@ -128,16 +128,16 @@ class Config:
     CELERY_RESULT_BACKEND = redis_backend_url
     CELERY_TASK_IGNORE_RESULT = False  # We need results for progress tracking
     
-    # Celery Task Configuration
-    CHUNK_TASK_MAX_RETRIES = int(os.getenv('CHUNK_TASK_MAX_RETRIES', '2'))  # Reduced: fail faster
-    CHUNK_TASK_RETRY_DELAY = int(os.getenv('CHUNK_TASK_RETRY_DELAY', '5'))  # Increased: give API time
-    CHORD_WATCHDOG_SECONDS = int(os.getenv('CHORD_WATCHDOG_SECONDS', '180'))  # 3 min - faster recovery
-    CHUNK_WATCHDOG_SECONDS = int(os.getenv('CHUNK_WATCHDOG_SECONDS', '300'))  # 5 min - aggressive heal
+    # Celery Task Configuration - Optimized for 8GB RAM / 8 vCPU Railway infrastructure
+    CHUNK_TASK_MAX_RETRIES = int(os.getenv('CHUNK_TASK_MAX_RETRIES', '4'))  # More retries with better resources
+    CHUNK_TASK_RETRY_DELAY = int(os.getenv('CHUNK_TASK_RETRY_DELAY', '3'))  # Faster retries
+    CHORD_WATCHDOG_SECONDS = int(os.getenv('CHORD_WATCHDOG_SECONDS', '300'))  # 5 min - more breathing room
+    CHUNK_WATCHDOG_SECONDS = int(os.getenv('CHUNK_WATCHDOG_SECONDS', '600'))  # 10 min - handle large chunks
     # If a chunk remains 'processing' longer than this, it's likely stuck
-    CHUNK_STUCK_THRESHOLD_SECONDS = int(os.getenv('CHUNK_STUCK_THRESHOLD_SECONDS', '360'))  # 6 minutes
+    CHUNK_STUCK_THRESHOLD_SECONDS = int(os.getenv('CHUNK_STUCK_THRESHOLD_SECONDS', '720'))  # 12 minutes
     # Finalization Configuration
-    FINALIZE_MAX_RETRIES = int(os.getenv('FINALIZE_MAX_RETRIES', '5'))  # Reduced: fail faster
-    FINALIZE_RETRY_DELAY = int(os.getenv('FINALIZE_RETRY_DELAY', '20'))  # Faster checks
+    FINALIZE_MAX_RETRIES = int(os.getenv('FINALIZE_MAX_RETRIES', '10'))  # More retries for complex jobs
+    FINALIZE_RETRY_DELAY = int(os.getenv('FINALIZE_RETRY_DELAY', '15'))  # Faster checks
     
     # LLM Call Timeout (prevent indefinite hangs)
-    GEMINI_CALL_TIMEOUT_SECONDS = int(os.getenv('GEMINI_CALL_TIMEOUT_SECONDS', '180'))  # 3 min max per call
+    GEMINI_CALL_TIMEOUT_SECONDS = int(os.getenv('GEMINI_CALL_TIMEOUT_SECONDS', '300'))  # 5 min for large chunks

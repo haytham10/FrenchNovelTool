@@ -79,7 +79,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes --maxmemory 2gb --maxmemory-policy allkeys-lru
 
   celery-worker:
     build:
@@ -88,7 +88,8 @@ services:
       target: runner
     image: french-novel-backend:latest
     container_name: french-novel-celery-worker
-    command: celery -A app.celery_app:celery worker --loglevel=info --concurrency=2 --max-tasks-per-child=10 --max-memory-per-child=512000 --task-events
+    # Optimized for 8GB RAM / 8 vCPU - full throttle configuration
+    command: celery -A app.celery_app:celery worker --loglevel=info --concurrency=8 --max-tasks-per-child=100 --max-memory-per-child=900000 --task-events --prefetch-multiplier=2
     environment:
       - FLASK_ENV=production
       - SECRET_KEY=${SECRET_KEY:?SECRET_KEY is required}
@@ -97,8 +98,11 @@ services:
       - DATABASE_URL=${DATABASE_URL:-sqlite:///app.db}
       - REDIS_URL=redis://redis:6379/0
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - PRELOAD_SPACY=false
-      - WORKER_MAX_MEMORY_MB=512
+      - PRELOAD_SPACY=true
+      - WORKER_MAX_MEMORY_MB=900
+      - CELERY_CONCURRENCY=8
+      - DB_POOL_SIZE=20
+      - DB_MAX_OVERFLOW=10
     volumes:
       - backend-logs:/app/logs
       - backend-data:/app/data

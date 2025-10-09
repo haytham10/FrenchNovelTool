@@ -38,6 +38,7 @@ Purpose: make AI coding agents productive quickly by summarizing architecture, k
 
 - Big picture: a Flask backend (SQLAlchemy + Flask-Migrate) + Celery workers for async PDF processing, and a Next.js (TS) frontend.
 - Core data flow: upload PDF -> PDFService (extract/metadata) -> ChunkingService -> Celery tasks (process_chunk) -> GeminiService (LLM normalize) -> finalize_job_results -> History -> optional Google Sheets export.
+- **Infrastructure**: Optimized for Railway 8GB RAM / 8 vCPU per service with 8 concurrent Celery workers, larger chunks (30-50 pages), and aggressive parallelism.
 
 Key files (quick jump):
 - `backend/app/__init__.py` — create_app(), extension init (db, jwt, limiter, socketio, celery).
@@ -46,16 +47,18 @@ Key files (quick jump):
 - `backend/app/services/` — business logic (PDFService, GeminiService, ChunkingService, JobService, GoogleSheetsService).
 - `backend/app/schemas.py` — Marshmallow validation for requests/responses.
 - `backend/config.py` — environment-driven configuration (CORS origin expansion, Celery/Redis, DB pooling, GEMINI_* vars).
+- `backend/app/celery_app.py` — Celery factory with Flask context, optimized for 8GB RAM / 8 vCPU (60-min task limits, 900MB per worker).
+- `backend/app/services/chunking_service.py` — PDF splitting with adaptive chunk sizes (50/40/30 pages for small/medium/large PDFs).
 
 Developer workflows & explicit commands:
 - Start dev stack (hot reload): `./dev-setup.sh` (Unix) or `dev-setup.bat` (Windows); or `docker-compose -f docker-compose.dev.yml up`.
 - DB migrations (inside dev container):
-    - `docker-compose -f docker-compose.dev.yml exec backend flask db migrate -m "msg"`
-    - `docker-compose -f docker-compose.dev.yml exec backend flask db upgrade`
+  - `docker-compose -f docker-compose.dev.yml exec backend flask db migrate -m "msg"`
+  - `docker-compose -f docker-compose.dev.yml exec backend flask db upgrade`
 - Tests / lint:
-    - Backend: `cd backend && pytest --cov=app --cov-report=html`
-    - Frontend lint: `cd frontend && npm run lint`
-    - Install pre-commit hooks: `cd backend && pre-commit install`.
+  - Backend: `cd backend && pytest --cov=app --cov-report=html`
+  - Frontend lint: `cd frontend && npm run lint`
+  - Install pre-commit hooks: `cd backend && pre-commit install`.
 
 Project-specific conventions (do not deviate):
 - Always use Flask-Migrate; `db.create_all()` is disabled in `backend/app/__init__.py`.
@@ -65,14 +68,24 @@ Project-specific conventions (do not deviate):
 - File validation: use `utils/validators.validate_pdf_file()` (checks magic bytes, size), not filename extension alone.
 
 Celery + reliability notes (practical patterns):
+- **8 concurrent workers** on Railway (CELERY_CONCURRENCY=8) with 900MB memory cap per worker.
+- **Larger chunks**: 50 pages (small), 40 pages (medium), 30 pages (large PDFs) with 2-page overlap.
 - Tasks use chords and group patterns; finalization is idempotent: `finalize_job_results` will early-exit if job already finalized.
 - Chunks may be delivered as base64 in `chunk_info['file_b64']` (workers prefer in-memory bytes over shared FS).
 - DB writes use `safe_db_commit()` retry helper — treat DB operations as potentially transient in cloud deployments.
+- **Timeouts**: 60-min task limit, 5-min Gemini calls, 12-min stuck threshold.
 
 Integration & secrets:
 - GEMINI_API_KEY controls LLM calls (`config.py`), model selection via user settings maps to internal model names in `JobService`.
 - Google OAuth tokens (access/refresh) are stored on the `User` model and used for Google Sheets exports via `GoogleSheetsService`.
 - Redis (REDIS_URL) used for Celery broker/result backend and for rate limiter storage in production.
+- **DB pool**: 20 connections with 10 overflow (supports 8 workers + API server).
+
+Performance (8GB RAM / 8 vCPU Railway):
+- **Throughput**: 8x concurrent workers, 2x prefetch multiplier.
+- **Capacity**: Small PDFs (< 50 pages) in ~30s, medium (50-200 pages) in 2-3 min, large (200-1000 pages) in 5-10 min.
+- **Coverage**: Can handle 20,000+ sentence corpora with spaCy preloading enabled.
+- See `PERFORMANCE_OPTIMIZATIONS.md` for full details.
 
 When making changes: reference these files for examples and tests: `backend/app/tasks.py` (retry/watchdog patterns), `backend/app/routes.py` (auth + rate limiting + job flow), and `backend/app/services/gemini_service.py` (LLM retries and fallbacks).
 
