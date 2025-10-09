@@ -85,12 +85,13 @@ def create_app(config_class=Config):
 
         # Register error handlers
         register_error_handlers(app)
-        
-        # Set up enhanced CORS handling
-        setup_cors_handling(app)
-        
+
         # Register SocketIO event handlers
         from . import socket_events  # Import to register handlers
+
+        # Register CLI commands
+        from .cli_commands import register_commands
+        register_commands(app)
 
     return app
 
