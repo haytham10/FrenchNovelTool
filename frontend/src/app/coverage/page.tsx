@@ -999,14 +999,14 @@ export default function CoveragePage() {
                           Sentences Selected
                         </Typography>
                         <Typography variant="h4" fontWeight={600}>
-                          {mode === 'coverage' 
-                            ? (getNumberStat('selected_sentence_count') ?? learningSetDisplay.length ?? 'N/A')
-                            : (getNumberStat('selected_count') ?? 'N/A')}
+                          {coverageRun?.mode === 'filter' 
+                            ? (getNumberStat('selected_count') ?? 'N/A')
+                            : (getNumberStat('selected_sentence_count') ?? learningSetDisplay.length ?? 'N/A')}
                         </Typography>
                       </CardContent>
                     </Card>
                     
-                    {mode === 'coverage' && (
+                    {coverageRun?.mode !== 'filter' && (
                       <>
                         <Card variant="outlined" sx={{ flex: 1 }}>
                           <CardContent>
@@ -1039,7 +1039,7 @@ export default function CoveragePage() {
                       </>
                     )}
                     
-                    {mode === 'filter' && (
+                    {coverageRun?.mode === 'filter' && (
                       <Card variant="outlined" sx={{ flex: 1 }}>
                         <CardContent>
                           <Typography variant="caption" color="text.secondary">
@@ -1054,58 +1054,79 @@ export default function CoveragePage() {
                   </Stack>
                   
                   {/* Batch Mode Summary */}
-                  {coverageRun?.mode === 'batch' && coverageRun?.stats_json && (
-                    <Card variant="outlined" sx={{ bgcolor: 'primary.50', borderColor: 'primary.main' }}>
-                      <CardContent>
-                        <Typography variant="h6" fontWeight={600} gutterBottom>
-                          Batch Analysis Summary
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>
-                          Sequential processing of {(coverageRun.stats_json as any).sources_count || 'multiple'} sources
-                        </Typography>
-                        
-                        {(coverageRun.stats_json as any).source_breakdown && (
-                          <Box sx={{ mt: 2 }}>
-                            <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                              Coverage by Source:
-                            </Typography>
-                            <Stack spacing={1} sx={{ mt: 1 }}>
-                              {((coverageRun.stats_json as any).source_breakdown as any[]).map((source: any, idx: number) => (
-                                <Box 
-                                  key={idx}
-                                  sx={{ 
-                                    display: 'flex', 
-                                    justifyContent: 'space-between',
-                                    p: 1,
-                                    bgcolor: 'background.paper',
-                                    borderRadius: 1,
-                                    border: 1,
-                                    borderColor: 'divider'
-                                  }}
-                                >
-                                  <Typography variant="body2">
-                                    Source {idx + 1} (ID: {source.source_id})
-                                  </Typography>
-                                  <Stack direction="row" spacing={2}>
-                                    <Chip 
-                                      label={`${source.selected_sentences} sentences`}
-                                      size="small"
-                                      variant="outlined"
-                                    />
-                                    <Chip 
-                                      label={`${source.words_covered} new words`}
-                                      size="small"
-                                      color="success"
-                                    />
-                                  </Stack>
-                                </Box>
-                              ))}
-                            </Stack>
-                          </Box>
-                        )}
-                      </CardContent>
-                    </Card>
-                  )}
+                  {coverageRun?.mode === 'batch' && coverageRun?.stats_json && (() => {
+                    // Narrow unknown stats_json into a typed record and validate fields before rendering
+                    const stats = coverageRun.stats_json as Record<string, unknown>;
+                    const sourcesCount = stats['sources_count'] ?? 'multiple';
+                    const rawBreakdown = stats['source_breakdown'];
+                    const sourceBreakdown = Array.isArray(rawBreakdown) ? rawBreakdown as unknown[] : [];
+
+                    type SourceSummary = {
+                      source_id?: number | string;
+                      selected_sentences?: number;
+                      words_covered?: number;
+                    };
+
+                    return (
+                      <Card variant="outlined" sx={{ bgcolor: 'primary.50', borderColor: 'primary.main' }}>
+                        <CardContent>
+                          <Typography variant="h6" fontWeight={600} gutterBottom>
+                            Batch Analysis Summary
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary" gutterBottom>
+                            Sequential processing of {String(sourcesCount)} sources
+                          </Typography>
+
+                          {sourceBreakdown.length > 0 && (
+                            <Box sx={{ mt: 2 }}>
+                              <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                                Coverage by Source:
+                              </Typography>
+                              <Stack spacing={1} sx={{ mt: 1 }}>
+                                {sourceBreakdown.map((s, idx) => {
+                                  const source = s as SourceSummary;
+                                  const selected = typeof source.selected_sentences === 'number' ? source.selected_sentences : (source.selected_sentences ?? 'N/A');
+                                  const words = typeof source.words_covered === 'number' ? source.words_covered : (source.words_covered ?? 'N/A');
+                                  const sid = source.source_id ?? 'unknown';
+
+                                  return (
+                                    <Box 
+                                      key={idx}
+                                      sx={{ 
+                                        display: 'flex', 
+                                        justifyContent: 'space-between',
+                                        p: 1,
+                                        bgcolor: 'background.paper',
+                                        borderRadius: 1,
+                                        border: 1,
+                                        borderColor: 'divider'
+                                      }}
+                                    >
+                                      <Typography variant="body2">
+                                        Source {idx + 1} (ID: {sid})
+                                      </Typography>
+                                      <Stack direction="row" spacing={2}>
+                                        <Chip 
+                                          label={`${selected} sentences`}
+                                          size="small"
+                                          variant="outlined"
+                                        />
+                                        <Chip 
+                                          label={`${words} new words`}
+                                          size="small"
+                                          color="success"
+                                        />
+                                      </Stack>
+                                    </Box>
+                                  );
+                                })}
+                              </Stack>
+                            </Box>
+                          )}
+                        </CardContent>
+                      </Card>
+                    );
+                  })()}
                   
                   {/* Action Buttons */}
                   <Stack direction="row" spacing={2}>
@@ -1171,7 +1192,7 @@ export default function CoveragePage() {
 						</Box>
 					  )}
 						</>
-                    ) : mode === 'filter' && assignments.length > 0 ? (
+                    ) : coverageRun?.mode === 'filter' && assignments.length > 0 ? (
                       <FilterResultsTable
                         assignments={assignments}
                         loading={loadingRun}

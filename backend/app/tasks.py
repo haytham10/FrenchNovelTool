@@ -1590,8 +1590,8 @@ def batch_coverage_build_async(self, run_id: int):
         coverage_run.status = 'completed'
         coverage_run.progress_percent = 100
         coverage_run.stats_json = stats
-        coverage_run.completed_at = datetime.datetime.utcnow()
-        
+        coverage_run.completed_at = datetime.now(datetime.timezone.utc)
+
         safe_db_commit(db)
         
         # Final websocket notification
@@ -1603,6 +1603,7 @@ def batch_coverage_build_async(self, run_id: int):
         status = 'completed'
         logger.info(f"Batch coverage run {run_id} completed successfully")
         
+
         # Record metrics
         coverage_runs_total.labels(mode=mode, status=status).inc()
         
@@ -1630,5 +1631,6 @@ def batch_coverage_build_async(self, run_id: int):
     finally:
         # Record duration metric
         duration = time.time() - start_time
-        coverage_build_duration_seconds.labels(mode=mode, status=status).observe(duration)
+        # coverage_build_duration_seconds Histogram is defined with only the 'mode' label
+        coverage_build_duration_seconds.labels(mode=mode).observe(duration)
 

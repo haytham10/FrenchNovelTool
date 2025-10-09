@@ -675,7 +675,7 @@ export interface IngestionReport {
 export interface CoverageRun {
   id: number;
   user_id: number;
-  mode: 'coverage' | 'filter';
+  mode: 'coverage' | 'filter' | 'batch';
   source_type: 'job' | 'history';
   source_id: number;
   wordlist_id?: number;
