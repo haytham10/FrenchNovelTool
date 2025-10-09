@@ -35,7 +35,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Install spaCy French model
-COPY backend/scripts/install_spacy_model.sh /tmp/install_spacy_model.sh
+COPY scripts/install_spacy_model.sh /tmp/install_spacy_model.sh
 RUN chmod +x /tmp/install_spacy_model.sh && /tmp/install_spacy_model.sh
 
 # Copy application code
@@ -58,5 +58,3 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
 # Use 4 workers (API server doesn't need all vCPUs, save resources for Celery workers)
 # Increase timeout to 600s (10 min) for large file uploads and processing
 CMD ["sh", "-c", "gunicorn --worker-class eventlet -w 4 --bind 0.0.0.0:${PORT:-5000} --timeout 600 --max-requests 1000 --max-requests-jitter 100 --access-logfile - --error-logfile - run:app"]
-
-
