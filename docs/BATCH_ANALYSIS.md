@@ -190,7 +190,11 @@ The **Batch Analysis** feature implements a sequential, multi-source vocabulary 
 
 Potential improvements for batch mode:
 
-1. **Smart Ordering**: Automatically order sources by estimated difficulty or word frequency
+1. **Smart Ordering**: Automatically order sources by metrics such as:
+   - Average word frequency (easier texts first)
+   - Sentence length/complexity (simpler to harder)
+   - Vocabulary level (CEFR A1 → C2)
+   - Lexical diversity (texts with more unique words first)
 2. **Preview Mode**: Show expected contribution before running
 3. **Source Weighting**: Allow users to prioritize certain sources
 4. **Partial Runs**: Support resuming interrupted batch runs
