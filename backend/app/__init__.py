@@ -10,7 +10,6 @@ from flask_jwt_extended import JWTManager
 from flask_socketio import SocketIO
 from config import Config
 from .utils.error_handlers import register_error_handlers
-from .utils.cors_handlers import setup_cors_handling
 from flask_sqlalchemy import SQLAlchemy
 from .celery_app import make_celery
 
@@ -86,8 +85,8 @@ def create_app(config_class=Config):
         # Register error handlers
         register_error_handlers(app)
         
-        # Set up enhanced CORS handling
-        setup_cors_handling(app)
+        # Set up enhanced CORS handling - REMOVED to avoid duplicate headers
+        # setup_cors_handling(app)
         
         # Register SocketIO event handlers
         from . import socket_events  # Import to register handlers

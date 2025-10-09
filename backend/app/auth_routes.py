@@ -10,7 +10,6 @@ from marshmallow import ValidationError
 from app.services.auth_service import AuthService
 from app.schemas import GoogleAuthSchema
 from app.models import User
-from app.utils.cors_handlers import cors_preflight
 
 auth_bp = Blueprint('auth', __name__)
 auth_service = AuthService()
@@ -18,7 +17,6 @@ google_auth_schema = GoogleAuthSchema()
 
 
 @auth_bp.route('/google', methods=['POST', 'OPTIONS'])
-@cors_preflight
 def google_login():
     """
     Authenticates user with Google OAuth.
@@ -112,7 +110,6 @@ def refresh():
 
 
 @auth_bp.route('/me', methods=['GET', 'OPTIONS'])
-@cors_preflight
 @jwt_required()
 def get_current_user():
     """
