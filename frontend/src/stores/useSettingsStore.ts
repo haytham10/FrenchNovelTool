@@ -22,7 +22,7 @@ export const useSettingsStore = create<SettingsState>()(
         default_wordlist_id: undefined,
       },
       setSettings: (newSettings) => set((state) => ({ settings: { ...state.settings, ...newSettings } })),
-      loadSettings: (loadedSettings) => set({ settings: loadedSettings })),
+      loadSettings: (loadedSettings) => set({ settings: loadedSettings }),
     }),
     {
       name: 'user-settings-storage',

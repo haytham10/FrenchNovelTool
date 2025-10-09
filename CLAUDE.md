@@ -412,3 +412,4 @@ Check Socket.IO connection in browser console:
 - `backend/Dockerfile.dev` - Local development (hot reload)
 
 **Note:** Docker Compose (`docker-compose.yml`, `docker-compose.dev.yml`) is for local development only, not used in production.
+- don't write summarizing documents everytime you change something

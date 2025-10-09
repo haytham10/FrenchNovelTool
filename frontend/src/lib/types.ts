@@ -43,6 +43,7 @@ export interface UserSettings {
   sentence_length_limit: number;
   default_folder_id?: string;
   default_sheet_name_pattern?: string;
+  default_wordlist_id?: number;
 }
 
 // Alias for consistency

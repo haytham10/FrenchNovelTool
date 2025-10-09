@@ -121,7 +121,7 @@ export default function CoveragePage() {
   const [loadingDiagnosis, setLoadingDiagnosis] = useState<boolean>(false);
   const [sentenceCap, setSentenceCap] = useState<number>(500); // Coverage mode sentence cap (0 = unlimited)
   // Load user settings to know which default wordlist is configured
-  const { data: settings } = useSettingsStore();
+  const settings = useSettingsStore((state) => state.settings);
   
   // Wizard step state
   const [activeStep, setActiveStep] = useState<number>(currentRunId ? 2 : 0);
@@ -363,7 +363,7 @@ export default function CoveragePage() {
     try {
       const data = await diagnoseCoverageRun(currentRunId);
       setDiagnosisData(data);
-    } catch (error: unknown) {
+    } catch {
       enqueueSnackbar('Failed to generate diagnosis', { variant: 'error' });
       setShowDiagnosisDialog(false);
       setDiagnosisData(null);
