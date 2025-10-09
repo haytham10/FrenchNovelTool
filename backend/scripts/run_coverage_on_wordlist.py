@@ -20,7 +20,7 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Ensure backend package is importable when run from repo root
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -144,7 +144,7 @@ def main():
     assignments, stats = svc.coverage_mode_greedy(sentences)
 
     # Augment stats with timestamp and parameters
-    stats['run_timestamp'] = datetime.now(datetime.timezone.utc).isoformat() + 'Z'
+    stats['run_timestamp'] = datetime.now(timezone.utc).isoformat() + 'Z'
     stats['params'] = {
         'sentences_count': len(sentences),
         'words_total': len(wordset),

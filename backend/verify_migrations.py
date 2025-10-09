@@ -86,7 +86,7 @@ def verify_table_columns(engine, table_name, expected_columns):
 def main():
     """Main verification function"""
     print("🚀 Starting Database Migration Verification\n")
-    print(f"⏰ Timestamp: {datetime.now(datetime.timezone.utc).isoformat()}Z\n")
+    print(f"⏰ Timestamp: {datetime.now(timezone.utc).isoformat()}Z\n")
     
     # Create database engine
     engine = get_db_engine()

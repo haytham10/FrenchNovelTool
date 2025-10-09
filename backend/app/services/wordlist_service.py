@@ -3,7 +3,7 @@ import logging
 import re
 import unicodedata
 from typing import Dict, List, Set, Tuple, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from app import db
 from app.models import WordList, CoverageRun, UserSettings
 from app.utils.metrics import wordlists_created_total, wordlist_ingestion_errors_total
@@ -344,7 +344,7 @@ class WordListService:
         wordlist.normalized_count = len(normalized_keys)
         if not wordlist.canonical_samples:
             wordlist.canonical_samples = sorted(list(normalized_keys))[:20]
-        wordlist.updated_at = datetime.now(datetime.timezone.utc)
+        wordlist.updated_at = datetime.now(timezone.utc)
         
         logger.info(f"Refreshed WordList {wordlist.id} with {len(normalized_keys)} normalized words")
         

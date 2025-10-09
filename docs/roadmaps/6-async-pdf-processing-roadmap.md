@@ -293,7 +293,7 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
         job.status = JOB_STATUS_COMPLETED
         job.progress_percent = 100
         job.actual_tokens = sum(chunk.get('tokens', 0) for chunk in all_sentences)
-        job.completed_at = datetime.now(datetime.timezone.utc)
+        job.completed_at = datetime.now(timezone.utc)
         db.session.commit()
         
         return {
@@ -417,7 +417,7 @@ def cancel_job(job_id):
         return jsonify({'error': 'Job cannot be cancelled'}), 400
     
     job.is_cancelled = True
-    job.cancelled_at = datetime.now(datetime.timezone.utc)
+    job.cancelled_at = datetime.now(timezone.utc)
     job.status = 'cancelled'
     db.session.commit()
     
@@ -662,7 +662,7 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
         # Finalize
         job.status = JOB_STATUS_COMPLETED
         job.progress_percent = 100
-        job.completed_at = datetime.now(datetime.timezone.utc)
+        job.completed_at = datetime.now(timezone.utc)
         db.session.commit()
         
         # Cleanup

@@ -8,6 +8,7 @@ from app import limiter, db
 from app.models import WordList, CoverageRun, CoverageAssignment, UserSettings, User
 from app.services.wordlist_service import WordListService
 from app.services.auth_service import AuthService
+from datetime import timezone
 from app.services.google_sheets_service import GoogleSheetsService
 from app.schemas import (
     WordListCreateSchema,
@@ -359,7 +360,7 @@ def import_sentences_from_sheets():
         creds = Credentials(**creds_kwargs)
 
         # Check if token is expired and refresh if needed
-        if user.google_token_expiry and datetime.now(datetime.timezone.utc) >= user.google_token_expiry:
+        if user.google_token_expiry and datetime.now(timezone.utc) >= user.google_token_expiry:
             auth_service = AuthService()
             try:
                 auth_service.refresh_google_token(user)

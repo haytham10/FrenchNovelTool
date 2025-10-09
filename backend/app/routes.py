@@ -11,6 +11,7 @@ from .services.gemini_service import GeminiService
 from .services.google_sheets_service import GoogleSheetsService
 from .services.history_service import HistoryService
 from .services.user_settings_service import UserSettingsService
+from datetime import datetime, timezone
 from .services.job_service import JobService
 from .services.credit_service import CreditService
 from .schemas import ExportToSheetSchema, UserSettingsSchema, EstimatePdfSchema, EstimatePdfResponseSchema
@@ -994,7 +995,7 @@ def cancel_job(job_id):
     
     # Mark job as cancelled
     job.is_cancelled = True
-    job.cancelled_at = datetime.now(datetime.timezone.utc)
+    job.cancelled_at = datetime.now(timezone.utc)
     job.cancelled_by = user_id
     job.status = 'cancelled'
     db.session.commit()
@@ -1113,7 +1114,7 @@ def retry_failed_chunks(job_id):
         chunk.status = 'retry_scheduled'
         if force:
             chunk.attempts = 0  # Reset attempts if forced
-        chunk.updated_at = datetime.now(datetime.timezone.utc)
+        chunk.updated_at = datetime.now(timezone.utc)
         db.session.add(chunk)
         
         retry_tasks.append(
@@ -1258,7 +1259,7 @@ def process_pdf_async_endpoint():
         task = process_pdf_async.apply_async(
             args=[job.id, temp_file_path, user_id, processing_settings],
             kwargs={'file_b64': _file_b64},
-            task_id=f'job_{job.id}_{datetime.now(datetime.timezone.utc).timestamp()}'
+            task_id=f'job_{job.id}_{datetime.now(timezone.utc).timestamp()}'
         )
         
         # Update job with task ID

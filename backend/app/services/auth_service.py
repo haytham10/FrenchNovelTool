@@ -113,7 +113,7 @@ class AuthService:
             )
             
             # Calculate expiry time
-            expiry = datetime.now(datetime.timezone.utc) + timedelta(seconds=credentials.expiry.timestamp() - datetime.now(datetime.timezone.utc).timestamp())
+            expiry = datetime.now(timezone.utc) + timedelta(seconds=credentials.expiry.timestamp() - datetime.now(timezone.utc).timestamp())
             
             return {
                 'access_token': credentials.token,
@@ -148,7 +148,7 @@ class AuthService:
             user.email = google_user_info['email']
             user.name = google_user_info['name']
             user.picture = google_user_info['picture']
-            user.last_login = datetime.now(datetime.timezone.utc)
+            user.last_login = datetime.now(timezone.utc)
             
             # Update OAuth tokens if provided
             if oauth_tokens:
@@ -237,7 +237,7 @@ class AuthService:
             raise ValueError('User has not authorized Google access')
         
         # Check if token is expired
-        if user.google_token_expiry and user.google_token_expiry < datetime.now(datetime.timezone.utc):
+        if user.google_token_expiry and user.google_token_expiry < datetime.now(timezone.utc):
             current_app.logger.info(f'Token expired for user {user.id}, refreshing...')
             self.refresh_user_token(user)
         

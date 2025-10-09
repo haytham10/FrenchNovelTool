@@ -2,7 +2,7 @@
 import logging
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List
 from typing import Optional
 import base64
@@ -165,7 +165,7 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
                 chunk_db_record.status = 'processing'
                 chunk_db_record.celery_task_id = self.request.id
                 chunk_db_record.attempts += 1
-                chunk_db_record.updated_at = datetime.now(datetime.timezone.utc)
+                chunk_db_record.updated_at = datetime.now(timezone.utc)
                 safe_db_commit(db)
                 # Schedule a per-chunk watchdog to detect stuck processing tasks.
                 try:
@@ -245,7 +245,7 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
                     chunk_db_record.status = 'failed'
                     chunk_db_record.last_error = 'No extractable text in PDF chunk'
                     chunk_db_record.last_error_code = 'NO_TEXT'
-                    chunk_db_record.updated_at = datetime.now(datetime.timezone.utc)
+                    chunk_db_record.updated_at = datetime.now(timezone.utc)
                     safe_db_commit(db)
                 except Exception as e:
                     logger.warning(f"Failed to persist chunk error to DB: {e}")
@@ -296,7 +296,7 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
                 
                 chunk_db_record.last_error = error_msg[:1000]
                 chunk_db_record.last_error_code = error_code
-                chunk_db_record.updated_at = datetime.now(datetime.timezone.utc)
+                chunk_db_record.updated_at = datetime.now(timezone.utc)
                 safe_db_commit(db)
                 logger.info(
                     'Chunk %s (job %s) processed with fallback: %s',
@@ -328,8 +328,8 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
             try:
                 chunk_db_record.status = 'success'
                 chunk_db_record.result_json = result_dict
-                chunk_db_record.processed_at = datetime.now(datetime.timezone.utc)
-                chunk_db_record.updated_at = datetime.now(datetime.timezone.utc)
+                chunk_db_record.processed_at = datetime.now(timezone.utc)
+                chunk_db_record.updated_at = datetime.now(timezone.utc)
                 chunk_db_record.last_error = None
                 chunk_db_record.last_error_code = None
                 safe_db_commit(db)
@@ -387,7 +387,7 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
                 chunk_db_record.status = 'failed'
                 chunk_db_record.last_error = 'Processing timeout exceeded'
                 chunk_db_record.last_error_code = 'TIMEOUT'
-                chunk_db_record.updated_at = datetime.now(datetime.timezone.utc)
+                chunk_db_record.updated_at = datetime.now(timezone.utc)
                 safe_db_commit(db)
             except Exception as e:
                 logger.warning(f"Failed to persist chunk error to DB: {e}")
@@ -458,7 +458,7 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
                 elif 'rate limit' in str(e).lower():
                     error_code = 'RATE_LIMIT'
                 chunk_db_record.last_error_code = error_code
-                chunk_db_record.updated_at = datetime.now(datetime.timezone.utc)
+                chunk_db_record.updated_at = datetime.now(timezone.utc)
                 safe_db_commit(db)
             except Exception as db_err:
                 logger.warning(f"Failed to persist chunk error to DB: {db_err}")
@@ -566,7 +566,7 @@ def finalize_job_results(self, chunk_results, job_id):
                         chunk.status = 'failed'
                         chunk.last_error = 'Chunk stuck in processing state - force-finalized'
                         chunk.last_error_code = 'FINALIZE_TIMEOUT'
-                        chunk.updated_at = datetime.now(datetime.timezone.utc)
+                        chunk.updated_at = datetime.now(timezone.utc)
                     safe_db_commit(db)
         
         # Build chunk results from DB if available, else use in-memory results
@@ -632,7 +632,7 @@ def finalize_job_results(self, chunk_results, job_id):
             
             for chunk in chunks_to_retry:
                 chunk.status = 'retry_scheduled'
-                chunk.updated_at = datetime.now(datetime.timezone.utc)
+                chunk.updated_at = datetime.now(timezone.utc)
                 db.session.add(chunk)
                 retry_tasks.append(
                     process_chunk.s(chunk.get_chunk_metadata(), job.user_id, settings)
@@ -670,7 +670,7 @@ def finalize_job_results(self, chunk_results, job_id):
         job.actual_tokens = total_tokens
         job.gemini_tokens_used = total_tokens
         job.gemini_api_calls = success_count
-        job.completed_at = datetime.now(datetime.timezone.utc)
+        job.completed_at = datetime.now(timezone.utc)
         job.chunk_results = chunk_results
         job.failed_chunks = failed_chunks if failed_chunks else None
         
@@ -760,7 +760,7 @@ def finalize_job_results(self, chunk_results, job_id):
             if job:
                 job.status = JOB_STATUS_FAILED
                 job.error_message = f"Finalization error: {str(e)[:512]}"
-                job.completed_at = datetime.now(datetime.timezone.utc)
+                job.completed_at = datetime.now(timezone.utc)
                 safe_db_commit(db)
                 emit_progress(job_id)
         except Exception:
@@ -802,7 +802,7 @@ def chunk_watchdog(self, job_id: int, chunk_id: int):
             # Schedule a retry by marking the chunk for retry and dispatching process_chunk
             try:
                 chunk.status = 'retry_scheduled'
-                chunk.updated_at = datetime.now(datetime.timezone.utc)
+                chunk.updated_at = datetime.now(timezone.utc)
                 db.session.add(chunk)
                 safe_db_commit(db)
 
@@ -821,7 +821,7 @@ def chunk_watchdog(self, job_id: int, chunk_id: int):
             chunk.status = 'failed'
             chunk.last_error = 'Chunk stuck in processing - watchdog marked failed'
             chunk.last_error_code = 'WATCHDOG_FORCED_FAIL'
-            chunk.updated_at = datetime.now(datetime.timezone.utc)
+            chunk.updated_at = datetime.now(timezone.utc)
             db.session.add(chunk)
             safe_db_commit(db)
             logger.error("chunk_watchdog: marked job %s chunk %s as failed (no retries left)", job_id, chunk_id)
@@ -847,7 +847,7 @@ def reconcile_stuck_chunks(self, age_seconds: Optional[int] = None, limit: int =
 
     try:
         threshold = int(age_seconds or current_app.config.get('CHUNK_STUCK_THRESHOLD_SECONDS', 900))
-        cutoff = datetime.now(datetime.timezone.utc).timestamp() - int(threshold)
+        cutoff = datetime.now(timezone.utc).timestamp() - int(threshold)
 
         # Find stuck chunks
         stuck = db.session.execute(
@@ -859,7 +859,7 @@ def reconcile_stuck_chunks(self, age_seconds: Optional[int] = None, limit: int =
         for row in stuck:
             chunk_id_db, job_id_db, chunk_num, status, attempts, updated_at = row
             # Compute age
-            age = (datetime.now(datetime.timezone.utc) - updated_at).total_seconds() if updated_at else None
+            age = (datetime.now(timezone.utc) - updated_at).total_seconds() if updated_at else None
             if age is None or age < threshold:
                 continue
 
@@ -872,7 +872,7 @@ def reconcile_stuck_chunks(self, age_seconds: Optional[int] = None, limit: int =
             max_retries = int(current_app.config.get('CHUNK_TASK_MAX_RETRIES', 3))
             if chunk.attempts < chunk.max_retries and chunk.attempts < max_retries:
                 chunk.status = 'retry_scheduled'
-                chunk.updated_at = datetime.now(datetime.timezone.utc)
+                chunk.updated_at = datetime.now(timezone.utc)
                 db.session.add(chunk)
                 safe_db_commit(db)
                 from app.tasks import process_chunk as process_chunk_task
@@ -882,7 +882,7 @@ def reconcile_stuck_chunks(self, age_seconds: Optional[int] = None, limit: int =
                 chunk.status = 'failed'
                 chunk.last_error = 'Reconciler: marked stuck chunk failed'
                 chunk.last_error_code = 'RECONCILE_FAIL'
-                chunk.updated_at = datetime.now(datetime.timezone.utc)
+                chunk.updated_at = datetime.now(timezone.utc)
                 db.session.add(chunk)
                 safe_db_commit(db)
                 actions.append({'chunk_id': chunk.chunk_id, 'job_id': chunk.job_id, 'action': 'marked_failed'})
@@ -930,7 +930,7 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
             return {'status': 'cancelled'}
         
         job.status = JOB_STATUS_PROCESSING
-        job.started_at = datetime.now(datetime.timezone.utc)
+        job.started_at = datetime.now(timezone.utc)
         job.current_step = "Analyzing PDF"
         job.progress_percent = 5
         safe_db_commit(db)
@@ -1006,7 +1006,7 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
             job.status = JOB_STATUS_FAILED
             job.current_step = "Failed: No chunks produced"
             job.error_message = "Chunking produced zero chunks for a non-empty PDF."
-            job.completed_at = datetime.now(datetime.timezone.utc)
+            job.completed_at = datetime.now(timezone.utc)
             safe_db_commit(db)
             logger.error("Job %s: split_pdf returned zero chunks", job_id)
             return {'status': 'failed', 'error': 'No chunks produced'}
@@ -1087,7 +1087,7 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
             job = Job.query.get(job_id)
             job.status = JOB_STATUS_FAILED
             job.error_message = "No chunks processed. See worker logs for details."
-            job.completed_at = datetime.now(datetime.timezone.utc)
+            job.completed_at = datetime.now(timezone.utc)
             job.progress_percent = 100
             safe_db_commit(db)
             emit_progress(job_id)
@@ -1115,7 +1115,7 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
         job.actual_tokens = total_tokens
         job.gemini_tokens_used = total_tokens
         job.gemini_api_calls = success_count
-        job.completed_at = datetime.now(datetime.timezone.utc)
+        job.completed_at = datetime.now(timezone.utc)
         job.chunk_results = chunk_results
         job.failed_chunks = failed_chunks if failed_chunks else None
         
@@ -1140,7 +1140,7 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
         if job:
             job.status = JOB_STATUS_FAILED
             job.error_message = str(e)[:512]
-            job.completed_at = datetime.now(datetime.timezone.utc)
+            job.completed_at = datetime.now(timezone.utc)
             safe_db_commit(db)
         raise
         
@@ -1358,7 +1358,7 @@ def coverage_build_async(self, run_id: int):
         coverage_run.stats_json = stats
         coverage_run.status = 'completed'
         coverage_run.progress_percent = 100
-        coverage_run.completed_at = datetime.now(datetime.timezone.utc)
+        coverage_run.completed_at = datetime.now(timezone.utc)
         safe_db_commit(db)
         db_commit_duration = time.time() - db_commit_start
         logger.info("coverage_build_async: DB commit completed for run %s in %.2fs", run_id, db_commit_duration)
@@ -1590,8 +1590,8 @@ def batch_coverage_build_async(self, run_id: int):
         coverage_run.status = 'completed'
         coverage_run.progress_percent = 100
         coverage_run.stats_json = stats
-        coverage_run.completed_at = datetime.now(datetime.timezone.utc)
-
+        coverage_run.completed_at = datetime.now(timezone.utc)
+        
         safe_db_commit(db)
         
         # Final websocket notification
