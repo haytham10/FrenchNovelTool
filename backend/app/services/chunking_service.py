@@ -173,7 +173,7 @@ class ChunkingService:
                     status='pending',
                     attempts=0,
                     max_retries=3,
-                    created_at=datetime.utcnow()
+                    created_at=datetime.now(datetime.timezone.utc)
                 )
                 
                 db.session.add(chunk)

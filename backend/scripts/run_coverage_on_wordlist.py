@@ -144,7 +144,7 @@ def main():
     assignments, stats = svc.coverage_mode_greedy(sentences)
 
     # Augment stats with timestamp and parameters
-    stats['run_timestamp'] = datetime.utcnow().isoformat() + 'Z'
+    stats['run_timestamp'] = datetime.now(datetime.timezone.utc).isoformat() + 'Z'
     stats['params'] = {
         'sentences_count': len(sentences),
         'words_total': len(wordset),

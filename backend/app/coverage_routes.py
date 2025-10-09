@@ -359,7 +359,7 @@ def import_sentences_from_sheets():
         creds = Credentials(**creds_kwargs)
 
         # Check if token is expired and refresh if needed
-        if user.google_token_expiry and datetime.utcnow() >= user.google_token_expiry:
+        if user.google_token_expiry and datetime.now(datetime.timezone.utc) >= user.google_token_expiry:
             auth_service = AuthService()
             try:
                 auth_service.refresh_google_token(user)

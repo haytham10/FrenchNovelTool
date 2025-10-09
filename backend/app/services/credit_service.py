@@ -24,12 +24,12 @@ class CreditService:
     @staticmethod
     def get_current_month() -> str:
         """Get current month in YYYY-MM format"""
-        return datetime.utcnow().strftime('%Y-%m')
+        return datetime.now(datetime.timezone.utc).strftime('%Y-%m')
     
     @staticmethod
     def get_next_reset_date() -> str:
         """Get the next credit reset date (first day of next month)"""
-        now = datetime.utcnow()
+        now = datetime.now(datetime.timezone.utc)
         if now.month == 12:
             next_month = datetime(now.year + 1, 1, 1)
         else:

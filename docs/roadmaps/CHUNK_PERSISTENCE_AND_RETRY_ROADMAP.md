@@ -491,7 +491,7 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
             'sentences': result['sentences'],
             'tokens': result.get('tokens', 0)
         }
-        chunk.processed_at = datetime.utcnow()
+        chunk.processed_at = datetime.now(datetime.timezone.utc)
         chunk.last_error = None
         chunk.last_error_code = None
         safe_db_commit(db)
@@ -695,7 +695,7 @@ def finalize_job_results(self, chunk_results, job_id, retry_round=0):
         job.actual_tokens = total_tokens
         job.gemini_tokens_used = total_tokens
         job.gemini_api_calls = len(success_chunks)
-        job.completed_at = datetime.utcnow()
+        job.completed_at = datetime.now(datetime.timezone.utc)
         
         # Store chunk results reference (for backward compat)
         job.chunk_results = [
@@ -734,7 +734,7 @@ def finalize_job_results(self, chunk_results, job_id, retry_round=0):
             if job:
                 job.status = JOB_STATUS_FAILED
                 job.error_message = f"Finalization error: {str(e)[:512]}"
-                job.completed_at = datetime.utcnow()
+                job.completed_at = datetime.now(datetime.timezone.utc)
                 safe_db_commit(db)
                 emit_progress(job_id)
         except Exception:

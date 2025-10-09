@@ -994,7 +994,7 @@ def cancel_job(job_id):
     
     # Mark job as cancelled
     job.is_cancelled = True
-    job.cancelled_at = datetime.utcnow()
+    job.cancelled_at = datetime.now(datetime.timezone.utc)
     job.cancelled_by = user_id
     job.status = 'cancelled'
     db.session.commit()
@@ -1113,7 +1113,7 @@ def retry_failed_chunks(job_id):
         chunk.status = 'retry_scheduled'
         if force:
             chunk.attempts = 0  # Reset attempts if forced
-        chunk.updated_at = datetime.utcnow()
+        chunk.updated_at = datetime.now(datetime.timezone.utc)
         db.session.add(chunk)
         
         retry_tasks.append(
@@ -1258,7 +1258,7 @@ def process_pdf_async_endpoint():
         task = process_pdf_async.apply_async(
             args=[job.id, temp_file_path, user_id, processing_settings],
             kwargs={'file_b64': _file_b64},
-            task_id=f'job_{job.id}_{datetime.utcnow().timestamp()}'
+            task_id=f'job_{job.id}_{datetime.now(datetime.timezone.utc).timestamp()}'
         )
         
         # Update job with task ID

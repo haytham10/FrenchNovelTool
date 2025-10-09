@@ -344,7 +344,7 @@ class WordListService:
         wordlist.normalized_count = len(normalized_keys)
         if not wordlist.canonical_samples:
             wordlist.canonical_samples = sorted(list(normalized_keys))[:20]
-        wordlist.updated_at = datetime.utcnow()
+        wordlist.updated_at = datetime.now(datetime.timezone.utc)
         
         logger.info(f"Refreshed WordList {wordlist.id} with {len(normalized_keys)} normalized words")
         
