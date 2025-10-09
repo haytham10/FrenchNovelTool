@@ -251,34 +251,62 @@ class CoverageService:
     def coverage_mode_greedy(
         self,
         sentences: List[str],
-        progress_callback: Optional[Callable[[int], Any]] = None
+        progress_callback: Optional[Callable[[int, Optional[str]], Any]] = None
     ) -> Tuple[List[Dict], Dict]:
         """
-        Coverage Mode: Greedy algorithm to select sentences that cover as many words as possible.
+        Coverage Mode: Enhanced greedy algorithm with adaptive scoring and pre-filtering.
 
-        Scoring: Score = (new_words × 10) - sentence_length
-        By default a target_count may be configured; a target_count of 0 or None
-        means "no limit" and the algorithm will run until it can make no further
-        progress (under the length constraints).
+        Features:
+        - Word frequency index for performance
+        - Adaptive scoring weights based on coverage percentage
+        - Rarity bonuses for hard-to-find words
+        - Pre-filtered candidate pool with dynamic rebuilding
+        - Stagnation detection (stops after 50 iterations without progress)
+        - Enhanced logging every 50 sentences
 
         Args:
             sentences: List of sentence strings
-            progress_callback: Optional progress callback
+            progress_callback: Optional progress callback (percent, optional_message)
 
         Returns:
             Tuple of (assignments, stats)
         """
-        # Build sentence index
-        sentence_index = self.build_sentence_index(sentences)
+        logger.info("Starting coverage_mode_greedy with enhanced algorithm")
+
+        # Build sentence index (only 4-8 word sentences)
         if progress_callback:
             try:
-                progress_callback(10)
+                progress_callback(5, "Building sentence index...")
             except Exception:
                 pass
-        
+
+        sentence_index = self.build_sentence_index(sentences)
+        logger.info(f"Built sentence index with {len(sentence_index)} candidates")
+
+        if progress_callback:
+            try:
+                progress_callback(10, "Building word frequency index...")
+            except Exception:
+                pass
+
+        # TASK 2: Build word frequency index for performance
+        # Maps each word_key -> list of sentence indices containing that word
+        word_frequency_index = defaultdict(list)
+        for idx, info in sentence_index.items():
+            sentence_words = self.filter_content_words_only(
+                info,
+                self.wordlist_keys,
+                fold_diacritics=self.fold_diacritics,
+                handle_elisions=self.handle_elisions
+            )
+            for word_key in sentence_words:
+                word_frequency_index[word_key].append(idx)
+
+        logger.info(f"Built word frequency index for {len(word_frequency_index)} words")
+
         # Track uncovered words
         uncovered_words = self.wordlist_keys.copy()
-        
+
         # Track assignments and selections
         assignments = []
         word_to_sentence = {}
@@ -286,9 +314,9 @@ class CoverageService:
         selected_sentence_set = set()
         sentence_contribution = defaultdict(int)
         sentence_selection_score = {}
-        
-        # Determine maximum sentences to select. If target_count is 0 or None,
-        # treat it as unlimited.
+        sentence_covered_words = {}  # Track which words each sentence covered
+
+        # Determine maximum sentences to select
         if self.target_count in (0, None):
             max_sentences = None
         else:
@@ -297,71 +325,179 @@ class CoverageService:
             except Exception:
                 max_sentences = None
 
+        # TASK 4: Pre-filter candidate pool (only sentences with uncovered words)
+        def build_candidate_pool():
+            """Build pool of candidate sentences that contain at least one uncovered word"""
+            pool = set()
+            for word_key in uncovered_words:
+                if word_key in word_frequency_index:
+                    for sent_idx in word_frequency_index[word_key]:
+                        if sent_idx not in selected_sentence_set:
+                            pool.add(sent_idx)
+            return pool
+
+        candidate_pool = build_candidate_pool()
+        logger.info(f"Initial candidate pool: {len(candidate_pool)} sentences")
+
+        if progress_callback:
+            try:
+                progress_callback(15, "Standard mode: starting greedy selection...")
+            except Exception:
+                pass
+
+        # TASK 6: Stagnation detection
+        iterations_without_progress = 0
+        max_stagnant_iterations = 50
+        iteration_count = 0
+        last_pool_rebuild = 0
+
         # Greedy selection loop
         while uncovered_words and (max_sentences is None or len(selected_sentence_order) < max_sentences):
+            iteration_count += 1
             best_idx = None
             best_score = float('-inf')
             best_new_words = set()
-            
-            # Find the sentence with the highest score
-            for idx, info in sentence_index.items():
-                if idx in selected_sentence_set:
-                    continue
-                
-                # Only consider sentences with token length between 4 and 8
-                token_count = info.get('token_count', 0)
-                if token_count < 4 or token_count > 8:
-                    continue
 
-                # Get content words in this sentence that are in wordlist
+            # Calculate current coverage percentage for adaptive scoring
+            total_words = len(self.wordlist_keys) if self.wordlist_keys else 1
+            covered_count = len(word_to_sentence)
+            coverage_pct = (covered_count / total_words) * 100 if total_words else 0
+
+            # TASK 3: Adaptive scoring weights based on coverage
+            if coverage_pct < 50:
+                new_word_weight = 10
+                mode_label = "Standard"
+            elif coverage_pct < 70:
+                new_word_weight = 15
+                mode_label = "Aggressive"
+            else:
+                new_word_weight = 25
+                mode_label = "Very Aggressive"
+
+            # Find the sentence with the highest score from candidate pool
+            for idx in candidate_pool:
+                info = sentence_index[idx]
+
+                # Get content words in this sentence
                 sentence_words = self.filter_content_words_only(
                     info,
                     self.wordlist_keys,
                     fold_diacritics=self.fold_diacritics,
                     handle_elisions=self.handle_elisions
                 )
-                
+
                 # Find NEW words (not yet covered)
                 new_words = sentence_words & uncovered_words
-                
+
                 if not new_words:
                     continue
-                
-                # Calculate score: (new_words × 10) - sentence_length
-                score = (len(new_words) * 10) - info['token_count']
-                
+
+                # TASK 3: Enhanced scoring with rarity bonuses
+                score = (len(new_words) * new_word_weight) - info['token_count']
+
+                # Rarity bonus: reward words that appear in few sentences
+                for word in new_words:
+                    freq = len(word_frequency_index.get(word, []))
+                    if freq < 5:
+                        score += 20  # Very rare word
+                    elif freq < 20:
+                        score += 5   # Somewhat rare word
+
+                # Efficiency bonus: reward sentences covering many rare words (past 60%)
+                if coverage_pct > 60 and len(new_words) >= 3:
+                    # Check if at least 3 are rare
+                    rare_count = sum(1 for w in new_words if len(word_frequency_index.get(w, [])) < 20)
+                    if rare_count >= 3:
+                        score += 10
+
                 if score > best_score:
                     best_score = score
                     best_idx = idx
                     best_new_words = new_words
-            
-            # If no sentence can cover new words, stop
+
+            # If no sentence can cover new words, check stagnation
             if best_idx is None:
-                break
-            
+                iterations_without_progress += 1
+
+                # TASK 4: Rebuild candidate pool every 10 stagnant iterations
+                if (iteration_count - last_pool_rebuild) >= 10:
+                    logger.info(f"Rebuilding candidate pool after {iterations_without_progress} stagnant iterations")
+                    candidate_pool = build_candidate_pool()
+                    last_pool_rebuild = iteration_count
+
+                    # Try again with rebuilt pool
+                    if not candidate_pool:
+                        logger.info("Candidate pool empty after rebuild - stopping")
+                        break
+                    continue
+
+                # TASK 6: Stop if stagnation threshold reached
+                if iterations_without_progress >= max_stagnant_iterations:
+                    logger.info(f"Stopping: {iterations_without_progress} iterations without progress")
+                    if progress_callback:
+                        try:
+                            progress_callback(int(10 + coverage_pct * 0.85),
+                                            f"Stopped: no progress after {iterations_without_progress} iterations")
+                        except Exception:
+                            pass
+                    break
+                continue
+
+            # Reset stagnation counter (we found a sentence)
+            iterations_without_progress = 0
+
             # Select this sentence
             selected_sentence_set.add(best_idx)
             selected_sentence_order.append(best_idx)
             sentence_contribution[best_idx] = len(best_new_words)
             sentence_selection_score[best_idx] = best_score
-            
+            sentence_covered_words[best_idx] = list(best_new_words)
+
+            # Remove from candidate pool
+            candidate_pool.discard(best_idx)
+
             # Mark words as covered
             for word_key in best_new_words:
                 word_to_sentence[word_key] = best_idx
                 uncovered_words.discard(word_key)
-            
-            # Progress callback
+
+            # TASK 5: Enhanced logging every 50 sentences
+            if len(selected_sentence_order) % 50 == 0:
+                logger.info(
+                    f"[Iteration {iteration_count}] {mode_label} mode: "
+                    f"Coverage {coverage_pct:.1f}% ({covered_count + len(best_new_words)}/{total_words} words), "
+                    f"Selected {len(selected_sentence_order)} sentences, "
+                    f"Candidate pool size: {len(candidate_pool)}"
+                )
+
+            # Progress callback with context
             if progress_callback:
                 try:
-                    covered = len(word_to_sentence)
-                    total = len(self.wordlist_keys) if self.wordlist_keys else 1
-                    pct = 10 + int(85 * (covered / total))
-                    pct = min(max(pct, 10), 95)
-                    progress_callback(pct)
+                    new_coverage_pct = ((covered_count + len(best_new_words)) / total_words) * 100
+                    pct = 15 + int(75 * (new_coverage_pct / 100))
+                    pct = min(max(pct, 15), 90)
+                    msg = f"{mode_label} mode: {new_coverage_pct:.1f}% coverage..."
+                    progress_callback(pct, msg)
                 except Exception:
                     pass
-        
-        # Build assignments list
+
+        # Final statistics
+        covered_words = set(word_to_sentence.keys())
+        final_coverage_pct = (len(covered_words) / len(self.wordlist_keys) * 100) if self.wordlist_keys else 0
+
+        logger.info(
+            f"Coverage complete: {len(covered_words)}/{len(self.wordlist_keys)} words ({final_coverage_pct:.1f}%), "
+            f"{len(selected_sentence_order)} sentences selected, "
+            f"{iteration_count} total iterations"
+        )
+
+        if progress_callback:
+            try:
+                progress_callback(95, "Finalizing results...")
+            except Exception:
+                pass
+
+        # Build assignments list with covered words metadata
         for word_key, sentence_idx in word_to_sentence.items():
             sentence_info = sentence_index[sentence_idx]
             matched_surface = LinguisticsUtils.find_word_in_sentence(
@@ -370,7 +506,7 @@ class CoverageService:
                 fold_diacritics=self.fold_diacritics,
                 handle_elisions=self.handle_elisions
             )
-            
+
             assignments.append({
                 'word_key': word_key,
                 'word_original': word_key,
@@ -378,17 +514,20 @@ class CoverageService:
                 'matched_surface': matched_surface,
                 'sentence_index': sentence_idx,
                 'sentence_text': sentence_info['text'],
-                'sentence_score': sentence_info['in_list_ratio']
+                'sentence_score': sentence_info['in_list_ratio'],
+                'covered_words': sentence_covered_words.get(sentence_idx, [])  # For "Why this sentence?" tooltip
             })
-        
+
         # Calculate statistics
-        covered_words = set(word_to_sentence.keys())
         stats = {
             'words_total': len(self.wordlist_keys),
             'words_covered': len(covered_words),
             'uncovered_words': len(uncovered_words),
+            'coverage_percentage': final_coverage_pct,
             'selected_sentence_count': len(selected_sentence_set),
             'learning_set_count': len(selected_sentence_order),
+            'total_iterations': iteration_count,
+            'stopped_reason': 'stagnation' if iterations_without_progress >= max_stagnant_iterations else 'complete',
             'learning_set': [
                 {
                     'rank': rank,
@@ -397,6 +536,7 @@ class CoverageService:
                     'token_count': sentence_index[idx]['token_count'],
                     'new_word_count': sentence_contribution.get(idx, 0),
                     'score': sentence_selection_score.get(idx),
+                    'covered_words': sentence_covered_words.get(idx, [])
                 }
                 for rank, idx in enumerate(selected_sentence_order, start=1)
             ],
@@ -407,20 +547,20 @@ class CoverageService:
 
         if progress_callback:
             try:
-                progress_callback(95)
+                progress_callback(100, "Complete")
             except Exception:
                 pass
 
         logger.info(f"Coverage mode: {stats['words_covered']}/{stats['words_total']} words covered "
-                   f"with {stats['selected_sentence_count']} sentences")
-        
+                   f"({final_coverage_pct:.1f}%) with {stats['selected_sentence_count']} sentences")
+
         return assignments, stats
     
     def batch_coverage_mode(
         self,
         sources: List[Tuple[int, List[str]]],
         progress_callback: Optional[Callable[[int, str], Any]] = None
-    ) -> Tuple[List[Dict], Dict]:
+    ) -> Tuple[List[Dict], Dict, List[Dict]]:
         """
         Batch Coverage Mode: Process multiple sources sequentially with shrinking word list.
         
@@ -434,7 +574,7 @@ class CoverageService:
             progress_callback: Optional progress callback (percent, step_description)
         
         Returns:
-            Tuple of (combined_assignments, combined_stats)
+            Tuple of (combined_assignments, combined_stats, combined_learning_set)
         """
         logger.info(f"Starting batch coverage mode with {len(sources)} sources")
         
@@ -497,117 +637,63 @@ class CoverageService:
                 'source_id': source_id,
                 'source_index': source_idx,
                 'sentences_count': len(sentences),
-                'selected_sentences': source_stats_dict['selected_sentence_count'],
+                'selected_sentence_count': source_stats_dict['selected_sentence_count'],
                 'words_covered': newly_covered,
                 'words_remaining': len(uncovered_words),
             })
             
+            # Append learning set from this source run
+            for item in source_stats_dict.get('learning_set', []):
+                all_selected_sentences.append({
+                    'source_id': source_id,
+                    'source_index': source_idx,
+                    **item
+                })
+
             logger.info(f"Source {source_idx + 1} covered {newly_covered} new words, "
                        f"{len(uncovered_words)} remaining")
         
-        # Build combined learning set
-        # Sort assignments by source order, then sentence index within each source
-        all_assignments.sort(key=lambda a: (a['source_index'], a['sentence_index']))
+        # Build combined learning set and stats
+        all_assignments.sort(key=lambda a: (a.get('source_index', 0), a.get('sentence_index', 0)))
         
-        # Create unique sentence list (deduplicate if same sentence appears in multiple sources)
-        seen_sentences = {}
-        rank = 1
-        
-        for assignment in all_assignments:
-            sentence_key = (assignment['source_id'], assignment['sentence_index'])
-            if sentence_key not in seen_sentences:
-                seen_sentences[sentence_key] = {
-                    'rank': rank,
-                    'source_id': assignment['source_id'],
-                    'source_index': assignment['source_index'],
-                    'sentence_index': assignment['sentence_index'],
-                    'sentence_text': assignment['sentence_text'],
-                    'words_covered': set([assignment['word_key']]),
-                    'sentence_score': assignment.get('sentence_score'),
-                }
-                rank += 1
-            else:
-                # Same sentence covers multiple words
-                seen_sentences[sentence_key]['words_covered'].add(assignment['word_key'])
-        
-        # Convert to list with word counts and scores
-        aggregated_sentences = []
-        for sentence_info in seen_sentences.values():
-            new_word_count = len(sentence_info['words_covered'])
-            sentence_text = sentence_info['sentence_text']
-            token_count = len(sentence_text.split()) if sentence_text else 0
-            
-            # Calculate quality score: (new_words × 10) - token_count
-            # This prioritizes sentences with more new words and shorter length
-            quality_score = (new_word_count * 10) - token_count
-            
-            aggregated_sentences.append({
-                'rank': sentence_info['rank'],  # Temporary rank, will be re-ranked
-                'source_id': sentence_info['source_id'],
-                'source_index': sentence_info['source_index'],
-                'sentence_index': sentence_info['sentence_index'],
-                'sentence_text': sentence_text,
-                'new_word_count': new_word_count,
-                'token_count': token_count,
-                'quality_score': quality_score,
+        # Re-rank the combined learning set
+        combined_learning_set = []
+        for rank, sentence_data in enumerate(all_selected_sentences, start=1):
+            combined_learning_set.append({
+                'rank': rank,
+                **sentence_data
             })
-        
-        # Re-sort by quality score (descending) to prioritize best sentences
-        aggregated_sentences.sort(key=lambda x: x['quality_score'], reverse=True)
-        
-        # Apply target_count limit if configured
-        target_count = self.target_count
-        if target_count and target_count > 0 and len(aggregated_sentences) > target_count:
-            logger.info(f"Truncating learning set from {len(aggregated_sentences)} to {target_count} sentences (target_count)")
-            aggregated_sentences = aggregated_sentences[:target_count]
-        
-        # Re-rank after truncation
-        learning_set = []
-        for idx, sentence_info in enumerate(aggregated_sentences, start=1):
-            learning_set.append({
-                'rank': idx,
-                'source_id': sentence_info['source_id'],
-                'source_index': sentence_info['source_index'],
-                'sentence_index': sentence_info['sentence_index'],
-                'sentence_text': sentence_info['sentence_text'],
-                'new_word_count': sentence_info['new_word_count'],
-                'token_count': sentence_info['token_count'],
-                'score': sentence_info['quality_score'],
-            })
-        
-        # Calculate combined statistics
-        covered_words = total_words_initial - len(uncovered_words)
-        stats = {
-            'mode': 'batch',
-            'sources_count': len(sources),
-            'sources_processed': len(source_stats),
+            
+        total_words_covered = total_words_initial - len(uncovered_words)
+        total_sentences_selected = sum(s.get('selected_sentence_count', 0) for s in source_stats)
+
+        combined_stats = {
             'words_total': total_words_initial,
-            'words_covered': covered_words,
+            'words_covered': total_words_covered,
             'uncovered_words': len(uncovered_words),
-            'coverage_percentage': (covered_words / total_words_initial * 100) if total_words_initial > 0 else 0,
-            'selected_sentence_count': len(learning_set),
-            'learning_set_count': len(learning_set),
-            'source_breakdown': source_stats,
-            'learning_set': learning_set,
+            'selected_sentence_count': total_sentences_selected,
+            'learning_set_count': len(combined_learning_set),
+            'source_stats': source_stats,
+            'batch_summary': {
+                'source_count': len(sources),
+                'total_sentences_selected': total_sentences_selected,
+            }
         }
         
-        # Log final word sets
-        final_covered = self.wordlist_keys - uncovered_words
-        self._log_word_sets(final_covered, uncovered_words)
-        
+        logger.info(f"Batch coverage complete. Total words covered: {total_words_covered}/{total_words_initial}. "
+                    f"Total sentences selected: {total_sentences_selected} from {len(sources)} sources.")
+
+        # Log final combined word sets
+        final_covered_words = self.wordlist_keys - uncovered_words
+        self._log_word_sets(final_covered_words, uncovered_words)
+
         if progress_callback:
-            try:
-                progress_callback(95, "Finalizing batch results")
-            except Exception:
-                pass
-        
-        logger.info(f"Batch coverage complete: {covered_words}/{total_words_initial} words covered "
-                   f"with {len(learning_set)} sentences from {len(source_stats)} sources")
-        
-        return all_assignments, stats
+            progress_callback(100, "Batch processing complete")
+            
+        return all_assignments, combined_stats, combined_learning_set
     
     def _log_word_sets(self, covered_words: Set[str], uncovered_words: Set[str]):
-        """Logs covered and uncovered words to timestamped text files."""
+        """Log covered and uncovered words to files for debugging."""
         log_dir = 'logs'
         try:
             if not os.path.exists(log_dir):

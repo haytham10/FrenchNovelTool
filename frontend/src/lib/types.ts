@@ -148,6 +148,135 @@ export interface JobFinalizeResponse {
   adjustment: number;
   refunded: boolean;
   refund_amount?: number;
+}
+
+// ============================================================================
+// Vocabulary Coverage Tool Types
+// ============================================================================
+
+export interface WordList {
+  id: number;
+  owner_user_id: number | null;
+  name: string;
+  source_type: 'manual' | 'csv' | 'google_sheet';
+  source_ref: string | null;
+  normalized_count: number;
+  canonical_samples: string[];
+  created_at: string;
+  updated_at: string;
+  is_global_default: boolean;
+}
+
+export interface CoverageRun {
+  id: number;
+  user_id: number;
+  mode: 'coverage' | 'filter' | 'batch';
+  source_type: 'history' | 'sheets';
+  source_id: number | null;
+  wordlist_id: number;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  progress_percent: number;
+  stats_json: Record<string, unknown> | null;
+  learning_set_json: Record<string, unknown>[] | null;
+  config_json: Record<string, unknown> | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  error_message: string | null;
+}
+
+export interface CoverageAssignment {
+  id: number;
+  run_id: number;
+  word_key: string;
+  surface_form: string;
+  sentence_text: string;
+  sentence_index: number | null;
+  source_id: number | null;
+}
+
+export interface LearningSetEntry {
+  rank: number;
+  sentence_index: number | null;
+  sentence_text: string;
+  token_count: number;
+  new_word_count: number;
+  score: number | null;
+  source_id?: number;
+  words?: string[]; // Added on frontend
+}
+
+// Detailed history for drill-down view
+export interface HistoryDetail extends HistoryEntry {
+  sentences: Array<{ normalized: string; original: string }>;
+  chunk_ids: number[];
+  chunks: ChunkDetail[];
+  sentences_source?: 'snapshot' | 'live_chunks';
+}
+
+// Details for a single processing chunk
+export interface ChunkDetail {
+  id: number;
+  job_id: number;
+  chunk_id: number;
+  start_page: number;
+  end_page: number;
+  page_count: number;
+  has_overlap: boolean;
+  status: 'pending' | 'processing' | 'success' | 'failed' | 'retry_scheduled';
+  attempts: number;
+  max_retries: number;
+  last_error?: string;
+  last_error_code?: string;
+  processed_at?: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+// PDF cost estimation response
+export interface EstimatePdfResponse {
+  page_count: number;
+  file_size: number;
+  image_count: number;
+  estimated_tokens: number;
+  estimated_credits: number;
+  model: string;
+  model_preference: string;
+  pricing_rate: number;
+  capped: boolean;
+  warning?: string;
+}
+
+// Async PDF processing request
+export interface ProcessPdfAsyncRequest {
+  job_id: number;
+  pdf_file: File;
+  sentence_length_limit?: number;
+  gemini_model?: string;
+  ignore_dialogue?: boolean;
+  preserve_formatting?: boolean;
+  fix_hyphenation?: boolean;
+  min_sentence_length?: number;
+}
+
+// Async PDF processing response
+export interface ProcessPdfAsyncResponse {
+  job_id: number;
+  task_id: string;
+  status: string;
   message: string;
+}
+
+// Job cancellation response
+export interface CancelJobResponse {
+  message: string;
+  job_id: number;
+  status: string;
+}
+
+// History export request
+export interface ExportHistoryRequest {
+  sheetName?: string;
+  folderId?: string | null;
 }
 

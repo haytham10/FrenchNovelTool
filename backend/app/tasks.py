@@ -1414,223 +1414,74 @@ def coverage_build_async(self, run_id: int):
 
 @get_celery().task(bind=True, name='app.tasks.batch_coverage_build_async')
 def batch_coverage_build_async(self, run_id: int):
-    """
-    Asynchronously build batch vocabulary coverage analysis across multiple sources.
-    
-    This implements the sequential "smart assembly line" approach:
-    - Processes first source to find as many words as possible
-    - Each subsequent source only searches for words not yet covered
-    - Returns combined learning set from all sources
-    
-    Args:
-        run_id: CoverageRun ID to process (must be in 'batch' mode)
-    """
-    from app.models import CoverageRun, CoverageAssignment, WordList, History, Job
-    from app.services.coverage_service import CoverageService
-    from app.services.wordlist_service import WordListService
-    from app.utils.metrics import coverage_runs_total, coverage_build_duration_seconds
-    
+    """Task to run batch coverage analysis"""
     db = get_db()
-    logger.info(f"Starting batch coverage build for run_id={run_id}")
+    from app.models import CoverageRun, WordList, History, CoverageAssignment
+    from app.services.coverage_service import CoverageService
     
-    start_time = time.time()
-    mode = 'batch'
-    status = 'failed'
-    
+    run = db.session.get(CoverageRun, run_id)
+    if not run:
+        logger.error(f"batch_coverage_build_async: CoverageRun {run_id} not found")
+        return
+
     try:
-        # Get the coverage run
-        coverage_run = CoverageRun.query.get(run_id)
-        if not coverage_run:
-            logger.error(f"CoverageRun {run_id} not found")
-            return
+        run.status = 'processing'
+        run.started_at = datetime.now(timezone.utc)
+        db.session.commit()
+
+        wordlist = db.session.get(WordList, run.wordlist_id)
+        if not wordlist or not wordlist.words_json:
+            raise ValueError(f"WordList {run.wordlist_id} not found or is empty")
+            
+        wordlist_keys = set(wordlist.words_json)
         
-        if coverage_run.mode != 'batch':
-            raise ValueError(f"Run {run_id} is not in batch mode (mode={coverage_run.mode})")
-        
-        # Update status
-        coverage_run.status = 'processing'
-        coverage_run.celery_task_id = self.request.id
-        coverage_run.progress_percent = 5
-        safe_db_commit(db)
-        
-        # Emit progress via WebSocket
-        try:
-            from app.socket_events import emit_coverage_progress
-            emit_coverage_progress(run_id)
-        except Exception as e:
-            logger.warning(f"Failed to emit coverage progress for run {run_id}: {e}")
-        
-        # Load word list
-        wordlist_id = coverage_run.wordlist_id
-        if not wordlist_id:
-            # Use global default
-            wordlist = WordListService.get_global_default_wordlist()
-            if not wordlist:
-                raise ValueError("No word list specified and no global default found")
-            wordlist_id = wordlist.id
-            coverage_run.wordlist_id = wordlist_id
-            safe_db_commit(db)
-        else:
-            wordlist = WordList.query.get(wordlist_id)
-            if not wordlist:
-                raise ValueError(f"WordList {wordlist_id} not found")
-        
-        # Get source IDs from config_json
-        config = coverage_run.config_json or {}
-        source_ids = config.get('source_ids', [])
-        if not source_ids or len(source_ids) < 2:
-            raise ValueError("Batch mode requires at least 2 source IDs in config_json")
-        
-        logger.info(f"Processing batch with {len(source_ids)} sources: {source_ids}")
-        
-        # Get word list keys
-        wordlist_keys = set()
-        if wordlist.words_json:
-            wordlist_keys = set(wordlist.words_json)
-            logger.info(f"Loaded {len(wordlist_keys)} words from stored words_json")
-        elif wordlist.canonical_samples:
-            wordlist_keys = set(wordlist.canonical_samples)
-            logger.warning(f"WordList {wordlist_id} has no words_json, using {len(wordlist_keys)} canonical samples")
-        else:
-            raise ValueError(f"WordList {wordlist_id} has no words")
-        
-        # Fetch sentences from all sources
+        # Get sources from config
+        source_ids = run.config_json.get('source_ids', [])
         sources = []
-        source_type = coverage_run.source_type
-        
         for source_id in source_ids:
-            sentences = []
-            
-            if source_type == 'history':
-                history = History.query.get(source_id)
-                if not history or not history.sentences:
-                    logger.warning(f"History {source_id} not found or has no sentences, skipping")
-                    continue
-                # Extract normalized sentences
-                sentences = [s.get('normalized', s.get('original', '')) 
-                           for s in history.sentences 
-                           if s.get('normalized') or s.get('original')]
-            elif source_type == 'job':
-                job = Job.query.get(source_id)
-                if not job or not job.chunk_results:
-                    logger.warning(f"Job {source_id} not found or has no results, skipping")
-                    continue
-                # Extract sentences from chunk results
-                for chunk_result in job.chunk_results:
-                    chunk_sentences = chunk_result.get('sentences', [])
-                    sentences.extend([s.get('normalized', s.get('original', '')) 
-                                    for s in chunk_sentences 
-                                    if s.get('normalized') or s.get('original')])
-            else:
-                raise ValueError(f"Unknown source_type: {source_type}")
-            
-            # Filter out empty sentences
-            sentences = [s.strip() for s in sentences if s and s.strip()]
-            if not sentences:
-                logger.warning(f"No valid sentences found in source {source_id}, skipping")
-                continue
-            
-            logger.info(f"Loaded {len(sentences)} sentences from {source_type} {source_id}")
-            sources.append((source_id, sentences))
+            history = db.session.get(History, source_id)
+            if history and history.processed_sentences:
+                sources.append((source_id, history.processed_sentences))
         
         if not sources:
-            raise ValueError("No valid sources with sentences found")
+            raise ValueError("No valid sources found for batch coverage run")
+
+        config = run.config_json or {}
+        service = CoverageService(wordlist_keys=wordlist_keys, config=config)
         
-        if len(sources) < 2:
-            logger.warning(f"Only {len(sources)} source(s) available, batch mode works best with 2+")
-        
-        # Initialize coverage service
-        coverage_service = CoverageService(
-            wordlist_keys=wordlist_keys,
-            config=config
-        )
-        
-        # Progress callback
-        def _progress_callback(pct: int, step: str | None = None):
-            try:
-                coverage_run.progress_percent = min(max(pct, 0), 99)
-                safe_db_commit(db)
-                emit_coverage_progress(run_id)
-            except Exception as e:
-                logger.warning(f"Progress callback error: {e}")
-        
-        # Run batch coverage mode
-        logger.info(f"Starting batch coverage processing with {len(sources)} sources")
-        batch_start = time.time()
-        assignments_data, stats = coverage_service.batch_coverage_mode(
-            sources,
-            progress_callback=_progress_callback
-        )
-        batch_duration = time.time() - batch_start
-        logger.info(f"Batch coverage completed in {batch_duration:.2f}s")
-        
-        # Store assignments in database
-        coverage_run.progress_percent = 95
-        safe_db_commit(db)
-        
-        # Delete old assignments if any
-        CoverageAssignment.query.filter_by(coverage_run_id=run_id).delete()
-        
-        # Insert new assignments
-        for assignment_data in assignments_data:
-            assignment = CoverageAssignment(
-                coverage_run_id=run_id,
-                word_original=assignment_data.get('word_original'),
-                word_key=assignment_data['word_key'],
-                lemma=assignment_data.get('lemma'),
-                matched_surface=assignment_data.get('matched_surface'),
-                sentence_index=assignment_data['sentence_index'],
-                sentence_text=assignment_data['sentence_text'],
-                sentence_score=assignment_data.get('sentence_score'),
-                conflicts=assignment_data.get('conflicts'),
-            )
-            db.session.add(assignment)
+        assignments, stats, learning_set = service.batch_coverage_mode(sources)
         
         # Update run with results
-        coverage_run.status = 'completed'
-        coverage_run.progress_percent = 100
-        coverage_run.stats_json = stats
-        coverage_run.completed_at = datetime.now(timezone.utc)
+        run.status = 'completed'
+        run.completed_at = datetime.now(timezone.utc)
+        run.stats_json = stats
+        run.learning_set_json = learning_set
         
-        safe_db_commit(db)
+        # Clear existing assignments and add new ones
+        run.assignments = []
+        db.session.flush()
         
-        # Final websocket notification
-        try:
-            emit_coverage_progress(run_id)
-        except Exception as e:
-            logger.warning(f"Failed to emit final progress for run {run_id}: {e}")
+        new_assignments = []
+        for a in assignments:
+            new_assignments.append(CoverageAssignment(
+                run_id=run.id,
+                word_key=a['word_key'],
+                surface_form=a['surface_form'],
+                sentence_text=a['sentence_text'],
+                sentence_index=a['sentence_index'],
+                source_id=a.get('source_id')
+            ))
+        db.session.bulk_save_objects(new_assignments)
         
-        status = 'completed'
+        db.session.commit()
         logger.info(f"Batch coverage run {run_id} completed successfully")
-        
 
-        # Record metrics
-        coverage_runs_total.labels(mode=mode, status=status).inc()
-        
     except Exception as e:
-        logger.exception(f"Error in batch coverage build for run_id={run_id}: {e}")
-        try:
-            coverage_run = CoverageRun.query.get(run_id)
-            if coverage_run:
-                coverage_run.status = 'failed'
-                coverage_run.error_message = str(e)[:512]
-                safe_db_commit(db)
-                
-                try:
-                    from app.socket_events import emit_coverage_progress
-                    emit_coverage_progress(run_id)
-                except Exception:
-                    pass
-        except Exception as cleanup_error:
-            logger.error(f"Error during cleanup: {cleanup_error}")
-        
-        # Record metrics
-        coverage_runs_total.labels(mode=mode, status='failed').inc()
-        raise
-    
+        logger.exception(f"Error in batch_coverage_build_async for run {run_id}: {e}")
+        if 'run' in locals() and run:
+            run.status = 'failed'
+            run.error_message = str(e)
+            db.session.commit()
     finally:
-        # Record duration metric
-        duration = time.time() - start_time
-        # coverage_build_duration_seconds Histogram is defined with only the 'mode' label
-        coverage_build_duration_seconds.labels(mode=mode).observe(duration)
+        db.session.remove()
 

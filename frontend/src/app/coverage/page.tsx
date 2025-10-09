@@ -43,6 +43,7 @@ import {
   Upload as UploadIcon,
   Search as SearchIcon,
   Download as DownloadIcon,
+  BugReport as DiagnoseIcon,
   HelpOutline as HelpIcon,
   Description as PdfIcon,
   TableChart as SheetsIcon,
@@ -58,25 +59,32 @@ import { useSnackbar } from 'notistack';
 import {
   listWordLists,
   createWordListFromFile,
-  createCoverageRun,
-  getCoverageRun,
-  getProcessingHistory,
-  exportCoverageRun,
-  downloadCoverageRunCSV,
-  importSentencesFromSheets,
   getCoverageCost,
   getCredits,
-  type WordList,
-  type CoverageRun as CoverageRunType,
-  type CoverageAssignment,
-  type LearningSetEntry,
+  getCoverageRun,
+  getProcessingHistory,
+  importSentencesFromSheets,
+  createCoverageRun,
+  exportCoverageRun,
+  downloadCoverageRunCSV,
+  diagnoseCoverageRun,
+  CoverageDiagnosis,
 } from '@/lib/api';
+import { useSettingsStore } from '@/stores/useSettingsStore';
+import {
+  CoverageRun as CoverageRunType,
+  CoverageAssignment,
+  LearningSetEntry,
+  WordList,
+  HistoryEntry,
+} from '@/lib/types';
+import { useCoverageWebSocket } from '@/lib/useCoverageWebSocket';
 import RouteGuard from '@/components/RouteGuard';
 import Breadcrumbs from '@/components/Breadcrumbs';
 import LearningSetTable from '@/components/LearningSetTable';
 import FilterResultsTable from '@/components/FilterResultsTable';
-import { useSettings } from '@/lib/queries';
-import { useCoverageWebSocket } from '@/lib/useCoverageWebSocket';
+
+type LearningSetDisplayEntry = LearningSetEntry & { words: string[] };
 
 const WIZARD_STEPS = ['Configure', 'Select Source', 'Run & Review'] as const;
 
@@ -108,9 +116,12 @@ export default function CoveragePage() {
   // const [resultSearch, setResultSearch] = useState<string>('');
   const [showExportDialog, setShowExportDialog] = useState<boolean>(false);
   const [exportSheetName, setExportSheetName] = useState<string>('');
+  const [showDiagnosisDialog, setShowDiagnosisDialog] = useState<boolean>(false);
+  const [diagnosisData, setDiagnosisData] = useState<CoverageDiagnosis | null>(null);
+  const [loadingDiagnosis, setLoadingDiagnosis] = useState<boolean>(false);
   const [sentenceCap, setSentenceCap] = useState<number>(500); // Coverage mode sentence cap (0 = unlimited)
   // Load user settings to know which default wordlist is configured
-  const { data: settings } = useSettings();
+  const { data: settings } = useSettingsStore();
   
   // Wizard step state
   const [activeStep, setActiveStep] = useState<number>(currentRunId ? 2 : 0);
@@ -344,7 +355,23 @@ export default function CoveragePage() {
       enqueueSnackbar(msg, { variant: 'error' });
     }
   };
-  
+
+  const handleDiagnose = async () => {
+    if (!currentRunId) return;
+    setLoadingDiagnosis(true);
+    setShowDiagnosisDialog(true);
+    try {
+      const data = await diagnoseCoverageRun(currentRunId);
+      setDiagnosisData(data);
+    } catch (error: unknown) {
+      enqueueSnackbar('Failed to generate diagnosis', { variant: 'error' });
+      setShowDiagnosisDialog(false);
+      setDiagnosisData(null);
+    } finally {
+      setLoadingDiagnosis(false);
+    }
+  };
+
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
@@ -408,27 +435,34 @@ export default function CoveragePage() {
     [runData?.learning_set]
   );
   const learningSetDisplay = React.useMemo(() => {
-    if (learningSet.length > 0) return learningSet;
-    if (assignments.length === 0) return [] as LearningSetEntry[];
+    if (!learningSet || learningSet.length === 0) return [];
+    
+    // In batch mode, the learning_set is already what we need.
+    // In single mode, we need to join with assignments.
+    if (coverageRun?.mode === 'batch') {
+      return learningSet;
+    }
 
-    const unique = new Map<number, string>();
-    assignments.forEach((assignment) => {
-      if (!unique.has(assignment.sentence_index)) {
-        unique.set(assignment.sentence_index, assignment.sentence_text);
+    // Single-mode logic (unchanged)
+    const sentenceMap = new Map<number, LearningSetDisplayEntry>();
+    for (const item of learningSet) {
+      if (item.sentence_index !== null) {
+        sentenceMap.set(item.sentence_index, { ...item, words: [] });
       }
-    });
+    }
 
-    return Array.from(unique.entries())
-      .sort((a, b) => a[0] - b[0])
-      .map(([sentenceIndex, sentenceText], idx) => ({
-        rank: idx + 1,
-        sentence_index: sentenceIndex,
-        sentence_text: sentenceText,
-        token_count: null,
-        new_word_count: null,
-        score: null,
-      }));
-  }, [learningSet, assignments]);
+    for (const assignment of assignments) {
+      if (assignment.sentence_index !== null) {
+        const entry = sentenceMap.get(assignment.sentence_index);
+        if (entry) {
+          entry.words.push(assignment.surface_form);
+        }
+      }
+    }
+
+    return Array.from(sentenceMap.values())
+      .sort((a, b) => (a.sentence_index ?? 0) - (b.sentence_index ?? 0));
+  }, [learningSet, assignments, coverageRun?.mode]);
   // Pagination for previewed results (show 10 per page)
   const [resultsPage, setResultsPage] = useState<number>(1);
   const RESULTS_PAGE_SIZE = 10;
@@ -438,11 +472,11 @@ export default function CoveragePage() {
   useEffect(() => {
     setResultsPage(1);
   }, [currentRunId, coverageRun?.id]);
-  const history = (historyData || []).slice().sort((a, b) => (
+  const history = (historyData?.history || []).slice().sort((a: HistoryEntry, b: HistoryEntry) => (
     new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
   ));
 
-  const filteredHistory = history.filter((h) => {
+  const filteredHistory = history.filter((h: HistoryEntry) => {
     if (!historySearch) return true;
     const q = historySearch.toLowerCase().trim();
     return (
@@ -1148,6 +1182,17 @@ export default function CoveragePage() {
                     >
                       Export to Sheets
                     </Button>
+                    {coverageRun?.mode !== 'filter' && (
+                      <Button
+                        variant="outlined"
+                        startIcon={<DiagnoseIcon />}
+                        onClick={handleDiagnose}
+                        fullWidth
+                        disabled={loadingRun}
+                      >
+                        Diagnose Coverage
+                      </Button>
+                    )}
                   </Stack>
                   
                 <Box>
@@ -1422,12 +1467,114 @@ export default function CoveragePage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenSheetDialog(false)}>Cancel</Button>
-          <Button 
-            variant="contained" 
+          <Button
+            variant="contained"
             onClick={() => importSheetsMutation.mutate(sheetUrl)}
             disabled={!sheetUrl || importSheetsMutation.isPending}
           >
             {importSheetsMutation.isPending ? 'Importing...' : 'Import'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Diagnosis Dialog */}
+      <Dialog
+        open={showDiagnosisDialog}
+        onClose={() => setShowDiagnosisDialog(false)}
+        maxWidth="md"
+        fullWidth
+        scroll="paper"
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <DiagnoseIcon color="primary" />
+            <Typography variant="h6">Coverage Diagnosis</Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers>
+          {loadingDiagnosis ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 8 }}>
+              <CircularProgress />
+              <Typography variant="body1" sx={{ ml: 2 }}>Analyzing uncovered words...</Typography>
+            </Box>
+          ) : diagnosisData ? (
+            <Stack spacing={3}>
+              {/* Summary Stats */}
+              <Box>
+                <Typography variant="h6" gutterBottom>
+                  Coverage Summary
+                </Typography>
+                <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
+                  <Chip
+                    label={`${diagnosisData.covered_words} / ${diagnosisData.total_words} words`}
+                    color="success"
+                    size="medium"
+                  />
+                  <Chip
+                    label={`${diagnosisData.coverage_percentage.toFixed(1)}% coverage`}
+                    color="primary"
+                    size="medium"
+                  />
+                  <Chip
+                    label={`${diagnosisData.uncovered_words} uncovered`}
+                    color="warning"
+                    size="medium"
+                  />
+                </Stack>
+              </Box>
+
+              {/* Recommendation */}
+              <Alert severity="info" sx={{ '& .MuiAlert-message': { width: '100%' } }}>
+                <Typography variant="body2">
+                  <strong>Recommendation:</strong> {diagnosisData.recommendation}
+                </Typography>
+              </Alert>
+
+              <Divider />
+
+              {/* Category Breakdown */}
+              <Typography variant="h6" gutterBottom>
+                Uncovered Words Breakdown
+              </Typography>
+
+              {Object.entries(diagnosisData.categories).map(([key, category]) => (
+                <Card key={key} variant="outlined">
+                  <CardContent>
+                    <Typography variant="subtitle1" fontWeight={600} gutterBottom color="primary.main">
+                      {category.description}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                      <strong>Count:</strong> {category.count} words
+                    </Typography>
+                    {category.sample_words.length > 0 && (
+                      <Box sx={{ mt: 2 }}>
+                        <Typography variant="caption" color="text.secondary" gutterBottom display="block">
+                          Sample words (showing up to {category.sample_words.length}):
+                        </Typography>
+                        <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                          {category.sample_words.map((word, idx) => (
+                            <Chip
+                              key={idx}
+                              label={word}
+                              size="small"
+                              variant="outlined"
+                              sx={{ fontFamily: 'monospace' }}
+                            />
+                          ))}
+                        </Box>
+                      </Box>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </Stack>
+          ) : (
+            <Typography color="text.secondary">No diagnosis data available</Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowDiagnosisDialog(false)} variant="contained">
+            Close
           </Button>
         </DialogActions>
       </Dialog>
