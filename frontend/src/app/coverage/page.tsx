@@ -194,7 +194,7 @@ export default function CoveragePage() {
     });
   // Load processing history for source selection
   const { data: historyData, isLoading: loadingHistory } = useQuery({
-    queryKey: ['history', 'forCoverage'],
+    queryKey: ['history'],
     queryFn: getProcessingHistory,
     staleTime: 1000 * 60 * 5,
   });
@@ -217,7 +217,7 @@ export default function CoveragePage() {
       return importSentencesFromSheets(sheetUrl);
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['history', 'forCoverage'] });
+      queryClient.invalidateQueries({ queryKey: ['history'] });
       setSourceId(String(data.history_id));
       setOpenSheetDialog(false);
       setSheetUrl('');
@@ -981,7 +981,7 @@ export default function CoveragePage() {
                 </Box>
               </>
             ) : coverageRun?.status === 'processing' ? (
-              // Processing State
+              // Processing State - Enhanced with phase indicators
               <>
                 <Typography variant="h5" fontWeight={600} gutterBottom>
                   Processing...
@@ -989,15 +989,72 @@ export default function CoveragePage() {
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
                   Your vocabulary coverage analysis is in progress
                 </Typography>
-                
+
                 <Box sx={{ maxWidth: 600, mx: 'auto', width: '100%' }}>
+                  {/* Progress Phase Indicator */}
+                  <Paper elevation={0} variant="outlined" sx={{ p: 3, mb: 4, bgcolor: 'primary.50', borderColor: 'primary.main' }}>
+                    <Typography variant="body2" color="text.secondary" fontWeight={600} gutterBottom>
+                      Current Phase
+                    </Typography>
+                    <Typography variant="h6" fontWeight={700} color="primary.main">
+                      {(() => {
+                        const progress = coverageRun.progress_percent;
+                        if (progress < 10) return '🔍 Building candidate pool...';
+                        if (progress < 50) return `📊 Standard mode: ${progress}% coverage...`;
+                        if (progress < 70) return `⚡ Ramping up: ${progress}% coverage...`;
+                        if (progress < 95) return `🚀 Aggressive mode: ${progress}% coverage...`;
+                        return '✨ Finalizing results...';
+                      })()}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                      {(() => {
+                        const progress = coverageRun.progress_percent;
+                        if (progress < 10) return 'Scanning sentences and preparing analysis...';
+                        if (progress < 50) return 'Selecting high-value sentences with maximum new words';
+                        if (progress < 70) return 'Increasing coverage with diverse sentence patterns';
+                        if (progress < 95) return 'Filling coverage gaps with targeted selections';
+                        return 'Optimizing final learning set and generating results';
+                      })()}
+                    </Typography>
+                  </Paper>
+
+                  {/* Progress Bar */}
                   <Box sx={{ mb: 4 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                      <Typography variant="body1">Analyzing vocabulary...</Typography>
-                      <Typography variant="body1" fontWeight={600}>{coverageRun.progress_percent}%</Typography>
+                      <Typography variant="body1" fontWeight={600}>Overall Progress</Typography>
+                      <Typography variant="h6" fontWeight={700} color="primary.main">{coverageRun.progress_percent}%</Typography>
                     </Box>
-                    <LinearProgress variant="determinate" value={coverageRun.progress_percent} sx={{ height: 8, borderRadius: 1 }} />
+                    <LinearProgress
+                      variant="determinate"
+                      value={coverageRun.progress_percent}
+                      sx={{
+                        height: 12,
+                        borderRadius: 2,
+                        bgcolor: 'action.hover',
+                        '& .MuiLinearProgress-bar': {
+                          borderRadius: 2,
+                          background: 'linear-gradient(90deg, #2196F3 0%, #21CBF3 100%)',
+                        }
+                      }}
+                    />
+
+                    {/* Phase Markers */}
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1, px: 0.5 }}>
+                      <Typography variant="caption" color={coverageRun.progress_percent >= 10 ? 'primary.main' : 'text.disabled'}>
+                        10%
+                      </Typography>
+                      <Typography variant="caption" color={coverageRun.progress_percent >= 50 ? 'primary.main' : 'text.disabled'}>
+                        50%
+                      </Typography>
+                      <Typography variant="caption" color={coverageRun.progress_percent >= 70 ? 'primary.main' : 'text.disabled'}>
+                        70%
+                      </Typography>
+                      <Typography variant="caption" color={coverageRun.progress_percent >= 95 ? 'primary.main' : 'text.disabled'}>
+                        95%
+                      </Typography>
+                    </Box>
                   </Box>
+
                   <Box sx={{ mt: 4 }}>
                     <Button
                       variant="outlined"
@@ -1015,7 +1072,7 @@ export default function CoveragePage() {
                 </Box>
               </>
             ) : coverageRun?.status === 'completed' ? (
-              // Results State
+              // Results State - Enhanced with color-coded cards and gauge
               <>
                 <Typography variant="h5" fontWeight={600} gutterBottom>
                   Results
@@ -1023,64 +1080,149 @@ export default function CoveragePage() {
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
                   Your vocabulary coverage analysis is complete
                 </Typography>
-                
+
                 <Stack spacing={3}>
-                  {/* KPI Cards */}
-                  <Stack direction="row" spacing={2}>
-                    <Card variant="outlined" sx={{ flex: 1 }}>
-                      <CardContent>
-                        <Typography variant="caption" color="text.secondary">
+                  {/* Enhanced KPI Cards */}
+                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+                    {/* Sentences Selected Card */}
+                    <Card
+                      variant="outlined"
+                      sx={{
+                        flex: 1,
+                        borderWidth: 2,
+                        borderColor: 'primary.main',
+                        bgcolor: 'primary.50',
+                      }}
+                    >
+                      <CardContent sx={{ p: 3 }}>
+                        <Typography variant="overline" color="text.secondary" fontWeight={700} letterSpacing={1.2}>
                           Sentences Selected
                         </Typography>
-                        <Typography variant="h4" fontWeight={600}>
-                          {coverageRun?.mode === 'filter' 
+                        <Typography variant="h2" fontWeight={800} color="primary.main" sx={{ my: 1 }}>
+                          {coverageRun?.mode === 'filter'
                             ? (getNumberStat('selected_count') ?? 'N/A')
                             : (getNumberStat('selected_sentence_count') ?? learningSetDisplay.length ?? 'N/A')}
                         </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          sentences in learning set
+                        </Typography>
                       </CardContent>
                     </Card>
-                    
+
                     {coverageRun?.mode !== 'filter' && (
                       <>
-                        <Card variant="outlined" sx={{ flex: 1 }}>
-                          <CardContent>
-                            <Typography variant="caption" color="text.secondary">
+                        {/* Words Covered Card */}
+                        <Card
+                          variant="outlined"
+                          sx={{
+                            flex: 1,
+                            borderWidth: 2,
+                            borderColor: 'success.main',
+                            bgcolor: 'success.50',
+                          }}
+                        >
+                          <CardContent sx={{ p: 3 }}>
+                            <Typography variant="overline" color="text.secondary" fontWeight={700} letterSpacing={1.2}>
                               Words Covered
                             </Typography>
-                            <Typography variant="h4" fontWeight={600}>
+                            <Typography variant="h2" fontWeight={800} color="success.main" sx={{ my: 1 }}>
                               {getNumberStat('words_covered') ?? 'N/A'}
                             </Typography>
-                          </CardContent>
-                        </Card>
-                        
-                        <Card variant="outlined" sx={{ flex: 1 }}>
-                          <CardContent>
                             <Typography variant="caption" color="text.secondary">
-                              Coverage %
-                            </Typography>
-                            <Typography variant="h4" fontWeight={600}>
-                              {(() => {
-                                const total = getNumberStat('words_total');
-                                const covered = getNumberStat('words_covered');
-                                if (total && covered) {
-                                  return `${((covered / total) * 100).toFixed(1)}%`;
-                                }
-                                return 'N/A';
-                              })()}
+                              of {getNumberStat('words_total') ?? 'N/A'} total words
                             </Typography>
                           </CardContent>
                         </Card>
+
+                        {/* Coverage Percentage Card with Color Coding */}
+                        {(() => {
+                          const total = getNumberStat('words_total');
+                          const covered = getNumberStat('words_covered');
+                          const coveragePercent = total && covered ? (covered / total) * 100 : 0;
+
+                          // Color coding: green >85%, yellow 70-85%, red <70%
+                          const getColorTheme = (percent: number) => {
+                            if (percent >= 85) return { color: 'success', label: 'Excellent', icon: '✓' };
+                            if (percent >= 70) return { color: 'warning', label: 'Good', icon: '!' };
+                            return { color: 'error', label: 'Needs Work', icon: '×' };
+                          };
+
+                          const theme = getColorTheme(coveragePercent);
+
+                          return (
+                            <Card
+                              variant="outlined"
+                              sx={{
+                                flex: 1,
+                                borderWidth: 2,
+                                borderColor: `${theme.color}.main`,
+                                bgcolor: `${theme.color}.50`,
+                              }}
+                            >
+                              <CardContent sx={{ p: 3 }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                                  <Typography variant="overline" color="text.secondary" fontWeight={700} letterSpacing={1.2}>
+                                    Coverage
+                                  </Typography>
+                                  <Chip
+                                    label={theme.label}
+                                    color={theme.color as 'success' | 'warning' | 'error'}
+                                    size="small"
+                                    sx={{ fontWeight: 700 }}
+                                  />
+                                </Box>
+                                <Typography variant="h2" fontWeight={800} color={`${theme.color}.main`} sx={{ my: 1 }}>
+                                  {total && covered ? `${coveragePercent.toFixed(1)}%` : 'N/A'}
+                                </Typography>
+
+                                {/* Visual Gauge/Progress Bar */}
+                                {total && covered && (
+                                  <Box sx={{ mt: 2 }}>
+                                    <LinearProgress
+                                      variant="determinate"
+                                      value={coveragePercent}
+                                      sx={{
+                                        height: 10,
+                                        borderRadius: 2,
+                                        bgcolor: 'action.hover',
+                                        '& .MuiLinearProgress-bar': {
+                                          borderRadius: 2,
+                                          bgcolor: `${theme.color}.main`,
+                                        }
+                                      }}
+                                    />
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.5 }}>
+                                      <Typography variant="caption" color="text.secondary">0%</Typography>
+                                      <Typography variant="caption" color="text.secondary">100%</Typography>
+                                    </Box>
+                                  </Box>
+                                )}
+                              </CardContent>
+                            </Card>
+                          );
+                        })()}
                       </>
                     )}
-                    
+
                     {coverageRun?.mode === 'filter' && (
-                      <Card variant="outlined" sx={{ flex: 1 }}>
-                        <CardContent>
-                          <Typography variant="caption" color="text.secondary">
+                      <Card
+                        variant="outlined"
+                        sx={{
+                          flex: 1,
+                          borderWidth: 2,
+                          borderColor: 'info.main',
+                          bgcolor: 'info.50',
+                        }}
+                      >
+                        <CardContent sx={{ p: 3 }}>
+                          <Typography variant="overline" color="text.secondary" fontWeight={700} letterSpacing={1.2}>
                             Acceptance Ratio
                           </Typography>
-                          <Typography variant="h4" fontWeight={600}>
+                          <Typography variant="h2" fontWeight={800} color="info.main" sx={{ my: 1 }}>
                             {((getNumberStat('filter_acceptance_ratio') ?? 0) * 100).toFixed(1)}%
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            of sentences meet criteria
                           </Typography>
                         </CardContent>
                       </Card>
@@ -1162,8 +1304,56 @@ export default function CoveragePage() {
                     );
                   })()}
                   
+                  {/* Uncovered Words Quick Summary (Coverage Mode Only) */}
+                  {coverageRun?.mode !== 'filter' && (() => {
+                    const total = getNumberStat('words_total');
+                    const covered = getNumberStat('words_covered');
+                    const uncovered = total && covered ? total - covered : 0;
+                    const coveragePercent = total && covered ? (covered / total) * 100 : 0;
+
+                    // Only show if coverage is less than 100%
+                    if (uncovered > 0) {
+                      return (
+                        <Card
+                          variant="outlined"
+                          sx={{
+                            borderWidth: 2,
+                            borderColor: 'warning.main',
+                            bgcolor: 'warning.50',
+                          }}
+                        >
+                          <CardContent sx={{ p: 3 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                              <Box>
+                                <Typography variant="h6" fontWeight={700} color="warning.dark" gutterBottom>
+                                  {uncovered} Words Not Covered
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                  Click below to see which words are missing and why
+                                </Typography>
+                              </Box>
+                              <DiagnoseIcon sx={{ fontSize: 48, color: 'warning.main', opacity: 0.3 }} />
+                            </Box>
+                            <Button
+                              variant="contained"
+                              color="warning"
+                              startIcon={<DiagnoseIcon />}
+                              onClick={handleDiagnose}
+                              disabled={loadingRun}
+                              fullWidth
+                              sx={{ fontWeight: 700 }}
+                            >
+                              View Uncovered Words Analysis
+                            </Button>
+                          </CardContent>
+                        </Card>
+                      );
+                    }
+                    return null;
+                  })()}
+
                   {/* Action Buttons */}
-                  <Stack direction="row" spacing={2}>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
                     <Button
                       variant="outlined"
                       startIcon={<DownloadIcon />}

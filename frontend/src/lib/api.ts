@@ -895,4 +895,35 @@ export const downloadCoverageRunCSV = async (runId: number): Promise<Blob> => {
   return response.data;
 };
 
+/**
+ * Coverage diagnosis types
+ */
+export interface DiagnosisCategory {
+  count: number;
+  sample_words: string[];
+  description: string;
+}
+
+export interface CoverageDiagnosis {
+  total_words: number;
+  covered_words: number;
+  uncovered_words: number;
+  coverage_percentage: number;
+  categories: {
+    not_in_corpus: DiagnosisCategory;
+    only_in_long_sentences: DiagnosisCategory;
+    only_in_short_sentences: DiagnosisCategory;
+    in_valid_but_missed: DiagnosisCategory;
+  };
+  recommendation: string;
+}
+
+/**
+ * Diagnose coverage run to identify why words are uncovered
+ */
+export const diagnoseCoverageRun = async (runId: number): Promise<CoverageDiagnosis> => {
+  const response = await api.get(`/coverage/runs/${runId}/diagnosis`);
+  return response.data;
+};
+
 export default api;
