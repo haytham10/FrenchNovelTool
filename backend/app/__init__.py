@@ -20,7 +20,7 @@ def _get_remote_address_for_limiter():
     """Custom key function for rate limiter that exempts OPTIONS requests"""
     from flask import request
     if request.method == 'OPTIONS':
-        return None  # Exempt OPTIONS requests from rate limiting
+        return '__OPTIONS_EXEMPT__'  # Use special key for OPTIONS to bypass rate limiting
     return get_remote_address()
 
 limiter = Limiter(
@@ -76,7 +76,14 @@ def create_app(config_class=Config, skip_logging=False):
         message_queue=app.config.get('CELERY_BROKER_URL'),
         async_mode='eventlet'
     )
-    CORS(app, origins=origins, supports_credentials=True)
+    CORS(
+        app,
+        origins=origins,
+        supports_credentials=True,
+        allow_headers=['Content-Type', 'Authorization'],
+        methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+        expose_headers=['Content-Type', 'Authorization']
+    )
     
     # Initialize Celery
     global celery
@@ -109,10 +116,19 @@ def create_app(config_class=Config, skip_logging=False):
 
         # Register error handlers
         register_error_handlers(app)
-        
+
         # Set up enhanced CORS handling - REMOVED to avoid duplicate headers
         # setup_cors_handling(app)
-        
+
+        # Handle OPTIONS requests globally (for CORS preflight)
+        @app.before_request
+        def handle_preflight():
+            from flask import request, make_response
+            if request.method == 'OPTIONS':
+                # Return 200 OK for all OPTIONS requests
+                response = make_response('', 200)
+                return response
+
         # Register SocketIO event handlers
         from . import socket_events  # Import to register handlers
 
