@@ -99,12 +99,17 @@ export function useCoverageWebSocket({
 
     socket.on('coverage_progress', handleProgress);
 
+    // Cleanup on component unmount or when runId/enabled changes
     return () => {
-      // Clean disconnect: leave room first, then disconnect
-      socket.emit('leave_coverage_run', { run_id: runId });
+      console.log('[WebSocket] Cleaning up and disconnecting socket for run ID:', runId);
+      socket.off('connect');
+      socket.off('disconnect');
+      socket.off('connect_error');
+      socket.off('error');
+      socket.off('coverage_progress');
       socket.disconnect();
     };
-  }, [runId, enabled]); // Only recreate socket when runId or enabled changes
+  }, [runId, enabled]);
 
   return { run, connected, error };
 }
