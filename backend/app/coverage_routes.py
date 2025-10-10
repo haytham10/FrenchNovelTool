@@ -617,8 +617,7 @@ def create_coverage_run():
         
         return jsonify({
             'coverage_run': coverage_run.to_dict(),
-            'task_id': task.id,
-            'credits_charged': cost
+            'task_id': task.id
         }), 201
         
     except Exception as e:
