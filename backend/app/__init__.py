@@ -23,7 +23,7 @@ limiter = Limiter(
 socketio = SocketIO()
 celery = None  # Will be initialized in create_app
 
-def create_app(config_class=Config):
+def create_app(config_class=Config, skip_logging=False):
     app = Flask(__name__, instance_relative_config=True)
     app.config.from_object(config_class)
 
@@ -76,7 +76,8 @@ def create_app(config_class=Config):
     celery = make_celery(app)
     
     # Configure logging
-    configure_logging(app)
+    if not skip_logging:
+        configure_logging(app)
 
     with app.app_context():
         # Import models first so SQLAlchemy knows about them
@@ -138,14 +139,17 @@ def initialize_global_wordlist(app):
 def configure_logging(app):
     """Configure application logging"""
     if not app.debug and not app.testing:
-        # Create logs directory if it doesn't exist
-        log_dir = os.path.dirname(app.config['LOG_FILE'])
-        if log_dir and not os.path.exists(log_dir):
+        # The Dockerfile creates /app/logs and chowns it to appuser.
+        # This path is guaranteed to be writable.
+        log_dir = '/app/logs'
+        if not os.path.exists(log_dir):
             os.makedirs(log_dir)
         
+        log_file = os.path.join(log_dir, 'app.log')
+
         # File handler
         file_handler = RotatingFileHandler(
-            app.config['LOG_FILE'],
+            log_file,
             maxBytes=10240000,  # 10MB
             backupCount=10
         )
