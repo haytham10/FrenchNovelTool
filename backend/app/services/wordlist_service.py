@@ -3,8 +3,8 @@ import logging
 import re
 import unicodedata
 from typing import Dict, List, Set, Tuple, Optional
-from datetime import datetime
-from app import db
+from datetime import datetime, timezone
+from app.extensions import db
 from app.models import WordList, CoverageRun, UserSettings
 from app.utils.metrics import wordlists_created_total, wordlist_ingestion_errors_total
 
@@ -22,6 +22,9 @@ class WordListService:
     def normalize_word(word: str, fold_diacritics: bool = True) -> str:
         """
         Normalize a single word to its canonical form.
+        
+        For word lists, this extracts the lexical head from elided forms
+        (e.g., "l'homme" → "homme") to match against lemmatized text.
 
         Args:
             word: Input word to normalize
@@ -46,7 +49,7 @@ class WordListService:
         word = re.sub(r'^\d+[.:\-)]?\s*', '', word)
 
         # Handle elisions BEFORE removing apostrophes (l', d', j', n', s', t', c', qu')
-        # Extract the lexical head after elision
+        # Extract the lexical head after elision for word list matching
         elision_pattern = r"^(?:l'|d'|j'|n'|s'|t'|c'|qu')\s*(.+)$"
         match = re.match(elision_pattern, word, re.IGNORECASE)
         if match:
@@ -344,7 +347,7 @@ class WordListService:
         wordlist.normalized_count = len(normalized_keys)
         if not wordlist.canonical_samples:
             wordlist.canonical_samples = sorted(list(normalized_keys))[:20]
-        wordlist.updated_at = datetime.utcnow()
+        wordlist.updated_at = datetime.now(timezone.utc)
         
         logger.info(f"Refreshed WordList {wordlist.id} with {len(normalized_keys)} normalized words")
         

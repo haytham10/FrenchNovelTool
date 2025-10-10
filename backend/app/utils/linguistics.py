@@ -143,22 +143,82 @@ class LinguisticsUtils:
         """
         Handle French elisions (l', d', etc.) by extracting the lexical head.
         This is a simple implementation; a more robust solution might use POS tagging.
-        
+
         Args:
             word: Input word potentially with elision
-            
+
         Returns:
             Word with elision removed
         """
         # Elision prefixes in French (case-insensitive)
         elision_prefixes = ["l'", "d'", "j'", "n'", "s'", "t'", "c'", "qu'"]
-        
+
         word_lower = word.lower()
         for prefix in elision_prefixes:
             if word_lower.startswith(prefix):
                 return word[len(prefix):]
-        
+
         return word
+
+    @staticmethod
+    def normalize_french_lemma(lemma: str) -> str:
+        """
+        Enhanced French lemma normalization for better word matching.
+        Handles French-specific quirks before matching against word lists.
+
+        This function addresses:
+        - Elisions: l' → le, d' → de, j' → je, qu' → que, etc.
+        - Reflexive pronouns: se_ prefix removal (from spaCy lemmas)
+        - Case and whitespace standardization
+
+        Args:
+            lemma: Input lemma to normalize
+
+        Returns:
+            Normalized lemma suitable for word list matching
+        """
+        if not lemma:
+            return ""
+
+        # Trim and lowercase
+        lemma = lemma.strip().lower()
+
+    # Handle reflexive pronouns FIRST: spaCy often lemmatizes reflexive verbs
+        # with a "se_" or "s'" prefix (e.g., "se_laver", "s'appeler").
+        # Strip this prefix to match against word lists that contain the base verb form.
+        # Note: "s'" as an elision of "si" (e.g., "s'il" = "si il") won't appear in
+        # lemma form because spaCy tokenizes it as separate tokens.
+        if lemma.startswith("se_"):
+            lemma = lemma[3:]  # Remove "se_"
+        elif lemma.startswith("s'"):
+            lemma = lemma[2:]  # Remove "s'"
+
+        # Handle elisions: expand common contractions
+        # Note: We do this AFTER reflexive pronoun handling to avoid confusion with s'
+        elision_expansions = {
+            "l'": "le",
+            "d'": "de",
+            "j'": "je",
+            "qu'": "que",
+            "n'": "ne",
+            "t'": "te",
+            "c'": "ce",
+            "m'": "me",
+        }
+
+        for contraction, expansion in elision_expansions.items():
+            if lemma.startswith(contraction):
+                # Replace the contraction with the full form
+                lemma = expansion + lemma[len(contraction):]
+                break
+
+        # Remove any remaining apostrophes that might interfere with matching
+        lemma = lemma.replace("'", "")
+
+        # Normalize whitespace
+        lemma = " ".join(lemma.split())
+
+        return lemma
     
     @staticmethod
     def tokenize_and_lemmatize(
@@ -201,10 +261,10 @@ class LinguisticsUtils:
             else:
                 surface_for_norm = surface
 
-            # Normalize the lemma (preferred) and fall back to the surface-for-norm
-            # when lemma is empty.
-            normalized_source = lemma if lemma else surface_for_norm
-            normalized = LinguisticsUtils.normalize_text(normalized_source, fold_diacritics=fold_diacritics)
+            # Apply French-specific lemma normalization first (handles elisions, reflexives)
+            # then apply general text normalization (diacritics, etc.)
+            lemma_normalized = LinguisticsUtils.normalize_french_lemma(lemma if lemma else surface_for_norm)
+            normalized = LinguisticsUtils.normalize_text(lemma_normalized, fold_diacritics=fold_diacritics)
 
             if not normalized:
                 logger.debug(f"Skipping empty normalized token from lemma '{lemma}'")

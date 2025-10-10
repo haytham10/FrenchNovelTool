@@ -9,9 +9,9 @@ pnpm-lock.yaml
 yarn.lock
 
 # Testing
-/coverage
-/coverage.xml
-.nyc_output/
+/.coverage
+/.coverage.xml
+/.nyc_output/
 
 # Next.js
 .next/

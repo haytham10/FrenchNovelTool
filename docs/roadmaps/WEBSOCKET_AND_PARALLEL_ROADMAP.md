@@ -288,7 +288,7 @@ from app.socket_events import emit_job_progress
 **Example 1: After updating job status to processing:**
 ```python
 job.status = JOB_STATUS_PROCESSING
-job.started_at = datetime.utcnow()
+job.started_at = datetime.now(timezone.utc)
 job.current_step = "Analyzing PDF"
 job.progress_percent = 5
 safe_db_commit(db)
@@ -327,7 +327,7 @@ emit_job_progress(job_id, {
 job.status = JOB_STATUS_COMPLETED
 job.progress_percent = 100
 job.current_step = "Completed"
-job.completed_at = datetime.utcnow()
+job.completed_at = datetime.now(timezone.utc)
 safe_db_commit(db)
 
 # Emit final update
@@ -338,7 +338,7 @@ emit_job_progress(job_id, job.to_dict())
 ```python
 job.status = JOB_STATUS_FAILED
 job.error_message = "All chunks failed to process..."
-job.completed_at = datetime.utcnow()
+job.completed_at = datetime.now(timezone.utc)
 safe_db_commit(db)
 
 # Emit failure update
@@ -823,7 +823,7 @@ def finalize_job_results(self, chunk_results, job_id):
         job.actual_tokens = total_tokens
         job.gemini_tokens_used = total_tokens
         job.gemini_api_calls = success_count
-        job.completed_at = datetime.utcnow()
+        job.completed_at = datetime.now(timezone.utc)
         job.chunk_results = chunk_results
         job.failed_chunks = failed_chunks if failed_chunks else None
         
@@ -856,7 +856,7 @@ def finalize_job_results(self, chunk_results, job_id):
             if job:
                 job.status = JOB_STATUS_FAILED
                 job.error_message = f"Finalization error: {str(e)[:512]}"
-                job.completed_at = datetime.utcnow()
+                job.completed_at = datetime.now(timezone.utc)
                 safe_db_commit(db)
                 emit_job_progress(job_id, job.to_dict())
         except Exception:

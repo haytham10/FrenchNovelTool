@@ -1,7 +1,7 @@
 """Service for managing processing jobs and token estimation"""
 import math
 from typing import Optional, Dict, Any, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import current_app
 from app import db
 from app.models import Job, History
@@ -194,7 +194,7 @@ class JobService:
             return False
         
         job.status = JOB_STATUS_PROCESSING
-        job.started_at = datetime.utcnow()
+        job.started_at = datetime.now(timezone.utc)
         db.session.commit()
         
         return True
@@ -219,7 +219,7 @@ class JobService:
         job.status = JOB_STATUS_COMPLETED
         job.actual_tokens = actual_tokens
         job.actual_credits = JobService.calculate_credits(actual_tokens, job.model)
-        job.completed_at = datetime.utcnow()
+        job.completed_at = datetime.now(timezone.utc)
         
         if history_id:
             job.history_id = history_id
@@ -248,7 +248,7 @@ class JobService:
         job.status = JOB_STATUS_FAILED
         job.error_message = error_message
         job.error_code = error_code
-        job.completed_at = datetime.utcnow()
+        job.completed_at = datetime.now(timezone.utc)
         
         db.session.commit()
         
@@ -273,7 +273,7 @@ class JobService:
             raise ValueError(f'Cannot cancel job with status {job.status}')
         
         job.status = JOB_STATUS_CANCELLED
-        job.completed_at = datetime.utcnow()
+        job.completed_at = datetime.now(timezone.utc)
         
         db.session.commit()
         
