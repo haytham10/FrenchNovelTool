@@ -394,7 +394,7 @@ export interface CostEstimate {
 }
 
 export async function estimateCost(request: CostEstimateRequest): Promise<CostEstimate> {
-  const response = await api.post('/estimate', request);
+  const response = await api.post('/credits/estimate', request);
   return response.data;
 }
 
@@ -413,7 +413,7 @@ export interface JobConfirmResponse {
 }
 
 export async function startPdfProcessingJob(request: JobConfirmRequest): Promise<JobConfirmResponse> {
-  const response = await api.post('/process-pdf', request);
+  const response = await api.post('/credits/jobs/confirm', request);
   return response.data;
 }
 
@@ -436,17 +436,17 @@ export interface JobFinalizeResponse {
 }
 
 export async function finalizeJob(jobId: number, request: JobFinalizeRequest): Promise<JobFinalizeResponse> {
-  const response = await api.post(`/jobs/${jobId}/finalize`, request);
+  const response = await api.post(`/credits/jobs/${jobId}/finalize`, request);
   return response.data;
 }
 
 export async function getJob(jobId: number): Promise<Job> {
-  const response = await api.get(`/jobs/${jobId}`);
+  const response = await api.get(`/credits/jobs/${jobId}`);
   return response.data;
 }
 
 export async function getJobs(params?: { limit?: number; status?: string }): Promise<Job[]> {
-  const response = await api.get('/jobs', { params });
+  const response = await api.get('/credits/jobs', { params });
   return response.data || [];
 }
 
