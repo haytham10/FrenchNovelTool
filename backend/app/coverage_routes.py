@@ -19,6 +19,8 @@ from app.schemas import (
     CoverageExportSchema
 )
 from app.tasks import coverage_build_async, batch_coverage_build_async
+from app.services.coverage_service import CoverageService
+from app.utils.validators import validate_coverage_run_payload
 
 logger = logging.getLogger(__name__)
 
