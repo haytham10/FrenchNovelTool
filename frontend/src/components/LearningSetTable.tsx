@@ -36,7 +36,7 @@ export default function LearningSetTable({ entries, loading = false, disablePagi
     if (!activeSearch.trim()) return entries;
     const query = activeSearch.toLowerCase().trim();
     return entries.filter((entry) =>
-      entry.sentence_text.toLowerCase().includes(query) || String(entry.rank).includes(query)
+      entry.sentence_text?.toLowerCase().includes(query) || String(entry.rank).includes(query)
     );
   }, [entries, activeSearch]);
 

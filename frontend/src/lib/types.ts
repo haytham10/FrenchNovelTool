@@ -205,10 +205,17 @@ export interface CoverageRun {
 export interface CoverageAssignment {
   id: number;
   run_id: number;
+  word_original?: string;
   word_key: string;
+  lemma?: string;
+  matched_surface?: string;
   surface_form: string;
   sentence_text: string;
   sentence_index: number | null;
+  sentence_score?: number;
+  conflicts?: Record<string, unknown>;
+  manual_edit?: boolean;
+  notes?: string;
   source_id: number | null;
 }
 

@@ -1,0 +1,13 @@
+// Export all coverage components for easier imports
+export { default as ConfigureStep } from './ConfigureStep';
+export { default as SelectSourceStep } from './SelectSourceStep';
+export { default as RunReviewStep } from './RunReviewStep';
+export { default as ProcessingState } from './ProcessingState';
+export { default as ResultsKPICards } from './ResultsKPICards';
+export { default as BatchModeSummary } from './BatchModeSummary';
+export { default as UncoveredWordsCard } from './UncoveredWordsCard';
+export { default as HelpDialog } from './HelpDialog';
+export { default as ExportDialog } from './ExportDialog';
+export { default as ImportDialog } from './ImportDialog';
+export { default as DiagnosisDialog } from './DiagnosisDialog';
+export { default as InfoPanel } from './InfoPanel';
