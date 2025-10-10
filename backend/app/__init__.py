@@ -12,8 +12,7 @@ from config import Config
 from .utils.error_handlers import register_error_handlers
 from flask_sqlalchemy import SQLAlchemy
 from .celery_app import make_celery
-
-db = SQLAlchemy()
+from .extensions import db
 migrate = Migrate()
 jwt = JWTManager()
 limiter = Limiter(
