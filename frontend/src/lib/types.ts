@@ -100,9 +100,11 @@ export interface Job {
   estimated_credits: number;
   actual_credits?: number;
   pricing_version: string;
+  pricing_rate?: number;
   progress_percent?: number;
   current_step?: string;
   error_message?: string;
+  error_code?: string;
   chunk_results?: ChunkResult[];
   // Optional fields used by the UI / websocket updates
   total_chunks?: number;
@@ -110,6 +112,16 @@ export interface Job {
   failed_chunks?: number[];
   processing_time_seconds?: number;
   gemini_tokens_used?: number;
+  gemini_api_calls?: number;
+  processing_settings?: Record<string, unknown> | null;
+  celery_task_id?: string;
+  retry_count?: number;
+  max_retries?: number;
+  is_cancelled?: boolean;
+  cancelled_at?: string | null;
+  cancelled_by?: number | null;
+  started_at?: string | null;
+  completed_at?: string | null;
   created_at: string;
   updated_at: string;
 }

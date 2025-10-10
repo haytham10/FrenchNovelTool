@@ -90,22 +90,6 @@ export default function ProcessingState({ progressPercent }: ProcessingStateProp
               }
             }}
           />
-
-          {/* Phase Markers */}
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1, px: 0.5 }}>
-            <Typography variant="caption" color={progressPercent >= 10 ? 'primary.main' : 'text.disabled'}>
-              10%
-            </Typography>
-            <Typography variant="caption" color={progressPercent >= 50 ? 'primary.main' : 'text.disabled'}>
-              50%
-            </Typography>
-            <Typography variant="caption" color={progressPercent >= 70 ? 'primary.main' : 'text.disabled'}>
-              70%
-            </Typography>
-            <Typography variant="caption" color={progressPercent >= 95 ? 'primary.main' : 'text.disabled'}>
-              95%
-            </Typography>
-          </Box>
         </Box>
 
         <Box sx={{ mt: 4 }}>
@@ -116,7 +100,7 @@ export default function ProcessingState({ progressPercent }: ProcessingStateProp
             fullWidth
             disabled
           >
-            Cancel Run
+            Cancel
           </Button>
           <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1, textAlign: 'center' }}>
             Cancellation coming soon
