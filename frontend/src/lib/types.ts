@@ -98,13 +98,26 @@ export interface Job {
   estimated_credits: number;
   actual_credits?: number;
   pricing_version: string;
-  pricing_rate: number;
-  processing_settings?: Record<string, unknown>;
-  created_at: string;
-  started_at?: string;
-  completed_at?: string;
+  progress_percent?: number;
+  current_step?: string;
   error_message?: string;
-  error_code?: string;
+  chunk_results?: ChunkResult[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Sentence {
+  original: string;
+  normalized?: string;
+  token_count?: number;
+}
+
+export interface ChunkResult {
+  chunk_id: number;
+  status: 'success' | 'failed';
+  sentences?: Sentence[];
+  tokens?: number;
+  error?: string;
 }
 
 export interface CostEstimate {

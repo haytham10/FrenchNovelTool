@@ -22,7 +22,7 @@ import { fadeIn, float } from '@/lib/animations';
 import { useJobWebSocket } from '@/lib/useJobWebSocket';
 
 import type { ExportOptions } from '@/components/ExportDialog';
-import type { CostEstimate } from '@/lib/types';
+import type { CostEstimate, Job, ChunkResult, Sentence } from '@/lib/types';
 
 export default function Home() {
   const { user } = useAuth();
@@ -61,7 +61,7 @@ export default function Home() {
   const { connected: wsConnected } = useJobWebSocket({
     jobId: wsJobId,
     enabled: !!wsJobId,
-    onProgress: (job) => {
+    onProgress: (job: Job) => {
       // Update loading message with progress
       if (job.status === 'processing') {
         const progress = job.progress_percent || 0;
@@ -70,19 +70,14 @@ export default function Home() {
         setUploadProgress(progress);
       }
     },
-    onComplete: async (job) => {
+    onComplete: async (job: Job) => {
       // Job completed - extract sentences from chunk_results
       if (job.chunk_results && Array.isArray(job.chunk_results)) {
         const allSentences: string[] = [];
         
-        interface ChunkResult {
-          status: string;
-          sentences: { normalized?: string }[];
-        }
-        
         job.chunk_results.forEach((chunk: ChunkResult) => {
           if (chunk.status === 'success' && chunk.sentences && Array.isArray(chunk.sentences)) {
-            chunk.sentences.forEach((s: { normalized?: string }) => {
+            chunk.sentences.forEach((s: Sentence) => {
               if (s.normalized) {
                 allSentences.push(s.normalized);
               }
@@ -104,7 +99,7 @@ export default function Home() {
       setLoading(false, '');
       setUploadProgress(0);
     },
-    onError: (job) => {
+    onError: (job: Job) => {
       const errorMsg = job.error_message || 'Processing failed';
       enqueueSnackbar(`Processing failed: ${errorMsg}`, { variant: 'error' });
       

@@ -4,6 +4,7 @@
 
 import axios, { AxiosError } from 'axios';
 import { getAccessToken, getRefreshToken, setTokens, clearTokens } from './auth';
+import type { Job } from './types';
 
 const _rawApiBase = (() => {
   const explicitBase = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -437,53 +438,6 @@ export interface JobFinalizeResponse {
 export async function finalizeJob(jobId: number, request: JobFinalizeRequest): Promise<JobFinalizeResponse> {
   const response = await api.post(`/jobs/${jobId}/finalize`, request);
   return response.data;
-}
-
-export interface Job {
-  id: number;
-  user_id: number;
-  history_id?: number;
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
-  original_filename: string;
-  model: string;
-  estimated_tokens?: number;
-  actual_tokens?: number;
-  estimated_credits: number;
-  actual_credits?: number;
-  pricing_version: string;
-  pricing_rate: number;
-  processing_settings?: Record<string, unknown>;
-  created_at: string;
-  started_at?: string;
-  completed_at?: string;
-  error_message?: string;
-  error_code?: string;
-  // Async processing fields
-  celery_task_id?: string;
-  progress_percent?: number;
-  current_step?: string;
-  total_chunks?: number;
-  processed_chunks?: number;
-  chunk_results?: Array<{
-    chunk_id: number;
-    sentences?: unknown[];
-    tokens?: number;
-    status: 'success' | 'failed';
-    error?: string;
-  }>;
-  failed_chunks?: number[];
-  retry_count?: number;
-  max_retries?: number;
-  is_cancelled?: boolean;
-  cancelled_at?: string;
-  cancelled_by?: number;
-  processing_time_seconds?: number;
-  gemini_api_calls?: number;
-  gemini_tokens_used?: number;
-  task_state?: {
-    state: string;
-    info: Record<string, unknown>;
-  };
 }
 
 export async function getJob(jobId: number): Promise<Job> {
