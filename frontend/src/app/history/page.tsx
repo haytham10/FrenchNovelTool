@@ -1,11 +1,23 @@
 'use client';
 
 import React from 'react';
-import { Box, Typography, Paper, Button, Container } from '@mui/material';
+import dynamic from 'next/dynamic';
+import { Box, Typography, Paper, Button, Container, Skeleton } from '@mui/material';
 import Link from 'next/link';
-import HistoryTable from '@/components/HistoryTable';
 import RouteGuard from '@/components/RouteGuard';
 import Breadcrumbs from '@/components/Breadcrumbs';
+
+// Lazy load the heavy HistoryTable component
+const HistoryTable = dynamic(() => import('@/components/HistoryTable'), {
+  loading: () => (
+    <Box>
+      {[...Array(8)].map((_, i) => (
+        <Skeleton key={i} variant="rectangular" height={48} sx={{ mb: 1 }} />
+      ))}
+    </Box>
+  ),
+  ssr: false,
+});
 
 export default function HistoryPage() {
   return (

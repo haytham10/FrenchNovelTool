@@ -36,6 +36,9 @@ export function useJobWebSocket({
   const [job, setJob] = useState<Job | null>(null);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  
+  // Store socket in ref for cleanup on page unload
+  const socketRef = useRef<Socket | null>(null);
 
   // Use a ref to store the callbacks. This prevents the useEffect hook
   // from re-running every time the parent component re-renders.
@@ -45,6 +48,19 @@ export function useJobWebSocket({
   useEffect(() => {
     callbacksRef.current = { onProgress, onComplete, onError, onCancel };
   }, [onProgress, onComplete, onError, onCancel]);
+  
+  // Cleanup on page unload to prevent memory leaks
+  useEffect(() => {
+    const handleUnload = () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+    };
+    
+    window.addEventListener('beforeunload', handleUnload);
+    return () => window.removeEventListener('beforeunload', handleUnload);
+  }, []);
 
   useEffect(() => {
     if (!jobId || !enabled) {
@@ -66,6 +82,9 @@ export function useJobWebSocket({
         token: token,
       },
     });
+    
+    // Store socket in ref for cleanup
+    socketRef.current = socket;
 
     const handleJobProgress = (data: Job) => {
       setJob(data);
@@ -126,6 +145,7 @@ export function useJobWebSocket({
     return () => {
       socket.emit('leave_job', { job_id: jobId });
       socket.disconnect();
+      socketRef.current = null;
     };
     // Only recreate socket when jobId or enabled changes
   }, [jobId, enabled]);

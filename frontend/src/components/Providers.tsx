@@ -9,11 +9,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { getTheme, getSystemThemePreference, type PaletteMode } from '../theme';
 import AuthProvider from './AuthContext';
 
-// Create a client
+// Create a client with optimized cache settings for better memory management
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 1000 * 60 * 5, // 5 minutes
+      staleTime: 1000 * 60 * 2, // Reduced from 5min to 2min
+      gcTime: 1000 * 60 * 5, // Enable garbage collection after 5min
       refetchOnWindowFocus: false,
       retry: 1,
     },

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import {
   Box,
   Container,
@@ -10,6 +11,7 @@ import {
   Stepper,
   Step,
   StepLabel,
+  Skeleton,
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -30,19 +32,50 @@ import { useCoverageWebSocket } from '@/lib/useCoverageWebSocket';
 import RouteGuard from '@/components/RouteGuard';
 import Breadcrumbs from '@/components/Breadcrumbs';
 
-// Coverage-specific components
-import ConfigureStep from '@/components/coverage/ConfigureStep';
-import SelectSourceStep from '@/components/coverage/SelectSourceStep';
-import RunReviewStep from '@/components/coverage/RunReviewStep';
-import HelpDialog from '@/components/coverage/HelpDialog';
-import ExportDialog from '@/components/coverage/ExportDialog';
-import ImportDialog from '@/components/coverage/ImportDialog';
-import DiagnosisDialog from '@/components/coverage/DiagnosisDialog';
-import InfoPanel from '@/components/coverage/InfoPanel';
-
 // Custom hooks
 import { useCoverageData } from '@/hooks/useCoverageData';
 import { useCoverageMutations } from '@/hooks/useCoverageMutations';
+
+// Lazy load heavy coverage-specific components
+const ConfigureStep = dynamic(() => import('@/components/coverage/ConfigureStep'), {
+  loading: () => <Skeleton variant="rectangular" height={300} />,
+  ssr: false,
+});
+
+const SelectSourceStep = dynamic(() => import('@/components/coverage/SelectSourceStep'), {
+  loading: () => <Skeleton variant="rectangular" height={300} />,
+  ssr: false,
+});
+
+const RunReviewStep = dynamic(() => import('@/components/coverage/RunReviewStep'), {
+  loading: () => <Skeleton variant="rectangular" height={300} />,
+  ssr: false,
+});
+
+const HelpDialog = dynamic(() => import('@/components/coverage/HelpDialog'), {
+  loading: () => <Skeleton variant="rectangular" height={400} />,
+  ssr: false,
+});
+
+const ExportDialog = dynamic(() => import('@/components/coverage/ExportDialog'), {
+  loading: () => <Skeleton variant="rectangular" height={400} />,
+  ssr: false,
+});
+
+const ImportDialog = dynamic(() => import('@/components/coverage/ImportDialog'), {
+  loading: () => <Skeleton variant="rectangular" height={400} />,
+  ssr: false,
+});
+
+const DiagnosisDialog = dynamic(() => import('@/components/coverage/DiagnosisDialog'), {
+  loading: () => <Skeleton variant="rectangular" height={400} />,
+  ssr: false,
+});
+
+const InfoPanel = dynamic(() => import('@/components/coverage/InfoPanel'), {
+  loading: () => <Skeleton variant="rectangular" height={100} />,
+  ssr: false,
+});
 
 const WIZARD_STEPS = ['Configure', 'Select Source', 'Run & Review'] as const;
 const HISTORY_PAGE_SIZE = 5;

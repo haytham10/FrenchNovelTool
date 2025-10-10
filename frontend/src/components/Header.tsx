@@ -1,19 +1,37 @@
 "use client";
 
 import React from 'react';
-import { AppBar, Toolbar, Typography, Box, Button, Container, IconButton as MIconButton } from '@mui/material';
+import dynamic from 'next/dynamic';
+import { AppBar, Toolbar, Typography, Box, Button, Container, IconButton as MIconButton, Skeleton } from '@mui/material';
 import Link from 'next/link';
 import ThemeToggle from './ThemeToggle';
 import Icon from './Icon';
 import { Search, HelpCircle } from 'lucide-react';
-import CommandPalette from './CommandPalette';
-import GlobalSearch from './GlobalSearch';
-import UserMenu from './UserMenu';
 import GoogleLoginButton from './GoogleLoginButton';
-import HelpModal from './HelpModal';
 import CreditBalance from './CreditBalance';
 import { useAuth } from './AuthContext';
 import Image from 'next/image';
+
+// Lazy load components that are only used after user interaction
+const CommandPalette = dynamic(() => import('./CommandPalette'), {
+  loading: () => null,
+  ssr: false,
+});
+
+const GlobalSearch = dynamic(() => import('./GlobalSearch'), {
+  loading: () => null,
+  ssr: false,
+});
+
+const UserMenu = dynamic(() => import('./UserMenu'), {
+  loading: () => <Skeleton variant="circular" width={40} height={40} />,
+  ssr: false,
+});
+
+const HelpModal = dynamic(() => import('./HelpModal'), {
+  loading: () => null,
+  ssr: false,
+});
 
 export default function Header() {
   const [searchOpen, setSearchOpen] = React.useState(false);
