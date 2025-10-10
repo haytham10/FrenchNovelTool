@@ -24,6 +24,7 @@ import {
   LearningSetEntry,
   HistoryEntry,
   CoverageDiagnosis,
+  WordList,
 } from '@/lib/types';
 import { useCoverageWebSocket } from '@/lib/useCoverageWebSocket';
 import RouteGuard from '@/components/RouteGuard';
@@ -145,7 +146,17 @@ export default function CoveragePage() {
   });
 
   // Derived data
-  const wordlists = wordListsData?.wordlists || [];
+  const wordlists = useMemo(() => {
+    const rawWordlists = wordListsData?.wordlists || [];
+    const uniqueWordlists = new Map<number, WordList>();
+    rawWordlists.forEach(wl => {
+      if (!uniqueWordlists.has(wl.id)) {
+        uniqueWordlists.set(wl.id, wl);
+      }
+    });
+    return Array.from(uniqueWordlists.values());
+  }, [wordListsData]);
+
   const coverageRun = runData?.coverage_run ? {
     ...runData.coverage_run,
     learning_set_json: runData.coverage_run.learning_set_json ?? null,
