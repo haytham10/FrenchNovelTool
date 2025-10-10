@@ -154,23 +154,45 @@ def initialize_global_wordlist(app):
     
     NOTE: This runs in a background thread, so it needs an app context.
     """
-    with app.app_context():
-        try:
-            from app.services.global_wordlist_manager import GlobalWordlistManager
-            
-            # This will create the wordlist if it doesn't exist
-            wordlist = GlobalWordlistManager.ensure_global_default_exists()
-            
-            if wordlist:
-                app.logger.info(
-                    f"Global default wordlist ready: {wordlist.name} "
-                    f"(ID: {wordlist.id}, {wordlist.normalized_count} words)"
-                )
-        except Exception as e:
-            # Log error but don't crash the app
-            # This allows the app to start even if wordlist initialization fails
-            app.logger.warning(f"Failed to initialize global wordlist: {e}")
-            app.logger.warning("App will continue but users may not have a default wordlist available")
+    # In a multi-worker setup (like Gunicorn), this function will be called by each worker.
+    # We need a lock to prevent a race condition where multiple workers try to create the
+    # global wordlist simultaneously.
+    
+    # The lock file should be in a location accessible by all workers.
+    # /tmp is a good candidate in containerized environments.
+    lock_file_path = '/tmp/global_wordlist.lock'
+    
+    try:
+        # Attempt to acquire the lock. This is an atomic operation.
+        # os.O_CREAT | os.O_EXCL will fail if the file already exists.
+        lock_fd = os.open(lock_file_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        # Another worker has acquired the lock, so this worker can exit.
+        app.logger.info("Global wordlist initialization is already in progress by another worker.")
+        return
+
+    try:
+        with app.app_context():
+            try:
+                from app.services.global_wordlist_manager import GlobalWordlistManager
+                
+                # This will create the wordlist if it doesn't exist
+                wordlist = GlobalWordlistManager.ensure_global_default_exists()
+                
+                if wordlist:
+                    app.logger.info(
+                        f"Global default wordlist ready: {wordlist.name} "
+                        f"(ID: {wordlist.id}, {wordlist.normalized_count} words)"
+                    )
+            except Exception as e:
+                # Log error but don't crash the app
+                app.logger.warning(f"Failed to initialize global wordlist: {e}", exc_info=True)
+                app.logger.warning("App will continue but users may not have a default wordlist available")
+    finally:
+        # Release the lock by closing and deleting the file
+        os.close(lock_fd)
+        os.remove(lock_file_path)
+        app.logger.info("Global wordlist initialization finished and lock released.")
 
 def configure_logging(app):
     """Configure application logging"""
