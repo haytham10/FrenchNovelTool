@@ -5,7 +5,7 @@ import { Box, Chip, Tooltip, CircularProgress, Typography } from '@mui/material'
 import { Coins } from 'lucide-react';
 import Icon from './Icon';
 import { useCredits } from '@/lib/queries';
-import { format } from 'date-fns';
+import { formatDate } from '@/lib/date-utils';
 
 export default function CreditBalance() {
   const { data: credits, isLoading } = useCredits();
@@ -23,7 +23,7 @@ export default function CreditBalance() {
   }
 
   const nextResetDate = credits.next_reset ? new Date(credits.next_reset) : null;
-  const formattedDate = nextResetDate ? format(nextResetDate, 'MMM d') : '';
+  const formattedDate = nextResetDate ? formatDate(nextResetDate) : '';
 
   const getBalanceColor = () => {
     if (credits.balance <= 0) return 'error';
