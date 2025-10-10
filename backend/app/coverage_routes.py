@@ -615,28 +615,33 @@ def get_coverage_run(run_id):
                 for rank, assignment in enumerate(ordered_assignments, start=1)
             ]
     elif coverage_run.mode == 'batch':
-        # Build learning set from assignments for batch mode
-        all_assignments = assignments_query.all()
-        # Remove duplicates and sort by sentence index
-        seen_sentences = set()
-        ordered_assignments = []
-        for assignment in all_assignments:
-            if assignment.sentence_index is not None and assignment.sentence_index not in seen_sentences:
-                seen_sentences.add(assignment.sentence_index)
-                ordered_assignments.append(assignment)
-        ordered_assignments.sort(key=lambda a: a.sentence_index)
+        # For batch mode, use learning_set from stats_json (created by batch_coverage_mode)
+        stats = coverage_run.stats_json or {}
+        learning_set = stats.get('learning_set', [])
 
-        learning_set = [
-            {
-                'rank': rank,
-                'sentence_index': assignment.sentence_index,
-                'sentence_text': assignment.sentence_text,
-                'token_count': None,
-                'new_word_count': None,
-                'score': assignment.sentence_score,
-            }
-            for rank, assignment in enumerate(ordered_assignments, start=1)
-        ]
+        # Fallback: build from assignments if stats don't have learning_set
+        if not learning_set:
+            all_assignments = assignments_query.all()
+            # Remove duplicates and sort by sentence index
+            seen_sentences = set()
+            ordered_assignments = []
+            for assignment in all_assignments:
+                if assignment.sentence_index is not None and assignment.sentence_index not in seen_sentences:
+                    seen_sentences.add(assignment.sentence_index)
+                    ordered_assignments.append(assignment)
+            ordered_assignments.sort(key=lambda a: a.sentence_index)
+
+            learning_set = [
+                {
+                    'rank': rank,
+                    'sentence_index': assignment.sentence_index,
+                    'sentence_text': assignment.sentence_text,
+                    'token_count': None,
+                    'new_word_count': None,
+                    'score': assignment.sentence_score,
+                }
+                for rank, assignment in enumerate(ordered_assignments, start=1)
+            ]
     elif coverage_run.mode == 'filter':
         # Build learning set from assignments for filter mode
         all_assignments = assignments_query.all()

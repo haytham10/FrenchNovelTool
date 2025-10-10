@@ -1603,8 +1603,8 @@ def batch_coverage_build_async(self, run_id: int):
         if not source_ids:
             raise ValueError("No source_ids found in batch coverage run config")
 
-        # Collect sentences from all sources
-        all_sentences = []
+        # Collect sentences from each source separately (required for batch_coverage_mode)
+        sources = []  # List of (source_id, sentences) tuples
         for idx, source_id in enumerate(source_ids):
             try:
                 progress = 10 + (idx / len(source_ids)) * 20  # Progress 10-30%
@@ -1612,34 +1612,41 @@ def batch_coverage_build_async(self, run_id: int):
                 coverage_run.current_step = f"Loading source {idx + 1}/{len(source_ids)}"
                 safe_db_commit(db)
 
+                sentences = []
                 if coverage_run.source_type == 'history':
                     history = History.query.get(source_id)
                     if history and history.sentences:
                         sentences = [s.get('normalized', s.get('original', '')) for s in history.sentences if s.get('normalized') or s.get('original')]
-                        all_sentences.extend(sentences)
                         logger.info(f"Loaded {len(sentences)} sentences from History {source_id}")
                 elif coverage_run.source_type == 'job':
                     job = Job.query.get(source_id)
                     if job and job.chunk_results:
                         for chunk_result in job.chunk_results:
                             chunk_sentences = chunk_result.get('sentences', [])
-                            sentences = [s.get('normalized', s.get('original', '')) for s in chunk_sentences if s.get('normalized') or s.get('original')]
-                            all_sentences.extend(sentences)
+                            for s in chunk_sentences:
+                                if s.get('normalized') or s.get('original'):
+                                    sentences.append(s.get('normalized', s.get('original', '')))
                         logger.info(f"Loaded {len(sentences)} sentences from Job {source_id}")
+
+                # Filter out empty sentences
+                sentences = [s.strip() for s in sentences if s and s.strip()]
+
+                if sentences:
+                    sources.append((source_id, sentences))
+                    logger.info(f"Source {source_id}: {len(sentences)} valid sentences")
+                else:
+                    logger.warning(f"Source {source_id} has no valid sentences, skipping")
+
             except Exception as e:
                 logger.warning(f"Failed to load sentences from source {source_id}: {e}")
                 continue
 
-        # Validate sentences
-        if not all_sentences:
-            raise ValueError("No sentences found in any source")
+        # Validate sources
+        if not sources:
+            raise ValueError("No valid sources found with sentences")
 
-        # Filter out empty sentences
-        all_sentences = [s.strip() for s in all_sentences if s and s.strip()]
-        if not all_sentences:
-            raise ValueError("All sentences are empty after filtering")
-
-        logger.info(f"Processing {len(all_sentences)} sentences from {len(source_ids)} sources with word list '{wordlist.name}'")
+        total_sentences = sum(len(sentences) for _, sentences in sources)
+        logger.info(f"Processing {len(sources)} sources with {total_sentences} total sentences using word list '{wordlist.name}'")
 
         # Initialize coverage service
         coverage_service = CoverageService(wordlist_keys, config)
@@ -1664,10 +1671,13 @@ def batch_coverage_build_async(self, run_id: int):
             except Exception:
                 logger.exception("progress_callback failed for run %s", run_id)
 
-        # Run batch coverage analysis (use filter mode for now)
+        # Run batch coverage analysis using the proper sequential greedy algorithm
         mode_start = time.time()
-        logger.info("batch_coverage_build_async: invoking CoverageService.filter_mode for run %s", run_id)
-        assignments_data, stats = coverage_service.filter_mode(all_sentences, progress_callback=_progress_callback)
+        logger.info("batch_coverage_build_async: invoking CoverageService.batch_coverage_mode for run %s", run_id)
+        assignments_data, stats, learning_set = coverage_service.batch_coverage_mode(
+            sources,
+            progress_callback=_progress_callback
+        )
         mode_duration = time.time() - mode_start
         logger.info("batch_coverage_build_async: coverage processing finished for run %s in %.2fs", run_id, mode_duration)
 
@@ -1676,16 +1686,16 @@ def batch_coverage_build_async(self, run_id: int):
         coverage_run.current_step = "Saving results"
         safe_db_commit(db)
 
+        logger.info(f"Saving {len(assignments_data)} assignments to database for run {run_id}")
         for assignment_data in assignments_data:
-            synthetic_key = f"batch_sentence_{assignment_data['sentence_index']}"
             assignment = CoverageAssignment(
                 coverage_run_id=run_id,
-                word_original=None,
-                word_key=synthetic_key,
-                lemma=None,
-                matched_surface=None,
-                sentence_index=assignment_data['sentence_index'],
-                sentence_text=assignment_data['sentence_text'],
+                word_original=assignment_data.get('word_original'),
+                word_key=assignment_data.get('word_key'),
+                lemma=assignment_data.get('lemma'),
+                matched_surface=assignment_data.get('matched_surface'),
+                sentence_index=assignment_data.get('sentence_index'),
+                sentence_text=assignment_data.get('sentence_text'),
                 sentence_score=assignment_data.get('sentence_score')
             )
             db.session.add(assignment)

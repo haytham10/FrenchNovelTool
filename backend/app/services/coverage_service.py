@@ -577,24 +577,38 @@ class CoverageService:
             Tuple of (combined_assignments, combined_stats, combined_learning_set)
         """
         logger.info(f"Starting batch coverage mode with {len(sources)} sources")
-        
+
         # Track global state across all sources
         all_assignments = []
         all_selected_sentences = []
         uncovered_words = self.wordlist_keys.copy()
         total_words_initial = len(self.wordlist_keys)
-        
+
+        # Global sentence limit from config
+        global_sentence_limit = self.config.get('target_count', 500)
+        total_sentences_selected = 0
+
         # Statistics per source
         source_stats = []
-        
+
+        logger.info(f"Global sentence limit: {global_sentence_limit}, Target words: {total_words_initial}")
+
         # Process each source sequentially
         for source_idx, (source_id, sentences) in enumerate(sources):
+            # Check stopping conditions
             if not uncovered_words:
                 logger.info(f"All words covered after processing {source_idx} sources")
                 break
-            
+
+            if total_sentences_selected >= global_sentence_limit:
+                logger.info(f"Global sentence limit ({global_sentence_limit}) reached after {source_idx} sources")
+                break
+
+            # Calculate remaining sentence budget for this source
+            remaining_budget = global_sentence_limit - total_sentences_selected
+
             logger.info(f"Processing source {source_idx + 1}/{len(sources)} (ID: {source_id}), "
-                       f"{len(uncovered_words)} words remaining")
+                       f"{len(uncovered_words)} words remaining, {remaining_budget} sentences remaining in budget")
             
             # Update progress
             if progress_callback:
@@ -606,11 +620,14 @@ class CoverageService:
                     pass
             
             # Create a temporary CoverageService with current uncovered words
+            # and remaining sentence budget
+            temp_config = self.config.copy()
+            temp_config['target_count'] = remaining_budget  # Enforce remaining budget
             temp_service = CoverageService(
                 wordlist_keys=uncovered_words,
-                config=self.config
+                config=temp_config
             )
-            
+
             # Run coverage mode on this source
             source_assignments, source_stats_dict = temp_service.coverage_mode_greedy(
                 sentences,
@@ -631,17 +648,21 @@ class CoverageService:
             # Update uncovered words
             newly_covered = len(words_covered_by_source)
             uncovered_words -= words_covered_by_source
-            
+
+            # Track total sentences selected
+            source_sentence_count = source_stats_dict['selected_sentence_count']
+            total_sentences_selected += source_sentence_count
+
             # Record stats for this source
             source_stats.append({
                 'source_id': source_id,
                 'source_index': source_idx,
                 'sentences_count': len(sentences),
-                'selected_sentence_count': source_stats_dict['selected_sentence_count'],
+                'selected_sentence_count': source_sentence_count,
                 'words_covered': newly_covered,
                 'words_remaining': len(uncovered_words),
             })
-            
+
             # Append learning set from this source run
             for item in source_stats_dict.get('learning_set', []):
                 all_selected_sentences.append({
@@ -651,11 +672,13 @@ class CoverageService:
                 })
 
             logger.info(f"Source {source_idx + 1} covered {newly_covered} new words, "
-                       f"{len(uncovered_words)} remaining")
+                       f"{len(uncovered_words)} words remaining, "
+                       f"{source_sentence_count} sentences selected, "
+                       f"{total_sentences_selected}/{global_sentence_limit} total")
         
         # Build combined learning set and stats
         all_assignments.sort(key=lambda a: (a.get('source_index', 0), a.get('sentence_index', 0)))
-        
+
         # Re-rank the combined learning set
         combined_learning_set = []
         for rank, sentence_data in enumerate(all_selected_sentences, start=1):
@@ -663,21 +686,27 @@ class CoverageService:
                 'rank': rank,
                 **sentence_data
             })
-            
+
         total_words_covered = total_words_initial - len(uncovered_words)
-        total_sentences_selected = sum(s.get('selected_sentence_count', 0) for s in source_stats)
+        coverage_percentage = (total_words_covered / total_words_initial * 100) if total_words_initial > 0 else 0
 
         combined_stats = {
             'words_total': total_words_initial,
             'words_covered': total_words_covered,
             'uncovered_words': len(uncovered_words),
+            'coverage_percentage': coverage_percentage,
             'selected_sentence_count': total_sentences_selected,
             'learning_set_count': len(combined_learning_set),
             'source_stats': source_stats,
             'batch_summary': {
                 'source_count': len(sources),
+                'sources_processed': len(source_stats),
                 'total_sentences_selected': total_sentences_selected,
-            }
+                'sentence_limit': global_sentence_limit,
+                'limit_reached': total_sentences_selected >= global_sentence_limit,
+            },
+            # Store learning set in stats for API compatibility
+            'learning_set': combined_learning_set
         }
         
         logger.info(f"Batch coverage complete. Total words covered: {total_words_covered}/{total_words_initial}. "
