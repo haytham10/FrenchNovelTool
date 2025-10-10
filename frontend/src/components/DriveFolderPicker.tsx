@@ -15,10 +15,10 @@ const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
 
 // Lightweight custom Google Drive Picker implementation
 // Replaces react-google-drive-picker to reduce bundle size
-const loadGooglePicker = async (): Promise<typeof google> => {
+const loadGooglePicker = async (): Promise<void> => {
   // Check if already loaded
   if (typeof window !== 'undefined' && window.google) {
-    return window.google;
+    return;
   }
 
   // Load Google API script
@@ -34,10 +34,10 @@ const loadGooglePicker = async (): Promise<typeof google> => {
 
   // Wait for gapi to be ready
   await new Promise<void>((resolve) => {
-    window.gapi.load('picker', () => resolve());
+    if (window.gapi) {
+      window.gapi.load('picker', () => resolve());
+    }
   });
-
-  return window.google;
 };
 
 export default function DriveFolderPicker({ 
@@ -78,7 +78,12 @@ export default function DriveFolderPicker({
       onPickerOpen?.();
 
       // Load Google Picker API
-      const google = await loadGooglePicker();
+      await loadGooglePicker();
+      
+      // Check if google is available
+      if (!window.google) {
+        throw new Error('Google Picker API failed to load');
+      }
 
       // Get OAuth token from localStorage (set by AuthContext)
       const accessToken = localStorage.getItem('accessToken');
@@ -89,18 +94,18 @@ export default function DriveFolderPicker({
       }
 
       // Create and show picker
-      const view = new google.picker.DocsView(google.picker.ViewId.FOLDERS)
+      const view = new window.google.picker.DocsView(window.google.picker.ViewId.FOLDERS)
         .setSelectFolderEnabled(true)
         .setIncludeFolders(true);
 
-      const picker = new google.picker.PickerBuilder()
+      const picker = new window.google.picker.PickerBuilder()
         .addView(view)
         .setOAuthToken(accessToken)
         .setDeveloperKey(API_KEY)
-        .setCallback((data: google.picker.ResponseObject) => {
-          if (data.action === google.picker.Action.CANCEL) {
+        .setCallback((data) => {
+          if (data.action === window.google!.picker.Action.CANCEL) {
             onPickerCancel?.();
-          } else if (data.action === google.picker.Action.PICKED && data.docs && data.docs.length > 0) {
+          } else if (data.action === window.google!.picker.Action.PICKED && data.docs && data.docs.length > 0) {
             const folder = data.docs[0];
             onFolderSelect(folder.id, folder.name);
             enqueueSnackbar(`Folder "${folder.name}" selected`, { variant: 'success' });
