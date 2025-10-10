@@ -35,7 +35,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy spaCy model installation script
-COPY backend/scripts/install_spacy_model.sh /tmp/install_spacy_model.sh
+COPY scripts/install_spacy_model.sh /tmp/install_spacy_model.sh
 RUN chmod +x /tmp/install_spacy_model.sh && /tmp/install_spacy_model.sh
 
 # Now copy the rest of the application code
