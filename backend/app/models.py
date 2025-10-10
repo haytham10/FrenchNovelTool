@@ -336,8 +336,25 @@ class JobChunk(db.Model):
         }
     
     def can_retry(self) -> bool:
-        """Check if chunk can be retried based on status and attempts"""
-        return self.status in ['failed', 'retry_scheduled'] and self.attempts < self.max_retries
+        """Check if chunk can be retried based on status and attempts.
+        
+        Also prevents retries if the chunk has been stuck for too long (> 2 hours).
+        This prevents infinite retry loops on problematic chunks.
+        """
+        if self.status not in ['failed', 'retry_scheduled']:
+            return False
+        
+        if self.attempts >= self.max_retries:
+            return False
+        
+        # Prevent retries if chunk has been stuck for > 2 hours
+        from datetime import datetime, timedelta
+        if self.created_at:
+            age = datetime.utcnow() - self.created_at
+            if age > timedelta(hours=2):
+                return False
+        
+        return True
     
     def get_chunk_metadata(self):
         """Build chunk metadata dict for process_chunk task"""
