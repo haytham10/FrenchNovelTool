@@ -92,7 +92,7 @@ def seed_global_wordlist(force_recreate: bool = False):
     Args:
         force_recreate: If True, delete existing global wordlist and recreate
     """
-    app = create_app(skip_logging=True)
+    app = create_app()
     
     with app.app_context():
         print("=" * 70)
