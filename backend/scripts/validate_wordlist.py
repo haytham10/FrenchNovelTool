@@ -10,8 +10,12 @@ from pathlib import Path
 from typing import List, Dict, Tuple
 
 
-def load_words_from_file(filepath: Path) -> List[str]:
-    """Load words from a text file, excluding comments and empty lines."""
+def load_words_from_file(filepath: Path) -> List[Tuple[int, str]]:
+    """Load words from a text file, excluding comments and empty lines.
+    
+    Returns:
+        List of (line_number, word) tuples
+    """
     words = []
     with open(filepath, 'r', encoding='utf-8') as f:
         for line_num, line in enumerate(f, 1):
@@ -30,9 +34,20 @@ def validate_wordlist(filepath: Path) -> Tuple[bool, Dict]:
         Tuple of (is_valid, issues_dict)
     """
     if not filepath.exists():
-        return False, {'error': f'File not found: {filepath}'}
+        return False, {
+            'error': f'File not found: {filepath}',
+            'total_words': 0,
+            'is_valid': False
+        }
     
-    words = load_words_from_file(filepath)
+    try:
+        words = load_words_from_file(filepath)
+    except (UnicodeDecodeError, PermissionError, OSError) as e:
+        return False, {
+            'error': f'Error reading file: {str(e)}',
+            'total_words': 0,
+            'is_valid': False
+        }
     
     issues = {
         'empty_words': [],
@@ -94,6 +109,13 @@ def print_validation_report(filepath: Path, result: Dict):
     print("=" * 70)
     print(f"Wordlist Validation Report: {filepath.name}")
     print("=" * 70)
+    
+    # Check for file reading errors first
+    if 'error' in result:
+        print(f"\n❌ ERROR: {result['error']}")
+        print("=" * 70)
+        return
+    
     print(f"\nTotal words: {result['total_words']}")
     
     if result['is_valid']:
