@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { Job } from '@/lib/api';
+import type { Job } from '@/lib/types';
 import { getAccessToken } from '@/lib/auth';
 
 interface UseJobWebSocketProps {
@@ -46,24 +46,6 @@ export function useJobWebSocket({
     callbacksRef.current = { onProgress, onComplete, onError, onCancel };
   }, [onProgress, onComplete, onError, onCancel]);
 
-  const handleJobProgress = useCallback((data: Job) => {
-    setJob(data);
-    // Job progress received (no debug logging)
-
-    // Use the latest callbacks from the ref
-    const { onProgress, onComplete, onError, onCancel } = callbacksRef.current;
-
-    if (data.status === 'processing' && onProgress) {
-      onProgress(data);
-    } else if (data.status === 'completed' && onComplete) {
-      onComplete(data);
-    } else if (data.status === 'failed' && onError) {
-      onError(data);
-    } else if (data.status === 'cancelled' && onCancel) {
-      onCancel(data);
-    }
-  }, []);
-
   useEffect(() => {
     if (!jobId || !enabled) {
       return;
@@ -75,6 +57,7 @@ export function useJobWebSocket({
     }
 
     const socket: Socket = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000', {
+      path: '/socket.io/',
       transports: ['websocket'],
       reconnection: true,
       reconnectionAttempts: 5,
@@ -83,6 +66,24 @@ export function useJobWebSocket({
         token: token,
       },
     });
+
+    const handleJobProgress = (data: Job) => {
+      setJob(data);
+      // Job progress received (no debug logging)
+
+      // Use the latest callbacks from the ref
+      const { onProgress, onComplete, onError, onCancel } = callbacksRef.current;
+
+      if (data.status === 'processing' && onProgress) {
+        onProgress(data);
+      } else if (data.status === 'completed' && onComplete) {
+        onComplete(data);
+      } else if (data.status === 'failed' && onError) {
+        onError(data);
+      } else if (data.status === 'cancelled' && onCancel) {
+        onCancel(data);
+      }
+    };
 
     socket.on('connect', () => {
       setConnected(true);
@@ -123,13 +124,11 @@ export function useJobWebSocket({
 
     // Cleanup on unmount or when dependencies change
     return () => {
-      if (socket) {
-        socket.emit('leave_job', { job_id: jobId });
-        socket.disconnect();
-      }
+      socket.emit('leave_job', { job_id: jobId });
+      socket.disconnect();
     };
-    // The dependency array is now stable and won't cause re-renders.
-  }, [jobId, enabled, handleJobProgress]);
+    // Only recreate socket when jobId or enabled changes
+  }, [jobId, enabled]);
 
   return {
     job,

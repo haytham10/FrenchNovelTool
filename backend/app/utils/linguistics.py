@@ -183,14 +183,24 @@ class LinguisticsUtils:
         # Trim and lowercase
         lemma = lemma.strip().lower()
 
+    # Handle reflexive pronouns FIRST: spaCy often lemmatizes reflexive verbs
+        # with a "se_" or "s'" prefix (e.g., "se_laver", "s'appeler").
+        # Strip this prefix to match against word lists that contain the base verb form.
+        # Note: "s'" as an elision of "si" (e.g., "s'il" = "si il") won't appear in
+        # lemma form because spaCy tokenizes it as separate tokens.
+        if lemma.startswith("se_"):
+            lemma = lemma[3:]  # Remove "se_"
+        elif lemma.startswith("s'"):
+            lemma = lemma[2:]  # Remove "s'"
+
         # Handle elisions: expand common contractions
+        # Note: We do this AFTER reflexive pronoun handling to avoid confusion with s'
         elision_expansions = {
             "l'": "le",
             "d'": "de",
             "j'": "je",
             "qu'": "que",
             "n'": "ne",
-            "s'": "se",
             "t'": "te",
             "c'": "ce",
             "m'": "me",
@@ -201,14 +211,6 @@ class LinguisticsUtils:
                 # Replace the contraction with the full form
                 lemma = expansion + lemma[len(contraction):]
                 break
-
-        # Handle reflexive pronouns: spaCy often lemmatizes reflexive verbs
-        # with a "se_" prefix (e.g., "se_laver"). Strip this prefix to match
-        # against word lists that contain the base verb form.
-        if lemma.startswith("se_"):
-            lemma = lemma[3:]  # Remove "se_"
-        elif lemma.startswith("s'"):
-            lemma = lemma[2:]  # Remove "s'"
 
         # Remove any remaining apostrophes that might interfere with matching
         lemma = lemma.replace("'", "")

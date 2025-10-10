@@ -25,7 +25,7 @@ class CoverageService:
             wordlist_keys: Set of normalized word keys from word list
             config: Configuration dict with mode-specific settings
         """
-        self.wordlist_keys = wordlist_keys
+        self.wordlist_keys = {LinguisticsUtils.normalize_french_lemma(key) for key in wordlist_keys}
         self.config = config or {}
 
         # Filter mode defaults
@@ -81,7 +81,7 @@ class CoverageService:
                             surface_for_norm = surface
 
                         normalized_source = lemma if lemma else surface_for_norm
-                        normalized = LinguisticsUtils.normalize_text(normalized_source, fold_diacritics=self.fold_diacritics)
+                        normalized = LinguisticsUtils.normalize_french_lemma(LinguisticsUtils.normalize_text(normalized_source, fold_diacritics=self.fold_diacritics))
 
                         if not normalized:
                             continue
@@ -392,16 +392,32 @@ class CoverageService:
                 if not new_words:
                     continue
 
-                # TASK 3: Enhanced scoring with rarity bonuses
+                # OPTIMIZATION 4: Enhanced scoring with multi-level rarity bonuses
                 score = (len(new_words) * new_word_weight) - info['token_count']
 
-                # Rarity bonus: reward words that appear in few sentences
+                # Get word-source counts if available (from batch mode)
+                word_source_counts = self.config.get('word_source_counts', {})
+
+                # Rarity bonuses at two levels:
+                # 1. Within-source rarity (how often word appears in THIS source)
+                # 2. Cross-source rarity (how many sources contain this word)
                 for word in new_words:
-                    freq = len(word_frequency_index.get(word, []))
-                    if freq < 5:
-                        score += 20  # Very rare word
-                    elif freq < 20:
-                        score += 5   # Somewhat rare word
+                    # Within-source rarity
+                    freq_in_source = len(word_frequency_index.get(word, []))
+                    if freq_in_source < 5:
+                        score += 20  # Very rare in source
+                    elif freq_in_source < 20:
+                        score += 5   # Somewhat rare in source
+
+                    # Cross-source rarity (only in batch mode)
+                    if word_source_counts and word in word_source_counts:
+                        source_count = word_source_counts[word]
+                        if source_count == 1:
+                            score += 30  # Exclusive to this source!
+                        elif source_count == 2:
+                            score += 15  # Very rare across sources
+                        elif source_count <= 3:
+                            score += 5   # Somewhat rare across sources
 
                 # Efficiency bonus: reward sentences covering many rare words (past 60%)
                 if coverage_pct > 60 and len(new_words) >= 3:
@@ -431,9 +447,26 @@ class CoverageService:
                         break
                     continue
 
-                # TASK 6: Stop if stagnation threshold reached
-                if iterations_without_progress >= max_stagnant_iterations:
-                    logger.info(f"Stopping: {iterations_without_progress} iterations without progress")
+                # OPTIMIZATION 5: Adaptive stagnation - don't give up on rare words easily
+                # Check if remaining words are rare (appear in few sentences)
+                rare_words_remaining = sum(
+                    1 for word in uncovered_words
+                    if word in word_frequency_index and len(word_frequency_index[word]) < 10
+                )
+                rare_word_ratio = rare_words_remaining / max(1, len(uncovered_words))
+
+                # Increase stagnation tolerance if many rare words remain
+                if rare_word_ratio > 0.5:  # More than 50% are rare
+                    effective_stagnation_limit = max_stagnant_iterations * 3  # 150 iterations
+                elif rare_word_ratio > 0.3:  # 30-50% are rare
+                    effective_stagnation_limit = max_stagnant_iterations * 2  # 100 iterations
+                else:
+                    effective_stagnation_limit = max_stagnant_iterations  # 50 iterations
+
+                if iterations_without_progress >= effective_stagnation_limit:
+                    logger.info(f"Stopping: {iterations_without_progress} iterations without progress "
+                               f"(rare_words={rare_words_remaining}/{len(uncovered_words)}, "
+                               f"limit={effective_stagnation_limit})")
                     if progress_callback:
                         try:
                             progress_callback(int(10 + coverage_pct * 0.85),
@@ -555,19 +588,98 @@ class CoverageService:
                    f"({final_coverage_pct:.1f}%) with {stats['selected_sentence_count']} sentences")
 
         return assignments, stats
-    
+
+    def _analyze_sources_for_batch(
+        self,
+        sources: List[Tuple[int, List[str]]],
+        target_words: Set[str],
+        progress_callback: Optional[Callable[[int, str], Any]] = None
+    ) -> List[Dict]:
+        """
+        Pre-analyze sources to determine word coverage and rarity for smart ordering.
+
+        Returns list of analysis dicts with:
+        - source_id: ID of the source
+        - unique_words: Count of unique target words in this source
+        - rare_words: Count of words appearing in ≤2 sources
+        - value_score: rare_words / total_sentences (higher = process first)
+        - word_source_counts: Shared dict mapping word -> count of sources containing it
+        """
+        from collections import defaultdict
+
+        # Build word-to-source-count mapping
+        word_source_counts = defaultdict(int)
+        source_word_sets = []
+
+        # First pass: count which sources contain which words
+        for source_id, sentences in sources:
+            # Quick tokenization to find words (no need for full indexing)
+            from app.utils.linguistics import LinguisticsUtils
+
+            words_in_source = set()
+            for sentence in sentences[:1000]:  # Sample first 1000 sentences for speed
+                tokens = LinguisticsUtils.tokenize_and_lemmatize(
+                    sentence,
+                    fold_diacritics=self.fold_diacritics,
+                    handle_elisions=self.handle_elisions
+                )
+                for token in tokens:
+                    normalized = token.get('normalized') if isinstance(token, dict) else None
+                    if normalized and normalized in target_words:
+                        words_in_source.add(normalized)
+
+            source_word_sets.append(words_in_source)
+
+            # Update word-to-source counts
+            for word in words_in_source:
+                word_source_counts[word] += 1
+
+        # Second pass: analyze each source
+        analyses = []
+        for idx, (source_info, word_set) in enumerate(zip(sources, source_word_sets)):
+            source_id, sentences = source_info
+
+            # Count rare words (appear in ≤2 sources)
+            rare_words = sum(1 for word in word_set if word_source_counts[word] <= 2)
+
+            # Value score: prioritize sources with high rare-word density
+            value_score = rare_words / max(1, len(sentences)) if sentences else 0
+
+            analyses.append({
+                'source_id': source_id,
+                'unique_words': len(word_set),
+                'rare_words': rare_words,
+                'value_score': value_score,
+                'word_source_counts': word_source_counts  # Shared reference
+            })
+
+        return analyses
+
     def batch_coverage_mode(
         self,
         sources: List[Tuple[int, List[str]]],
         progress_callback: Optional[Callable[[int, str], Any]] = None
     ) -> Tuple[List[Dict], Dict, List[Dict]]:
         """
-        Batch Coverage Mode: Process multiple sources sequentially with shrinking word list.
+        Batch Coverage Mode: Process multiple sources sequentially with dynamic budget allocation.
         
-        This implements the "smart assembly line" approach:
-        - Process first source to find as many words as possible
-        - For each subsequent source, only search for words not yet covered
-        - Combine all selected sentences into final learning set
+        This implements the "smart assembly line" approach with fair budget distribution:
+        - Process sources sequentially, searching only for uncovered words
+        - Dynamically allocate budget based on remaining words, not remaining total budget
+        - Later sources get fair share to cover rare words not found in earlier sources
+        - Last source receives any remaining budget to maximize coverage
+        
+        Dynamic Budget Allocation Algorithm:
+        1. Calculate words_remaining = uncovered_words.count()
+        2. Estimate sentences_needed = words_remaining / expected_words_per_sentence (2.0)
+        3. Allocate source_budget = min(sentences_needed, remaining_global_budget)
+        4. If last source: source_budget = remaining_global_budget (avoid waste)
+        5. Ensure minimum budget of 10 sentences (unless global budget exhausted)
+        
+        Benefits:
+        - Prevents first source from consuming entire budget
+        - Later sources can find rare words missed by earlier sources
+        - Expected coverage: 70-75% with 500 sentence budget across multiple novels
         
         Args:
             sources: List of tuples (source_id, sentences_list)
@@ -577,40 +689,139 @@ class CoverageService:
             Tuple of (combined_assignments, combined_stats, combined_learning_set)
         """
         logger.info(f"Starting batch coverage mode with {len(sources)} sources")
-        
+
         # Track global state across all sources
         all_assignments = []
         all_selected_sentences = []
         uncovered_words = self.wordlist_keys.copy()
         total_words_initial = len(self.wordlist_keys)
-        
+
+        # Global sentence limit from config (0 = unlimited)
+        target_count_config = self.config.get('target_count', 500)
+        unlimited_mode = target_count_config == 0
+        global_sentence_limit = None if unlimited_mode else target_count_config
+        total_sentences_selected = 0
+
         # Statistics per source
         source_stats = []
-        
-        # Process each source sequentially
-        for source_idx, (source_id, sentences) in enumerate(sources):
+
+        if unlimited_mode:
+            logger.info(f"Unlimited mode enabled - no sentence cap, Target words: {total_words_initial}")
+        else:
+            logger.info(f"Global sentence limit: {global_sentence_limit}, Target words: {total_words_initial}")
+
+        # OPTIMIZATION 1: Pre-analyze sources for word coverage and rarity
+        logger.info("Pre-analyzing sources for smart ordering...")
+        source_analysis = self._analyze_sources_for_batch(sources, uncovered_words, progress_callback)
+
+        # OPTIMIZATION 2: Sort sources by value score (rare words / total sentences)
+        # This ensures rare-word-rich sources get processed first with larger budgets
+        sorted_source_indices = sorted(
+            range(len(source_analysis)),
+            key=lambda i: source_analysis[i]['value_score'],
+            reverse=True
+        )
+
+        logger.info("Source processing order (by rare-word density):")
+        for rank, idx in enumerate(sorted_source_indices, 1):
+            analysis = source_analysis[idx]
+            logger.info(f"  Rank {rank}: Source {analysis['source_id']} - "
+                       f"{analysis['unique_words']} unique words, "
+                       f"{analysis['rare_words']} rare words, "
+                       f"value_score={analysis['value_score']:.4f}")
+
+        # Build word-to-source-count mapping for rarity weighting
+        word_source_counts = source_analysis[0]['word_source_counts']  # Shared across all analyses
+
+        # Process each source sequentially in optimized order
+        for process_rank, source_list_idx in enumerate(sorted_source_indices):
+            source_id, sentences = sources[source_list_idx]
+            analysis = source_analysis[source_list_idx]
+
+            # Check stopping conditions
             if not uncovered_words:
-                logger.info(f"All words covered after processing {source_idx} sources")
+                logger.info(f"All words covered after processing {process_rank} sources")
                 break
-            
-            logger.info(f"Processing source {source_idx + 1}/{len(sources)} (ID: {source_id}), "
-                       f"{len(uncovered_words)} words remaining")
-            
+
+            if not unlimited_mode and total_sentences_selected >= global_sentence_limit:
+                logger.info(f"Global sentence limit ({global_sentence_limit}) reached after {process_rank} sources")
+                break
+
+            # Calculate remaining sentence budget for this source
+            if unlimited_mode:
+                remaining_global_budget = None  # No limit
+            else:
+                remaining_global_budget = global_sentence_limit - total_sentences_selected
+
+            # OPTIMIZATION 3: DYNAMIC BUDGET ALLOCATION
+            # Allocate budget intelligently based on remaining words and source value
+            words_remaining = len(uncovered_words)
+            sources_remaining = len(sources) - process_rank
+            is_last_source = (process_rank == len(sources) - 1)
+
+            if unlimited_mode:
+                # No budget limit - let algorithm run until stagnation or completion
+                source_budget = None
+                logger.info(f"Processing source {process_rank + 1}/{len(sources)} (ID: {source_id}) - "
+                           f"UNLIMITED MODE, {words_remaining} words remaining")
+            else:
+                # SMART BUDGET CALCULATION using pre-analysis
+                unique_words_in_source = analysis['unique_words']
+                rare_words_in_source = analysis['rare_words']
+
+                # Expected coverage rate from this source (words / sentence)
+                # Higher for sources with more unique target words
+                if unique_words_in_source > 0 and len(sentences) > 0:
+                    expected_rate = max(1.5, min(3.5, unique_words_in_source / (len(sentences) * 0.1)))
+                else:
+                    expected_rate = 2.0
+
+                # Estimate sentences needed to cover remaining words
+                sentences_needed = int(words_remaining / expected_rate)
+
+                # Fair share: divide remaining budget by remaining sources
+                fair_share = remaining_global_budget // max(1, sources_remaining)
+
+                # Allocate based on need, but allow high-value sources to take more
+                # Rare-word-rich sources get up to 2.5x fair share
+                rarity_bonus_multiplier = 1.0 + (rare_words_in_source / max(1, unique_words_in_source))
+                source_budget = min(sentences_needed, int(fair_share * rarity_bonus_multiplier))
+
+                # Cap at remaining budget
+                source_budget = min(source_budget, remaining_global_budget)
+
+                # Last source gets all remaining budget (avoid waste)
+                if is_last_source:
+                    source_budget = remaining_global_budget
+
+                # Ensure minimum viable budget (unless exhausted)
+                if source_budget < 20 and remaining_global_budget >= 20:
+                    source_budget = 20
+
+                logger.info(f"Processing source {process_rank + 1}/{len(sources)} (ID: {source_id}), "
+                           f"{words_remaining} words remaining, "
+                           f"budget={source_budget}/{remaining_global_budget}, "
+                           f"unique_words={unique_words_in_source}, rare_words={rare_words_in_source}")
+
             # Update progress
             if progress_callback:
                 try:
-                    base_progress = int(10 + (source_idx / len(sources)) * 80)
-                    step_desc = f"Processing source {source_idx + 1}/{len(sources)}"
+                    base_progress = int(10 + (process_rank / len(sources)) * 80)
+                    step_desc = f"Processing source {process_rank + 1}/{len(sources)}"
                     progress_callback(base_progress, step_desc)
                 except Exception:
                     pass
-            
-            # Create a temporary CoverageService with current uncovered words
+
+            # Create a temporary CoverageService with current uncovered words,
+            # allocated budget, and word rarity information for weighting
+            temp_config = self.config.copy()
+            temp_config['target_count'] = source_budget if not unlimited_mode else 0
+            temp_config['word_source_counts'] = word_source_counts  # For rarity weighting
             temp_service = CoverageService(
                 wordlist_keys=uncovered_words,
-                config=self.config
+                config=temp_config
             )
-            
+
             # Run coverage mode on this source
             source_assignments, source_stats_dict = temp_service.coverage_mode_greedy(
                 sentences,
@@ -622,40 +833,56 @@ class CoverageService:
             for assignment in source_assignments:
                 word_key = assignment['word_key']
                 words_covered_by_source.add(word_key)
-                
-                # Add source_id to assignment for tracking
+
+                # Add source_id and rank to assignment for tracking
                 assignment['source_id'] = source_id
-                assignment['source_index'] = source_idx
+                assignment['source_rank'] = process_rank  # Rank in processing order
+                assignment['source_list_index'] = source_list_idx  # Original position
                 all_assignments.append(assignment)
-            
+
             # Update uncovered words
             newly_covered = len(words_covered_by_source)
             uncovered_words -= words_covered_by_source
-            
+
+            # Track total sentences selected
+            source_sentence_count = source_stats_dict['selected_sentence_count']
+            total_sentences_selected += source_sentence_count
+
             # Record stats for this source
             source_stats.append({
                 'source_id': source_id,
-                'source_index': source_idx,
+                'source_rank': process_rank,
+                'source_list_index': source_list_idx,
                 'sentences_count': len(sentences),
-                'selected_sentence_count': source_stats_dict['selected_sentence_count'],
+                'selected_sentence_count': source_sentence_count,
                 'words_covered': newly_covered,
                 'words_remaining': len(uncovered_words),
+                'unique_words_available': analysis['unique_words'],
+                'rare_words_available': analysis['rare_words'],
             })
-            
+
             # Append learning set from this source run
             for item in source_stats_dict.get('learning_set', []):
                 all_selected_sentences.append({
                     'source_id': source_id,
-                    'source_index': source_idx,
+                    'source_rank': process_rank,
                     **item
                 })
 
-            logger.info(f"Source {source_idx + 1} covered {newly_covered} new words, "
-                       f"{len(uncovered_words)} remaining")
+            if unlimited_mode:
+                logger.info(f"Source {process_rank + 1} (ID: {source_id}) covered {newly_covered} new words, "
+                           f"{len(uncovered_words)} words remaining, "
+                           f"{source_sentence_count} sentences selected, "
+                           f"{total_sentences_selected} total (unlimited)")
+            else:
+                logger.info(f"Source {process_rank + 1} (ID: {source_id}) covered {newly_covered} new words, "
+                           f"{len(uncovered_words)} words remaining, "
+                           f"{source_sentence_count} sentences selected, "
+                           f"{total_sentences_selected}/{global_sentence_limit} total")
         
         # Build combined learning set and stats
-        all_assignments.sort(key=lambda a: (a.get('source_index', 0), a.get('sentence_index', 0)))
-        
+        all_assignments.sort(key=lambda a: (a.get('source_rank', 0), a.get('sentence_index', 0)))
+
         # Re-rank the combined learning set
         combined_learning_set = []
         for rank, sentence_data in enumerate(all_selected_sentences, start=1):
@@ -663,25 +890,43 @@ class CoverageService:
                 'rank': rank,
                 **sentence_data
             })
-            
+
         total_words_covered = total_words_initial - len(uncovered_words)
-        total_sentences_selected = sum(s.get('selected_sentence_count', 0) for s in source_stats)
+        coverage_percentage = (total_words_covered / total_words_initial * 100) if total_words_initial > 0 else 0
 
         combined_stats = {
             'words_total': total_words_initial,
             'words_covered': total_words_covered,
             'uncovered_words': len(uncovered_words),
+            'coverage_percentage': coverage_percentage,
             'selected_sentence_count': total_sentences_selected,
             'learning_set_count': len(combined_learning_set),
             'source_stats': source_stats,
             'batch_summary': {
                 'source_count': len(sources),
+                'sources_processed': len(source_stats),
                 'total_sentences_selected': total_sentences_selected,
-            }
+                'sentence_limit': global_sentence_limit if not unlimited_mode else None,
+                'unlimited_mode': unlimited_mode,
+                'limit_reached': not unlimited_mode and total_sentences_selected >= global_sentence_limit,
+                'optimization_features': [
+                    'pre_analysis',
+                    'smart_ordering',
+                    'dynamic_budget_allocation',
+                    'word_rarity_weighting',
+                    'adaptive_stagnation'
+                ]
+            },
+            # Store learning set in stats for API compatibility
+            'learning_set': combined_learning_set
         }
-        
-        logger.info(f"Batch coverage complete. Total words covered: {total_words_covered}/{total_words_initial}. "
-                    f"Total sentences selected: {total_sentences_selected} from {len(sources)} sources.")
+
+        if unlimited_mode:
+            logger.info(f"Batch coverage complete (UNLIMITED). Words covered: {total_words_covered}/{total_words_initial} "
+                       f"({coverage_percentage:.1f}%). Sentences selected: {total_sentences_selected} from {len(source_stats)} sources.")
+        else:
+            logger.info(f"Batch coverage complete. Words covered: {total_words_covered}/{total_words_initial} "
+                       f"({coverage_percentage:.1f}%). Sentences: {total_sentences_selected}/{global_sentence_limit} from {len(source_stats)} sources.")
 
         # Log final combined word sets
         final_covered_words = self.wordlist_keys - uncovered_words

@@ -52,7 +52,7 @@ app.db.backup*
 htmlcov/
 .tox/
 .nox/
-coverage.xml
+.coverage.xml
 *.cover
 .hypothesis/
 
@@ -161,7 +161,7 @@ CLEANUP_*.md
 .gradle/
 
 # Coverage
-coverage/
+/.coverage
 *.lcov
 .nyc_output/
 

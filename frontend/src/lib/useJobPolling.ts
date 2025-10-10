@@ -2,7 +2,8 @@
  * Custom hook for polling job status
  */
 import { useState, useEffect, useCallback } from 'react';
-import { Job, getJob } from '@/lib/api';
+import { getJob } from '@/lib/api';
+import type { Job } from '@/lib/types';
 
 interface UseJobPollingOptions {
   jobId: number | null;

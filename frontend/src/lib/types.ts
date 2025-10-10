@@ -1,3 +1,5 @@
+import { DiagnosisCategory } from './api';
+
 /**
  * Shared TypeScript types for the application
  */
@@ -98,13 +100,44 @@ export interface Job {
   estimated_credits: number;
   actual_credits?: number;
   pricing_version: string;
-  pricing_rate: number;
-  processing_settings?: Record<string, unknown>;
-  created_at: string;
-  started_at?: string;
-  completed_at?: string;
+  pricing_rate?: number;
+  progress_percent?: number;
+  current_step?: string;
   error_message?: string;
   error_code?: string;
+  chunk_results?: ChunkResult[];
+  // Optional fields used by the UI / websocket updates
+  total_chunks?: number;
+  processed_chunks?: number;
+  failed_chunks?: number[];
+  processing_time_seconds?: number;
+  gemini_tokens_used?: number;
+  gemini_api_calls?: number;
+  processing_settings?: Record<string, unknown> | null;
+  celery_task_id?: string;
+  retry_count?: number;
+  max_retries?: number;
+  is_cancelled?: boolean;
+  cancelled_at?: string | null;
+  cancelled_by?: number | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Sentence {
+  original: string;
+  normalized?: string;
+  token_count?: number;
+}
+
+export interface ChunkResult {
+  chunk_id: number;
+  status: 'success' | 'failed';
+  sentences?: Sentence[];
+  tokens?: number;
+  error?: string;
 }
 
 export interface CostEstimate {
@@ -160,11 +193,11 @@ export interface WordList {
   owner_user_id: number | null;
   name: string;
   source_type: 'manual' | 'csv' | 'google_sheet';
-  source_ref: string | null;
+  source_ref?: string | null;
   normalized_count: number;
   canonical_samples: string[];
   created_at: string;
-  updated_at: string;
+  updated_at?: string;
   is_global_default: boolean;
 }
 
@@ -172,40 +205,68 @@ export interface CoverageRun {
   id: number;
   user_id: number;
   mode: 'coverage' | 'filter' | 'batch';
-  source_type: 'history' | 'sheets';
+  source_type: 'history' | 'job';
   source_id: number | null;
-  wordlist_id: number;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  source_ids?: number[];
+  wordlist_id?: number;
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
   progress_percent: number;
   stats_json: Record<string, unknown> | null;
   learning_set_json: Record<string, unknown>[] | null;
   config_json: Record<string, unknown> | null;
   created_at: string;
-  started_at: string | null;
-  completed_at: string | null;
-  error_message: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  error_message?: string | null;
+  celery_task_id?: string;
+  learning_set?: LearningSetEntry[];
 }
 
 export interface CoverageAssignment {
   id: number;
   run_id: number;
+  word_original?: string;
   word_key: string;
+  lemma?: string;
+  matched_surface?: string;
   surface_form: string;
   sentence_text: string;
   sentence_index: number | null;
+  sentence_score?: number;
+  conflicts?: Record<string, unknown>;
+  manual_edit?: boolean;
+  notes?: string;
   source_id: number | null;
 }
 
 export interface LearningSetEntry {
   rank: number;
-  sentence_index: number | null;
-  sentence_text: string;
+  sentence: string;
+  new_words_covered: string[];
+  all_matched_words: string[];
+  sentence_index: number;
   token_count: number;
   new_word_count: number;
   score: number | null;
   source_id?: number;
   words?: string[]; // Added on frontend
 }
+
+export interface CoverageDiagnosis {
+  total_words: number;
+  covered_words: number;
+  uncovered_words: number;
+  coverage_percentage: number;
+  recommendation: string;
+  categories: {
+    not_in_corpus: DiagnosisCategory;
+    only_in_long_sentences: DiagnosisCategory;
+    only_in_short_sentences: DiagnosisCategory;
+    in_valid_but_missed: DiagnosisCategory;
+  };
+}
+
+// (Removed misplaced property declaration)
 
 // Detailed history for drill-down view
 export interface HistoryDetail extends HistoryEntry {

@@ -22,6 +22,9 @@ class WordListService:
     def normalize_word(word: str, fold_diacritics: bool = True) -> str:
         """
         Normalize a single word to its canonical form.
+        
+        For word lists, this extracts the lexical head from elided forms
+        (e.g., "l'homme" → "homme") to match against lemmatized text.
 
         Args:
             word: Input word to normalize
@@ -46,7 +49,7 @@ class WordListService:
         word = re.sub(r'^\d+[.:\-)]?\s*', '', word)
 
         # Handle elisions BEFORE removing apostrophes (l', d', j', n', s', t', c', qu')
-        # Extract the lexical head after elision
+        # Extract the lexical head after elision for word list matching
         elision_pattern = r"^(?:l'|d'|j'|n'|s'|t'|c'|qu')\s*(.+)$"
         match = re.match(elision_pattern, word, re.IGNORECASE)
         if match:
