@@ -1,8 +1,6 @@
 // Type definitions for Google Picker API and Google API Client
 // These types are needed for our custom Google Drive Picker implementation
 
-/* eslint-disable @typescript-eslint/no-unused-vars */
-
 declare global {
   interface Window {
     google?: typeof google;
@@ -12,6 +10,8 @@ declare global {
   }
 }
 
+// The 'google' namespace is used as a type, not as a variable
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 declare namespace google {
   namespace picker {
     enum ViewId {

@@ -33,9 +33,11 @@ const loadGooglePicker = async (): Promise<void> => {
   });
 
   // Wait for gapi to be ready
-  await new Promise<void>((resolve) => {
+  await new Promise<void>((resolve, reject) => {
     if (window.gapi) {
       window.gapi.load('picker', () => resolve());
+    } else {
+      reject(new Error('Google API (gapi) not available'));
     }
   });
 };
