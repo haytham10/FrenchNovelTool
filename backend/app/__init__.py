@@ -106,10 +106,18 @@ def create_app(config_class=Config, skip_logging=False):
         
         # Register SocketIO event handlers
         from . import socket_events  # Import to register handlers
-        
+
         # Initialize global wordlist (ensure default exists)
+        # Run this in a background daemon thread to avoid blocking app startup
+        # and healthchecks. The initializer is idempotent and logs failures.
         if not app.config.get('TESTING', False):
-            initialize_global_wordlist(app)
+            try:
+                import threading
+
+                t = threading.Thread(target=initialize_global_wordlist, args=(app,), daemon=True)
+                t.start()
+            except Exception as e:
+                app.logger.warning(f"Failed to start background global wordlist initializer: {e}")
 
     return app
 
