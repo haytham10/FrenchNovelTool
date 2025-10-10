@@ -33,7 +33,7 @@ class Config:
     ALLOWED_EXTENSIONS = {'pdf'}
     
     # CORS
-    CORS_ORIGINS = os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000,https://backend-staging-6916.up.railway.app')
+    CORS_ORIGINS = os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000,https://www.frenchnoveltool.com,https://frenchnoveltool.com')
     CORS_SUPPORTS_CREDENTIALS = True
     
     # Gemini API

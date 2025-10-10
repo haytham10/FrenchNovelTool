@@ -15,8 +15,16 @@ from .celery_app import make_celery
 from .extensions import db
 migrate = Migrate()
 jwt = JWTManager()
+
+def _get_remote_address_for_limiter():
+    """Custom key function for rate limiter that exempts OPTIONS requests"""
+    from flask import request
+    if request.method == 'OPTIONS':
+        return None  # Exempt OPTIONS requests from rate limiting
+    return get_remote_address()
+
 limiter = Limiter(
-    key_func=get_remote_address,
+    key_func=_get_remote_address_for_limiter,
     default_limits=[]
 )
 socketio = SocketIO()
