@@ -4,7 +4,7 @@ import re
 import unicodedata
 from typing import Dict, List, Set, Tuple, Optional
 from datetime import datetime, timezone
-from app import db
+from app.extensions import db
 from app.models import WordList, CoverageRun, UserSettings
 from app.utils.metrics import wordlists_created_total, wordlist_ingestion_errors_total
 

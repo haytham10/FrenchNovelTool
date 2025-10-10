@@ -12,8 +12,7 @@ from config import Config
 from .utils.error_handlers import register_error_handlers
 from flask_sqlalchemy import SQLAlchemy
 from .celery_app import make_celery
-
-db = SQLAlchemy()
+from .extensions import db
 migrate = Migrate()
 jwt = JWTManager()
 limiter = Limiter(
@@ -23,7 +22,7 @@ limiter = Limiter(
 socketio = SocketIO()
 celery = None  # Will be initialized in create_app
 
-def create_app(config_class=Config):
+def create_app(config_class=Config, skip_logging=False):
     app = Flask(__name__, instance_relative_config=True)
     app.config.from_object(config_class)
 
@@ -76,7 +75,8 @@ def create_app(config_class=Config):
     celery = make_celery(app)
     
     # Configure logging
-    configure_logging(app)
+    if not skip_logging:
+        configure_logging(app)
 
     with app.app_context():
         # Import models first so SQLAlchemy knows about them
@@ -90,12 +90,14 @@ def create_app(config_class=Config):
         from . import auth_routes
         from . import credit_routes
         from . import coverage_routes
+        from . import wordlist_routes
 
         # Register blueprints
         app.register_blueprint(routes.main_bp, url_prefix='/api/v1')
         app.register_blueprint(auth_routes.auth_bp, url_prefix='/api/v1/auth')
         app.register_blueprint(credit_routes.credit_bp, url_prefix='/api/v1/credits')
         app.register_blueprint(coverage_routes.coverage_bp)
+        app.register_blueprint(wordlist_routes.wordlist_bp)
 
         # Register error handlers
         register_error_handlers(app)
@@ -106,19 +108,60 @@ def create_app(config_class=Config):
         # Register SocketIO event handlers
         from . import socket_events  # Import to register handlers
 
+        # Initialize global wordlist (ensure default exists)
+        # Run this in a background daemon thread to avoid blocking app startup
+        # and healthchecks. The initializer is idempotent and logs failures.
+        if not app.config.get('TESTING', False):
+            try:
+                import threading
+
+                t = threading.Thread(target=initialize_global_wordlist, args=(app,), daemon=True)
+                t.start()
+            except Exception as e:
+                app.logger.warning(f"Failed to start background global wordlist initializer: {e}")
+
     return app
+
+
+def initialize_global_wordlist(app):
+    """
+    Ensure global default wordlist exists on app startup.
+    This is idempotent and safe to run on every startup.
+    
+    NOTE: This runs in a background thread, so it needs an app context.
+    """
+    with app.app_context():
+        try:
+            from app.services.global_wordlist_manager import GlobalWordlistManager
+            
+            # This will create the wordlist if it doesn't exist
+            wordlist = GlobalWordlistManager.ensure_global_default_exists()
+            
+            if wordlist:
+                app.logger.info(
+                    f"Global default wordlist ready: {wordlist.name} "
+                    f"(ID: {wordlist.id}, {wordlist.normalized_count} words)"
+                )
+        except Exception as e:
+            # Log error but don't crash the app
+            # This allows the app to start even if wordlist initialization fails
+            app.logger.warning(f"Failed to initialize global wordlist: {e}")
+            app.logger.warning("App will continue but users may not have a default wordlist available")
 
 def configure_logging(app):
     """Configure application logging"""
     if not app.debug and not app.testing:
-        # Create logs directory if it doesn't exist
-        log_dir = os.path.dirname(app.config['LOG_FILE'])
-        if log_dir and not os.path.exists(log_dir):
+        # The Dockerfile creates /app/logs and chowns it to appuser.
+        # This path is guaranteed to be writable.
+        log_dir = '/app/logs'
+        if not os.path.exists(log_dir):
             os.makedirs(log_dir)
         
+        log_file = os.path.join(log_dir, 'app.log')
+
         # File handler
         file_handler = RotatingFileHandler(
-            app.config['LOG_FILE'],
+            log_file,
             maxBytes=10240000,  # 10MB
             backupCount=10
         )
