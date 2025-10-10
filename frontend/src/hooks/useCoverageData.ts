@@ -36,6 +36,11 @@ export function useCoverageData(currentRunId: number | null) {
     queryFn: () => getCoverageRun(currentRunId!),
     enabled: !!currentRunId,
     refetchOnWindowFocus: false,
+    // Poll every 2 seconds if the run is still processing
+    refetchInterval: (query) => {
+      const run = query.state.data?.coverage_run;
+      return run && (run.status === 'pending' || run.status === 'processing') ? 2000 : false;
+    },
   });
 
   // Load processing history for source selection

@@ -60,6 +60,7 @@ export function useCoverageWebSocket({
     });
 
     const handleProgress = (data: CoverageRun) => {
+      console.log('[WebSocket] Received coverage_progress:', data.status, data.progress_percent);
       setRun(data);
       const callbacks = callbacksRef.current;
       if (data.status === 'processing' && callbacks.onProgress) callbacks.onProgress(data);
@@ -69,13 +70,16 @@ export function useCoverageWebSocket({
     };
 
     socket.on('connect', () => {
+      console.log('[WebSocket] Connected to coverage run WebSocket');
       setConnected(true);
       setError(null);
       // Use the server-side event to join the run room
+      console.log('[WebSocket] Joining coverage run room:', runId);
       socket.emit('join_coverage_run', { run_id: runId, token });
     });
 
     socket.on('disconnect', (reason) => {
+      console.log('[WebSocket] Disconnected:', reason);
       setConnected(false);
       if (reason !== 'io client disconnect') {
         setError(new Error(`WebSocket disconnected: ${reason}. Reconnecting...`));
@@ -83,11 +87,13 @@ export function useCoverageWebSocket({
     });
 
     socket.on('connect_error', (err) => {
+      console.error('[WebSocket] Connection error:', err.message);
       setConnected(false);
       setError(new Error(`Connection error: ${err.message}`));
     });
 
     socket.on('error', (data: { message: string }) => {
+      console.error('[WebSocket] Error event:', data.message);
       setError(new Error(data.message));
     });
 
