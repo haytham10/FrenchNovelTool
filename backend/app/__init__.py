@@ -126,23 +126,26 @@ def initialize_global_wordlist(app):
     """
     Ensure global default wordlist exists on app startup.
     This is idempotent and safe to run on every startup.
+    
+    NOTE: This runs in a background thread, so it needs an app context.
     """
-    try:
-        from app.services.global_wordlist_manager import GlobalWordlistManager
-        
-        # This will create the wordlist if it doesn't exist
-        wordlist = GlobalWordlistManager.ensure_global_default_exists()
-        
-        if wordlist:
-            app.logger.info(
-                f"Global default wordlist ready: {wordlist.name} "
-                f"(ID: {wordlist.id}, {wordlist.normalized_count} words)"
-            )
-    except Exception as e:
-        # Log error but don't crash the app
-        # This allows the app to start even if wordlist initialization fails
-        app.logger.warning(f"Failed to initialize global wordlist: {e}")
-        app.logger.warning("App will continue but users may not have a default wordlist available")
+    with app.app_context():
+        try:
+            from app.services.global_wordlist_manager import GlobalWordlistManager
+            
+            # This will create the wordlist if it doesn't exist
+            wordlist = GlobalWordlistManager.ensure_global_default_exists()
+            
+            if wordlist:
+                app.logger.info(
+                    f"Global default wordlist ready: {wordlist.name} "
+                    f"(ID: {wordlist.id}, {wordlist.normalized_count} words)"
+                )
+        except Exception as e:
+            # Log error but don't crash the app
+            # This allows the app to start even if wordlist initialization fails
+            app.logger.warning(f"Failed to initialize global wordlist: {e}")
+            app.logger.warning("App will continue but users may not have a default wordlist available")
 
 def configure_logging(app):
     """Configure application logging"""
