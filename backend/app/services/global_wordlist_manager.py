@@ -5,8 +5,10 @@ This module provides a centralized way to manage global wordlists with
 proper versioning, automatic seeding, and administrative capabilities.
 """
 import logging
+import time
 from typing import Optional, List, Dict
 from pathlib import Path
+from sqlalchemy.exc import IntegrityError, OperationalError
 from app import db
 from app.models import WordList
 from app.services.wordlist_service import WordListService
@@ -30,32 +32,92 @@ class GlobalWordlistManager:
         If none exists, create one from the default data file.
         
         This method is idempotent and safe to call on every app startup.
+        Uses PostgreSQL advisory locks to prevent race conditions between workers.
         
         Returns:
             WordList: The global default wordlist
         """
-        # Check if global default already exists
+        # First quick check without lock
         existing = WordList.query.filter_by(is_global_default=True).first()
         
         if existing:
             logger.info(f"Global default wordlist exists: {existing.name} (ID: {existing.id})")
             return existing
         
-        logger.warning("No global default wordlist found. Creating one...")
+        logger.warning("No global default wordlist found. Attempting to create one...")
+        
+        # Use PostgreSQL advisory lock to ensure only one worker creates the wordlist
+        # Lock ID: arbitrary number for global wordlist initialization
+        ADVISORY_LOCK_ID = 123456789
         
         try:
-            # Create from default data file
-            wordlist = GlobalWordlistManager.create_from_file(
-                filepath=GlobalWordlistManager.WORDLIST_DATA_DIR / 'french_2k.txt',
-                name=f"{GlobalWordlistManager.DEFAULT_WORDLIST_NAME} (v{GlobalWordlistManager.DEFAULT_VERSION})",
-                set_as_default=True
-            )
+            # Try to acquire advisory lock (non-blocking)
+            # Returns True if lock acquired, False if another worker holds it
+            lock_acquired = db.session.execute(
+                db.text("SELECT pg_try_advisory_lock(:lock_id)"),
+                {"lock_id": ADVISORY_LOCK_ID}
+            ).scalar()
             
-            logger.info(f"Created global default wordlist: {wordlist.name} (ID: {wordlist.id})")
-            return wordlist
+            if not lock_acquired:
+                # Another worker is creating the wordlist
+                logger.info("Another worker is creating the global wordlist. Waiting...")
+                
+                # Wait for the other worker to finish (blocking lock)
+                db.session.execute(
+                    db.text("SELECT pg_advisory_lock(:lock_id)"),
+                    {"lock_id": ADVISORY_LOCK_ID}
+                )
+                
+                # Lock acquired - other worker finished. Check if wordlist exists now.
+                existing = WordList.query.filter_by(is_global_default=True).first()
+                
+                # Release lock
+                db.session.execute(
+                    db.text("SELECT pg_advisory_unlock(:lock_id)"),
+                    {"lock_id": ADVISORY_LOCK_ID}
+                )
+                
+                if existing:
+                    logger.info(f"Global wordlist created by another worker: {existing.name} (ID: {existing.id})")
+                    return existing
+                else:
+                    logger.error("Lock released but no global wordlist found. This shouldn't happen.")
+                    raise RuntimeError("Global wordlist initialization failed (inconsistent state)")
             
+            # Lock acquired - this worker will create the wordlist
+            try:
+                # Double-check (paranoid mode)
+                existing = WordList.query.filter_by(is_global_default=True).first()
+                if existing:
+                    logger.info(f"Global default found during locked section: {existing.name} (ID: {existing.id})")
+                    return existing
+                
+                # Create from default data file
+                wordlist = GlobalWordlistManager.create_from_file(
+                    filepath=GlobalWordlistManager.WORDLIST_DATA_DIR / 'french_2k.txt',
+                    name=f"{GlobalWordlistManager.DEFAULT_WORDLIST_NAME} (v{GlobalWordlistManager.DEFAULT_VERSION})",
+                    set_as_default=True
+                )
+                
+                logger.info(f"Created global default wordlist: {wordlist.name} (ID: {wordlist.id})")
+                return wordlist
+                
+            finally:
+                # Always release the lock
+                db.session.execute(
+                    db.text("SELECT pg_advisory_unlock(:lock_id)"),
+                    {"lock_id": ADVISORY_LOCK_ID}
+                )
+                
         except Exception as e:
-            logger.error(f"Failed to create global default wordlist: {e}")
+            logger.error(f"Error during global wordlist initialization: {e}")
+            
+            # Check one more time if it exists (in case of race condition)
+            existing = WordList.query.filter_by(is_global_default=True).first()
+            if existing:
+                logger.info(f"Found global default after error: {existing.name} (ID: {existing.id})")
+                return existing
+            
             raise
     
     @staticmethod
@@ -211,3 +273,55 @@ class GlobalWordlistManager:
                 for wl in global_wordlists
             ]
         }
+    
+    @staticmethod
+    def cleanup_duplicate_defaults() -> Dict:
+        """
+        Clean up duplicate default wordlists (emergency utility).
+        
+        This can happen if workers raced during initialization before the
+        advisory lock fix was implemented.
+        
+        Keeps the oldest default and unmarks/deletes duplicates.
+        
+        Returns:
+            Dict with cleanup statistics
+        """
+        # Find all wordlists marked as default
+        defaults = WordList.query.filter_by(is_global_default=True).order_by(
+            WordList.id.asc()  # Oldest first
+        ).all()
+        
+        if len(defaults) <= 1:
+            logger.info(f"No duplicate defaults found ({len(defaults)} default wordlist)")
+            return {
+                'duplicates_found': False,
+                'duplicates_removed': 0,
+                'kept_wordlist_id': defaults[0].id if defaults else None
+            }
+        
+        logger.warning(f"Found {len(defaults)} duplicate default wordlists. Cleaning up...")
+        
+        # Keep the first one (oldest)
+        kept = defaults[0]
+        duplicates = defaults[1:]
+        
+        # Unmark duplicates
+        for duplicate in duplicates:
+            logger.info(f"Removing default flag from duplicate: {duplicate.name} (ID: {duplicate.id})")
+            duplicate.is_global_default = False
+        
+        db.session.commit()
+        
+        result = {
+            'duplicates_found': True,
+            'duplicates_removed': len(duplicates),
+            'kept_wordlist_id': kept.id,
+            'kept_wordlist_name': kept.name,
+            'duplicate_ids': [d.id for d in duplicates]
+        }
+        
+        logger.info(f"Cleanup complete. Kept {kept.name} (ID: {kept.id}), unmarked {len(duplicates)} duplicates")
+        
+        return result
+
