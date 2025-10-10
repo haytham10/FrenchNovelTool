@@ -412,8 +412,8 @@ export interface JobConfirmResponse {
   message: string;
 }
 
-export async function confirmJob(request: JobConfirmRequest): Promise<JobConfirmResponse> {
-  const response = await api.post('/jobs/confirm', request);
+export async function startPdfProcessingJob(request: JobConfirmRequest): Promise<JobConfirmResponse> {
+  const response = await api.post('/process-pdf', request);
   return response.data;
 }
 

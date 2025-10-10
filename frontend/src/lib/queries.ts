@@ -20,7 +20,7 @@ import {
   getCredits,
   estimateCost,
   estimatePdfCost,
-  confirmJob,
+  startPdfProcessingJob,
   finalizeJob,
   getJob,
   getApiErrorMessage,
@@ -28,9 +28,10 @@ import {
   type ExportToSheetRequest,
   type ExportHistoryRequest,
   type UserSettings,
+  type JobConfirmRequest,
+  type JobConfirmResponse,
   type CostEstimateRequest,
   type EstimatePdfRequest,
-  type JobConfirmRequest,
   type JobFinalizeRequest,
 } from './api';
 import type { Job } from './types';
@@ -342,14 +343,19 @@ export function useEstimatePdfCost() {
   });
 }
 
-export function useConfirmJob() {
+export function useStartPdfProcessingJob() {
+  const { enqueueSnackbar } = useSnackbar();
   const queryClient = useQueryClient();
 
-  return useMutation({
-    mutationFn: (request: JobConfirmRequest) => confirmJob(request),
-    onSuccess: () => {
-      // Invalidate credits to refresh balance
-      queryClient.invalidateQueries({ queryKey: queryKeys.credits });
+  return useMutation<JobConfirmResponse, Error, JobConfirmRequest>({
+    mutationFn: startPdfProcessingJob,
+    onSuccess: (data) => {
+      enqueueSnackbar(data.message || 'Job started successfully!', { variant: 'success' });
+      // Invalidate credits to reflect reserved amount
+      queryClient.invalidateQueries({ queryKey: ['credits'] });
+    },
+    onError: (error) => {
+      enqueueSnackbar(getApiErrorMessage(error, 'Failed to start job'), { variant: 'error' });
     },
   });
 }
@@ -362,7 +368,7 @@ export function useFinalizeJob() {
       finalizeJob(jobId, request),
     onSuccess: () => {
       // Invalidate credits and history to refresh
-      queryClient.invalidateQueries({ queryKey: queryKeys.credits });
+      queryClient.invalidateQueries({ queryKey: ['credits'] });
       queryClient.invalidateQueries({ queryKey: queryKeys.history });
     },
   });

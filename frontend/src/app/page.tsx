@@ -7,7 +7,7 @@ import NormalizeControls from '@/components/NormalizeControls';
 import ExportDialog from '@/components/ExportDialog';
 import PreflightModal from '@/components/PreflightModal';
 import { getApiErrorMessage } from '@/lib/api';
-import { useProcessPdf, useExportToSheet, useEstimatePdfCost, useConfirmJob, useCredits } from '@/lib/queries';
+import { useProcessPdf, useExportToSheet, useEstimatePdfCost, useStartPdfProcessingJob, useCredits } from '@/lib/queries';
 import { CircularProgress, Button, Typography, Box, Container, Paper, Divider, List, ListItem, ListItemText, LinearProgress } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import UploadStepper from '@/components/UploadStepper';
@@ -53,7 +53,7 @@ export default function Home() {
   const processPdfMutation = useProcessPdf();
   const exportMutation = useExportToSheet();
   const estimatePdfMutation = useEstimatePdfCost();
-  const confirmJobMutation = useConfirmJob();
+  const startJobMutation = useStartPdfProcessingJob();
   const creditsQuery = useCredits();
 
   // WebSocket connection for real-time job progress
@@ -167,7 +167,7 @@ export default function Home() {
 
     try {
       // Confirm job and reserve credits
-      const jobResponse = await confirmJobMutation.mutateAsync({
+      const jobResponse = await startJobMutation.mutateAsync({
         estimated_credits: costEstimate.estimated_credits,
         model_preference: costEstimate.model_preference,
         processing_settings: {
