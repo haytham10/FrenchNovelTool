@@ -202,15 +202,34 @@ class CoverageRunCreateSchema(Schema):
     """Schema for creating a coverage run"""
     mode = fields.String(
         required=True,
-        validate=validate.OneOf(['coverage', 'filter'])
+        validate=validate.OneOf(['coverage', 'filter', 'batch'])
     )
     source_type = fields.String(
         required=True,
         validate=validate.OneOf(['job', 'history'])
     )
-    source_id = fields.Integer(required=True, validate=validate.Range(min=1))
+    source_id = fields.Integer(allow_none=True, validate=validate.Range(min=1))
+    source_ids = fields.List(fields.Integer(validate=validate.Range(min=1)), allow_none=True)
     wordlist_id = fields.Integer(allow_none=True, validate=validate.Range(min=1))
     config = fields.Dict(allow_none=True)
+    
+    @validates_schema
+    def validate_source(self, data, **kwargs):
+        """Ensure either source_id or source_ids is provided based on mode"""
+        mode = data.get('mode')
+        source_id = data.get('source_id')
+        source_ids = data.get('source_ids')
+        
+        if mode == 'batch':
+            if not source_ids or len(source_ids) < 2:
+                raise ValidationError('Batch mode requires at least 2 source_ids')
+            if source_id:
+                raise ValidationError('Batch mode uses source_ids, not source_id')
+        else:
+            if not source_id:
+                raise ValidationError('Non-batch modes require source_id')
+            if source_ids:
+                raise ValidationError('Non-batch modes use source_id, not source_ids')
 
 
 class CoverageSwapSchema(Schema):

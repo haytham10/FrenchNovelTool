@@ -418,6 +418,16 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
         max_retries = int(current_app.config.get('CHUNK_TASK_MAX_RETRIES', current_app.config.get('GEMINI_MAX_RETRIES', 3)))
         base_delay = int(current_app.config.get('CHUNK_TASK_RETRY_DELAY', current_app.config.get('GEMINI_RETRY_DELAY', 1)))
 
+        # CRITICAL: Check if chunk DB record has exceeded max_retries
+        # This prevents Celery-level retries from conflicting with job-level retries
+        if chunk_db_record and chunk_db_record.attempts >= chunk_db_record.max_retries:
+            logger.warning(
+                f"Chunk {chunk_info.get('chunk_id')} (job {job_id}) has exhausted all retry attempts "
+                f"({chunk_db_record.attempts}/{chunk_db_record.max_retries}). Failing permanently."
+            )
+            # Force fail without retry
+            _is_transient = lambda x: False
+        
         if _is_transient(e) and self.request.retries < max_retries:
             # Exponential backoff with jitter-like cap
             delay = min(base_delay * (2 ** self.request.retries), 60)
@@ -618,6 +628,20 @@ def finalize_job_results(self, chunk_results, job_id):
                         chunks_to_retry.append(chunk)
                         should_retry = True
         
+        # CRITICAL: Don't retry if we have enough successful chunks (>= 50% success rate)
+        # This prevents infinite retry loops on problematic PDFs
+        if should_retry and chunks_to_retry:
+            total_chunks = len(db_chunks) if db_chunks else len(chunk_results)
+            success_rate = success_count / total_chunks if total_chunks > 0 else 0
+            
+            if success_rate >= 0.5 and success_count > 0:
+                logger.info(
+                    f"Job {job_id}: skipping retry - success rate {success_rate:.1%} "
+                    f"({success_count}/{total_chunks} chunks) is acceptable"
+                )
+                should_retry = False
+                chunks_to_retry = []
+        
         if should_retry and chunks_to_retry:
             # Orchestrate automatic retry round
             logger.info(f"Job {job_id}: starting retry round {job.retry_count + 1}/{job.max_retries} for {len(chunks_to_retry)} chunks")
@@ -626,11 +650,19 @@ def finalize_job_results(self, chunk_results, job_id):
             job.retry_count += 1
             job.current_step = f"Retrying {len(chunks_to_retry)} failed chunks (attempt {job.retry_count}/{job.max_retries})"
             
-            # Mark chunks as retry_scheduled
+            # Mark chunks as retry_scheduled and increment their attempt counter
             retry_tasks = []
             settings = job.processing_settings or {}
             
             for chunk in chunks_to_retry:
+                # CRITICAL: Double-check retry eligibility before scheduling
+                if not chunk.can_retry():
+                    logger.warning(
+                        f"Job {job_id}: skipping chunk {chunk.chunk_id} - cannot retry "
+                        f"(attempts={chunk.attempts}, age={(datetime.utcnow() - chunk.created_at).total_seconds():.0f}s)"
+                    )
+                    continue
+                
                 chunk.status = 'retry_scheduled'
                 chunk.updated_at = datetime.utcnow()
                 db.session.add(chunk)
@@ -638,20 +670,25 @@ def finalize_job_results(self, chunk_results, job_id):
                     process_chunk.s(chunk.get_chunk_metadata(), job.user_id, settings)
                 )
             
-            safe_db_commit(db)
-            emit_progress(job_id)
-            
-            # Dispatch retry tasks with new finalization callback
-            from celery import group, chord
-            callback = finalize_job_results.s(job_id=job_id)
-            chord(retry_tasks)(callback)
-            
-            logger.info(f"Job {job_id}: dispatched {len(retry_tasks)} retry tasks")
-            return {
-                'status': 'retrying',
-                'message': f'Retrying {len(chunks_to_retry)} failed chunks',
-                'retry_round': job.retry_count
-            }
+            # If no eligible chunks after filtering, skip retry
+            if not retry_tasks:
+                logger.warning(f"Job {job_id}: no eligible chunks for retry after filtering")
+                should_retry = False
+            else:
+                safe_db_commit(db)
+                emit_progress(job_id)
+                
+                # Dispatch retry tasks with new finalization callback
+                from celery import group, chord
+                callback = finalize_job_results.s(job_id=job_id)
+                chord(retry_tasks)(callback)
+                
+                logger.info(f"Job {job_id}: dispatched {len(retry_tasks)} retry tasks")
+                return {
+                    'status': 'retrying',
+                    'message': f'Retrying {len(retry_tasks)} failed chunks',
+                    'retry_round': job.retry_count
+                }
         
         # No more retries - finalize job with current results
         if success_count == 0:
@@ -891,6 +928,83 @@ def reconcile_stuck_chunks(self, age_seconds: Optional[int] = None, limit: int =
         return {'status': 'ok', 'actions': actions}
     except Exception as e:
         logger.exception('reconcile_stuck_chunks: failed: %s', e)
+        return {'status': 'error', 'error': str(e)}
+
+
+@get_celery().task(bind=True, name='app.tasks.terminate_stuck_jobs')
+def terminate_stuck_jobs(self, max_age_hours: int = 3):
+    """
+    Emergency task to terminate jobs that have been stuck in 'processing' state
+    for longer than max_age_hours. This prevents runaway jobs from consuming
+    resources indefinitely.
+    
+    Args:
+        max_age_hours: Maximum age in hours for a processing job (default: 3)
+        
+    Returns:
+        dict: Summary of terminated jobs
+    """
+    db = get_db()
+    Job, User = get_models()
+    JOB_STATUS_PROCESSING, JOB_STATUS_COMPLETED, JOB_STATUS_FAILED, _ = get_constants()
+    
+    try:
+        from datetime import timedelta
+        threshold = datetime.utcnow() - timedelta(hours=max_age_hours)
+        
+        # Find jobs stuck in processing state
+        stuck_jobs = Job.query.filter(
+            Job.status == JOB_STATUS_PROCESSING,
+            Job.started_at < threshold
+        ).all()
+        
+        terminated = []
+        for job in stuck_jobs:
+            age_hours = (datetime.utcnow() - job.started_at).total_seconds() / 3600
+            logger.warning(
+                f"Terminating stuck job {job.id} (age: {age_hours:.1f}h, "
+                f"user: {job.user_id}, filename: {job.original_filename})"
+            )
+            
+            # Mark job as failed
+            job.status = JOB_STATUS_FAILED
+            job.error_message = f"Job terminated - exceeded {max_age_hours}h processing limit"
+            job.current_step = "Terminated"
+            job.progress_percent = 100
+            job.completed_at = datetime.utcnow()
+            
+            # Mark all pending/processing chunks as failed
+            from app.models import JobChunk
+            stuck_chunks = JobChunk.query.filter(
+                JobChunk.job_id == job.id,
+                JobChunk.status.in_(['pending', 'processing', 'retry_scheduled'])
+            ).all()
+            
+            for chunk in stuck_chunks:
+                chunk.status = 'failed'
+                chunk.last_error = 'Job terminated due to timeout'
+                chunk.last_error_code = 'JOB_TIMEOUT'
+                chunk.updated_at = datetime.utcnow()
+                db.session.add(chunk)
+            
+            db.session.add(job)
+            safe_db_commit(db)
+            
+            # Emit progress update
+            emit_progress(job.id)
+            
+            terminated.append({
+                'job_id': job.id,
+                'user_id': job.user_id,
+                'age_hours': age_hours,
+                'filename': job.original_filename
+            })
+        
+        logger.info(f"Terminated {len(terminated)} stuck jobs")
+        return {'status': 'ok', 'terminated': terminated, 'count': len(terminated)}
+        
+    except Exception as e:
+        logger.exception(f"Failed to terminate stuck jobs: {e}")
         return {'status': 'error', 'error': str(e)}
 
 
@@ -1409,5 +1523,230 @@ def coverage_build_async(self, run_id: int):
                 safe_db_commit(db)
         except Exception:
             pass
+        raise
+
+
+@get_celery().task(bind=True, name='app.tasks.batch_coverage_build_async')
+def batch_coverage_build_async(self, run_id: int):
+    """
+    Asynchronously build batch vocabulary coverage analysis across multiple sources.
+
+    Args:
+        run_id: CoverageRun ID to process (batch mode)
+    """
+    from app.models import CoverageRun, CoverageAssignment, WordList, History, Job
+    from app.services.coverage_service import CoverageService
+    from app.services.wordlist_service import WordListService
+    from app.utils.metrics import coverage_runs_total, coverage_build_duration_seconds
+
+    db = get_db()
+    logger.info(f"Starting batch coverage build for run_id={run_id}")
+
+    start_time = time.time()
+    status = 'failed'
+
+    try:
+        # Get the coverage run
+        coverage_run = CoverageRun.query.get(run_id)
+        if not coverage_run:
+            logger.error(f"CoverageRun {run_id} not found")
+            return
+
+        if coverage_run.mode != 'batch':
+            raise ValueError(f"Coverage run {run_id} is not batch mode (mode={coverage_run.mode})")
+
+        # Update status
+        coverage_run.status = 'processing'
+        coverage_run.celery_task_id = self.request.id
+        coverage_run.progress_percent = 5
+        safe_db_commit(db)
+
+        # Emit progress via WebSocket
+        try:
+            from app.socket_events import emit_coverage_progress
+            emit_coverage_progress(run_id)
+        except Exception as e:
+            logger.warning(f"Failed to emit coverage progress for run {run_id}: {e}")
+
+        # Load word list
+        wordlist_id = coverage_run.wordlist_id
+        if not wordlist_id:
+            # Use global default
+            wordlist = WordListService.get_global_default_wordlist()
+            if not wordlist:
+                raise ValueError("No word list specified and no global default found")
+            wordlist_id = wordlist.id
+            coverage_run.wordlist_id = wordlist_id
+            safe_db_commit(db)
+        else:
+            wordlist = WordList.query.get(wordlist_id)
+            if not wordlist:
+                raise ValueError(f"WordList {wordlist_id} not found")
+
+        # Get word list keys
+        wordlist_keys = set()
+        if wordlist.words_json:
+            wordlist_keys = set(wordlist.words_json)
+            logger.info(f"Loaded {len(wordlist_keys)} words from stored words_json")
+        elif wordlist.canonical_samples:
+            wordlist_keys = set(wordlist.canonical_samples)
+            logger.warning(f"WordList {wordlist_id} has no words_json, using {len(wordlist_keys)} canonical samples")
+        else:
+            raise ValueError(f"WordList {wordlist_id} has no words_json or canonical_samples")
+
+        if not wordlist_keys:
+            raise ValueError(f"WordList {wordlist_id} is empty after loading")
+
+        # Get source IDs from config
+        config = coverage_run.config_json or {}
+        source_ids = config.get('source_ids', [])
+        if not source_ids:
+            raise ValueError("No source_ids found in batch coverage run config")
+
+        # Collect sentences from each source separately (required for batch_coverage_mode)
+        sources = []  # List of (source_id, sentences) tuples
+        for idx, source_id in enumerate(source_ids):
+            try:
+                progress = 10 + (idx / len(source_ids)) * 20  # Progress 10-30%
+                coverage_run.progress_percent = int(progress)
+                coverage_run.current_step = f"Loading source {idx + 1}/{len(source_ids)}"
+                safe_db_commit(db)
+
+                sentences = []
+                if coverage_run.source_type == 'history':
+                    history = History.query.get(source_id)
+                    if history and history.sentences:
+                        sentences = [s.get('normalized', s.get('original', '')) for s in history.sentences if s.get('normalized') or s.get('original')]
+                        logger.info(f"Loaded {len(sentences)} sentences from History {source_id}")
+                elif coverage_run.source_type == 'job':
+                    job = Job.query.get(source_id)
+                    if job and job.chunk_results:
+                        for chunk_result in job.chunk_results:
+                            chunk_sentences = chunk_result.get('sentences', [])
+                            for s in chunk_sentences:
+                                if s.get('normalized') or s.get('original'):
+                                    sentences.append(s.get('normalized', s.get('original', '')))
+                        logger.info(f"Loaded {len(sentences)} sentences from Job {source_id}")
+
+                # Filter out empty sentences
+                sentences = [s.strip() for s in sentences if s and s.strip()]
+
+                if sentences:
+                    sources.append((source_id, sentences))
+                    logger.info(f"Source {source_id}: {len(sentences)} valid sentences")
+                else:
+                    logger.warning(f"Source {source_id} has no valid sentences, skipping")
+
+            except Exception as e:
+                logger.warning(f"Failed to load sentences from source {source_id}: {e}")
+                continue
+
+        # Validate sources
+        if not sources:
+            raise ValueError("No valid sources found with sentences")
+
+        total_sentences = sum(len(sentences) for _, sentences in sources)
+        logger.info(f"Processing {len(sources)} sources with {total_sentences} total sentences using word list '{wordlist.name}'")
+
+        # Initialize coverage service
+        coverage_service = CoverageService(wordlist_keys, config)
+
+        # Define a progress callback
+        def _progress_callback(pct: int, step: str | None = None):
+            try:
+                # Map internal progress (0-100) to overall progress (30-95)
+                overall_pct = 30 + int(pct * 0.65)
+                cov = CoverageRun.query.get(run_id)
+                if not cov:
+                    return
+                cov.progress_percent = min(95, max(30, overall_pct))
+                if step:
+                    cov.current_step = step
+                safe_db_commit(db)
+                try:
+                    from app.socket_events import emit_coverage_progress
+                    emit_coverage_progress(run_id)
+                except Exception:
+                    logger.debug("Failed to emit intermediate coverage progress for run %s", run_id)
+            except Exception:
+                logger.exception("progress_callback failed for run %s", run_id)
+
+        # Run batch coverage analysis using the proper sequential greedy algorithm
+        mode_start = time.time()
+        logger.info("batch_coverage_build_async: invoking CoverageService.batch_coverage_mode for run %s", run_id)
+        assignments_data, stats, learning_set = coverage_service.batch_coverage_mode(
+            sources,
+            progress_callback=_progress_callback
+        )
+        mode_duration = time.time() - mode_start
+        logger.info("batch_coverage_build_async: coverage processing finished for run %s in %.2fs", run_id, mode_duration)
+
+        # Save assignments to database
+        coverage_run.progress_percent = 95
+        coverage_run.current_step = "Saving results"
+        safe_db_commit(db)
+
+        logger.info(f"Saving {len(assignments_data)} assignments to database for run {run_id}")
+        for assignment_data in assignments_data:
+            assignment = CoverageAssignment(
+                coverage_run_id=run_id,
+                word_original=assignment_data.get('word_original'),
+                word_key=assignment_data.get('word_key'),
+                lemma=assignment_data.get('lemma'),
+                matched_surface=assignment_data.get('matched_surface'),
+                sentence_index=assignment_data.get('sentence_index'),
+                sentence_text=assignment_data.get('sentence_text'),
+                sentence_score=assignment_data.get('sentence_score')
+            )
+            db.session.add(assignment)
+
+        # Commit assignments and update run with stats
+        db_commit_start = time.time()
+        coverage_run.stats_json = stats
+        coverage_run.status = 'completed'
+        coverage_run.progress_percent = 100
+        coverage_run.current_step = "Completed"
+        coverage_run.completed_at = datetime.utcnow()
+        safe_db_commit(db)
+        db_commit_duration = time.time() - db_commit_start
+        logger.info("batch_coverage_build_async: DB commit completed for run %s in %.2fs", run_id, db_commit_duration)
+
+        # Emit final progress update
+        try:
+            from app.socket_events import emit_coverage_progress
+            emit_coverage_progress(run_id)
+        except Exception as e:
+            logger.warning(f"Failed to emit final coverage progress for run {run_id}: {e}")
+
+        # Update metrics
+        status = 'completed'
+        duration = time.time() - start_time
+        coverage_runs_total.labels(mode='batch', status='completed').inc()
+        coverage_build_duration_seconds.labels(mode='batch').observe(duration)
+
+        logger.info(f"Batch coverage build completed for run_id={run_id} in {duration:.2f}s")
+
+    except Exception as e:
+        logger.exception(f"Error in batch_coverage_build_async for run_id={run_id}: {e}")
+
+        # Update run record with failure
+        try:
+            coverage_run = CoverageRun.query.get(run_id)
+            if coverage_run:
+                coverage_run.status = 'failed'
+                coverage_run.error_message = str(e)[:512]
+                coverage_run.progress_percent = min(100, getattr(coverage_run, 'progress_percent', 0) or 0)
+                safe_db_commit(db)
+                try:
+                    from app.socket_events import emit_coverage_progress
+                    emit_coverage_progress(run_id)
+                except Exception:
+                    logger.warning(f"Failed to emit coverage progress for failed run {run_id}")
+        except Exception:
+            logger.exception("Failed to update coverage run failure status in DB")
+
+        # Update metrics
+        coverage_runs_total.labels(mode='batch', status='failed').inc()
+
         raise
 

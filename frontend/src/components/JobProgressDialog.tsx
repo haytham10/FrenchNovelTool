@@ -16,7 +16,8 @@ import {
   Stack,
 } from '@mui/material';
 import { CheckCircle, Error as ErrorIcon, Cancel, HourglassEmpty, WifiOff, MenuBook } from '@mui/icons-material';
-import { Job, cancelJob } from '@/lib/api';
+import { cancelJob } from '@/lib/api';
+import type { Job } from '@/lib/types';
 import { useJobWebSocket } from '@/lib/useJobWebSocket';
 import CoverageRunDialog from './CoverageRunDialog';
 

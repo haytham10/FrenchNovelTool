@@ -33,30 +33,7 @@ class Config:
     ALLOWED_EXTENSIONS = {'pdf'}
     
     # CORS
-    _origins = [o.strip() for o in os.getenv('CORS_ORIGINS', 'http://localhost:3000').split(',') if o.strip()]
-
-    # Auto-include www/apex variants of configured origins to avoid CORS mismatches
-    def _with_www_variants(origin: str) -> list[str]:
-        try:
-            p = urlparse(origin)
-            if not p.scheme or not p.netloc:
-                return [origin]
-            host = p.netloc
-            variants = set([origin])
-            if host.startswith('www.'):
-                apex = host[4:]
-                variants.add(urlunparse((p.scheme, apex, p.path, '', '', '')))
-            else:
-                variants.add(urlunparse((p.scheme, 'www.' + host, p.path, '', '', '')))
-            return list(variants)
-        except Exception:
-            return [origin]
-
-    _expanded = []
-    for o in _origins:
-        _expanded.extend(_with_www_variants(o))
-
-    CORS_ORIGINS = list(dict.fromkeys(_expanded))  # dedupe, preserve order
+    CORS_ORIGINS = os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000,https://backend-staging-6916.up.railway.app')
     CORS_SUPPORTS_CREDENTIALS = True
     
     # Gemini API
@@ -94,15 +71,17 @@ class Config:
     # Database Connection Pool Configuration (critical for Supabase + Railway deployment)
     # Optimized for 8GB RAM / 8 vCPU with high concurrency workloads
     SQLALCHEMY_ENGINE_OPTIONS = {
-        'pool_size': int(os.getenv('DB_POOL_SIZE', '20')),           # Larger pool for 8 concurrent workers
-        'pool_pre_ping': True,                                        # Test connections before use
-        'pool_recycle': int(os.getenv('DB_POOL_RECYCLE', '1800')),  # Recycle every 30 min for freshness
-        'max_overflow': int(os.getenv('DB_MAX_OVERFLOW', '10')),     # More burst capacity
-        'connect_args': {
-            'connect_timeout': int(os.getenv('DB_CONNECT_TIMEOUT', '15')),  # Longer timeout for complex queries
-            'options': '-c statement_timeout=60000'  # 60s query timeout for large operations
-        }
+        'pool_size': int(os.getenv('DB_POOL_SIZE', '20')),
+        'pool_pre_ping': True,
+        'pool_recycle': int(os.getenv('DB_POOL_RECYCLE', '1800')),
+        'max_overflow': int(os.getenv('DB_MAX_OVERFLOW', '10')),
     }
+
+    if SQLALCHEMY_DATABASE_URI.startswith('postgresql'):
+        SQLALCHEMY_ENGINE_OPTIONS['connect_args'] = {
+            'connect_timeout': int(os.getenv('DB_CONNECT_TIMEOUT', '15')),
+            'options': '-c statement_timeout=60000'
+        }
     
     # Logging
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')

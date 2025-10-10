@@ -3,6 +3,7 @@ import os
 import io
 import base64
 from typing import List, Dict
+from datetime import datetime, timezone
 from app.pdf_compat import PdfReader, PdfWriter
 
 
@@ -173,7 +174,7 @@ class ChunkingService:
                     status='pending',
                     attempts=0,
                     max_retries=3,
-                    created_at=datetime.utcnow()
+                    created_at=datetime.now(timezone.utc)
                 )
                 
                 db.session.add(chunk)

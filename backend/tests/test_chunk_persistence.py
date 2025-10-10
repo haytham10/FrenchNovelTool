@@ -1,8 +1,7 @@
 """Tests for chunk persistence and retry system"""
-import pytest
-from datetime import datetime
-from unittest.mock import Mock, patch, MagicMock
-from app.models import Job, JobChunk, User
+from datetime import datetime, timezone
+from unittest.mock import Mock, patch
+from app.models import JobChunk
 from app.services.chunking_service import ChunkingService
 
 
@@ -91,7 +90,7 @@ class TestJobChunkModel:
     
     def test_to_dict(self):
         """Test JobChunk.to_dict() returns correct serialization"""
-        created_at = datetime.utcnow()
+        created_at = datetime.now(timezone.utc)
         chunk = JobChunk(
             job_id=1,
             chunk_id=0,
@@ -269,7 +268,7 @@ class TestChunkStatusTracking:
         
         # processing -> success
         chunk.status = 'success'
-        chunk.processed_at = datetime.utcnow()
+        chunk.processed_at = datetime.now(timezone.utc)
         assert chunk.status == 'success'
         assert chunk.processed_at is not None
         

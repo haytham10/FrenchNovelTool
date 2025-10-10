@@ -10,15 +10,13 @@ from marshmallow import ValidationError
 from app.services.auth_service import AuthService
 from app.schemas import GoogleAuthSchema
 from app.models import User
-from app.utils.cors_handlers import cors_preflight
 
 auth_bp = Blueprint('auth', __name__)
 auth_service = AuthService()
 google_auth_schema = GoogleAuthSchema()
 
 
-@auth_bp.route('/google', methods=['POST', 'OPTIONS'])
-@cors_preflight
+@auth_bp.route('/google', methods=['POST'])
 def google_login():
     """
     Authenticates user with Google OAuth.
@@ -101,9 +99,11 @@ def refresh():
     try:
         user_id = get_jwt_identity()  # This will be a string now
         access_token = create_access_token(identity=user_id)  # Keep as string
-        
+        refresh_token = create_refresh_token(identity=user_id)  # Generate new refresh token too
+
         return jsonify({
-            'access_token': access_token
+            'access_token': access_token,
+            'refresh_token': refresh_token
         }), 200
         
     except Exception as e:
@@ -111,8 +111,7 @@ def refresh():
         return jsonify({'error': 'Token refresh failed'}), 500
 
 
-@auth_bp.route('/me', methods=['GET', 'OPTIONS'])
-@cors_preflight
+@auth_bp.route('/me', methods=['GET'])
 @jwt_required()
 def get_current_user():
     """

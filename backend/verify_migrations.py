@@ -14,7 +14,7 @@ Environment Variables Required:
 import os
 import sys
 from sqlalchemy import create_engine, inspect, text
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 def get_db_engine():
@@ -86,7 +86,7 @@ def verify_table_columns(engine, table_name, expected_columns):
 def main():
     """Main verification function"""
     print("🚀 Starting Database Migration Verification\n")
-    print(f"⏰ Timestamp: {datetime.utcnow().isoformat()}Z\n")
+    print(f"⏰ Timestamp: {datetime.now(timezone.utc).isoformat()}Z\n")
     
     # Create database engine
     engine = get_db_engine()

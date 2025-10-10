@@ -5,7 +5,7 @@ from google.oauth2.credentials import Credentials
 from flask import current_app
 from app import db
 from app.models import User, UserSettings
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from googleapiclient.discovery import build
 
 
@@ -112,8 +112,8 @@ class AuthService:
                 current_app.config['GOOGLE_CLIENT_ID']
             )
             
-            # Calculate expiry time
-            expiry = datetime.utcnow() + timedelta(seconds=credentials.expiry.timestamp() - datetime.utcnow().timestamp())
+            # Calculate expiry time (ensure timezone-aware UTC)
+            expiry = datetime.now(timezone.utc) + timedelta(seconds=credentials.expiry.timestamp() - datetime.now(timezone.utc).timestamp())
             
             return {
                 'access_token': credentials.token,
@@ -148,13 +148,27 @@ class AuthService:
             user.email = google_user_info['email']
             user.name = google_user_info['name']
             user.picture = google_user_info['picture']
-            user.last_login = datetime.utcnow()
+            user.last_login = datetime.now(timezone.utc)
             
             # Update OAuth tokens if provided
             if oauth_tokens:
                 user.google_access_token = oauth_tokens.get('access_token')
                 user.google_refresh_token = oauth_tokens.get('refresh_token')
-                user.google_token_expiry = oauth_tokens.get('expiry')
+                # Normalize expiry to timezone-aware UTC if possible
+                expiry_val = oauth_tokens.get('expiry')
+                if expiry_val:
+                    try:
+                        if isinstance(expiry_val, str):
+                            # Try to parse ISO format
+                            parsed = datetime.fromisoformat(expiry_val)
+                            expiry_val = parsed
+                    except Exception:
+                        pass
+
+                    if isinstance(expiry_val, datetime) and expiry_val.tzinfo is None:
+                        expiry_val = expiry_val.replace(tzinfo=timezone.utc)
+
+                    user.google_token_expiry = expiry_val
         else:
             # Create new user
             user = User(
@@ -168,7 +182,19 @@ class AuthService:
             if oauth_tokens:
                 user.google_access_token = oauth_tokens.get('access_token')
                 user.google_refresh_token = oauth_tokens.get('refresh_token')
-                user.google_token_expiry = oauth_tokens.get('expiry')
+                expiry_val = oauth_tokens.get('expiry')
+                if expiry_val:
+                    try:
+                        if isinstance(expiry_val, str):
+                            parsed = datetime.fromisoformat(expiry_val)
+                            expiry_val = parsed
+                    except Exception:
+                        pass
+
+                    if isinstance(expiry_val, datetime) and expiry_val.tzinfo is None:
+                        expiry_val = expiry_val.replace(tzinfo=timezone.utc)
+
+                    user.google_token_expiry = expiry_val
             
             db.session.add(user)
             db.session.flush()  # Get user ID
@@ -211,7 +237,11 @@ class AuthService:
             # Update user's tokens
             user.google_access_token = credentials.token
             if credentials.expiry:
-                user.google_token_expiry = credentials.expiry
+                expiry_val = credentials.expiry
+                # credentials.expiry from google oauth is usually timezone-aware
+                if isinstance(expiry_val, datetime) and expiry_val.tzinfo is None:
+                    expiry_val = expiry_val.replace(tzinfo=timezone.utc)
+                user.google_token_expiry = expiry_val
             
             db.session.commit()
             
@@ -236,8 +266,12 @@ class AuthService:
         if not user.google_access_token:
             raise ValueError('User has not authorized Google access')
         
-        # Check if token is expired
-        if user.google_token_expiry and user.google_token_expiry < datetime.utcnow():
+        # Check if token is expired (ensure stored expiry is timezone-aware)
+        expiry_val = user.google_token_expiry
+        if expiry_val and isinstance(expiry_val, datetime) and expiry_val.tzinfo is None:
+            expiry_val = expiry_val.replace(tzinfo=timezone.utc)
+
+        if expiry_val and expiry_val < datetime.now(timezone.utc):
             current_app.logger.info(f'Token expired for user {user.id}, refreshing...')
             self.refresh_user_token(user)
         

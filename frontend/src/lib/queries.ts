@@ -25,7 +25,6 @@ import {
   getJob,
   getApiErrorMessage,
   type ProcessPdfAsyncRequest,
-  type Job,
   type ExportToSheetRequest,
   type ExportHistoryRequest,
   type UserSettings,
@@ -34,6 +33,7 @@ import {
   type JobConfirmRequest,
   type JobFinalizeRequest,
 } from './api';
+import type { Job } from './types';
 
 /**
  * Query Keys

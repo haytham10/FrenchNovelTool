@@ -1,5 +1,6 @@
 """API routes for Vocabulary Coverage Tool"""
 import logging
+import re
 from flask import Blueprint, request, jsonify, send_from_directory, abort, current_app
 from werkzeug.utils import safe_join
 from flask_jwt_extended import jwt_required, get_jwt_identity
@@ -8,6 +9,7 @@ from app import limiter, db
 from app.models import WordList, CoverageRun, CoverageAssignment, UserSettings, User
 from app.services.wordlist_service import WordListService
 from app.services.auth_service import AuthService
+from datetime import timezone
 from app.services.google_sheets_service import GoogleSheetsService
 from app.schemas import (
     WordListCreateSchema,
@@ -16,8 +18,7 @@ from app.schemas import (
     CoverageSwapSchema,
     CoverageExportSchema
 )
-from app.tasks import coverage_build_async
-import re
+from app.tasks import coverage_build_async, batch_coverage_build_async
 
 logger = logging.getLogger(__name__)
 
@@ -291,6 +292,60 @@ def delete_wordlist(wordlist_id):
 
 
 # ============================================================================
+# Global Wordlist Management Endpoints
+# ============================================================================
+
+@coverage_bp.route('/wordlists/global/stats', methods=['GET'])
+@jwt_required()
+def get_global_wordlist_stats():
+    """Get statistics about global wordlists"""
+    from app.services.global_wordlist_manager import GlobalWordlistManager
+    
+    try:
+        stats = GlobalWordlistManager.get_stats()
+        return jsonify(stats), 200
+    except Exception as e:
+        logger.exception(f"Error getting global wordlist stats: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@coverage_bp.route('/wordlists/global/default', methods=['GET'])
+@jwt_required()
+def get_global_default_wordlist():
+    """Get the global default wordlist"""
+    from app.services.global_wordlist_manager import GlobalWordlistManager
+    
+    try:
+        default = GlobalWordlistManager.get_global_default()
+        
+        if not default:
+            return jsonify({'error': 'No global default wordlist found'}), 404
+        
+        return jsonify(default.to_dict()), 200
+    except Exception as e:
+        logger.exception(f"Error getting global default wordlist: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@coverage_bp.route('/wordlists/global', methods=['GET'])
+@jwt_required()
+def list_global_wordlists():
+    """List all global wordlists (admin/info endpoint)"""
+    from app.services.global_wordlist_manager import GlobalWordlistManager
+    
+    try:
+        global_wordlists = GlobalWordlistManager.list_global_wordlists()
+        
+        return jsonify({
+            'wordlists': [wl.to_dict() for wl in global_wordlists],
+            'total': len(global_wordlists)
+        }), 200
+    except Exception as e:
+        logger.exception(f"Error listing global wordlists: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
 # Coverage Run Endpoints
 # ============================================================================
 
@@ -359,7 +414,10 @@ def import_sentences_from_sheets():
         creds = Credentials(**creds_kwargs)
 
         # Check if token is expired and refresh if needed
-        if user.google_token_expiry and datetime.utcnow() >= user.google_token_expiry:
+        expiry_val = user.google_token_expiry
+        if expiry_val and isinstance(expiry_val, datetime) and expiry_val.tzinfo is None:
+            expiry_val = expiry_val.replace(tzinfo=timezone.utc)
+        if expiry_val and datetime.now(timezone.utc) >= expiry_val:
             auth_service = AuthService()
             try:
                 auth_service.refresh_google_token(user)
@@ -470,7 +528,7 @@ def import_sentences_from_sheets():
 @jwt_required()
 @limiter.limit("20 per hour")
 def create_coverage_run():
-    """Create and start a new coverage run"""
+    """Create and start a new coverage run (single source or batch)"""
     user_id = int(get_jwt_identity())
     
     try:
@@ -493,14 +551,26 @@ def create_coverage_run():
             if global_default:
                 wordlist_id = global_default.id
     
+    # For batch mode, store source_ids in config_json and use first source as source_id
+    mode = data['mode']
+    if mode == 'batch':
+        source_ids = data['source_ids']
+        config = data.get('config') or {}
+        config['source_ids'] = source_ids
+        # Use first source_id as the primary source_id for indexing
+        source_id = source_ids[0]
+    else:
+        source_id = data['source_id']
+        config = data.get('config')
+    
     # Create coverage run
     coverage_run = CoverageRun(
         user_id=user_id,
-        mode=data['mode'],
+        mode=mode,
         source_type=data['source_type'],
-        source_id=data['source_id'],
+        source_id=source_id,
         wordlist_id=wordlist_id,
-        config_json=data.get('config'),
+        config_json=config,
         status='pending'
     )
     
@@ -512,11 +582,19 @@ def create_coverage_run():
         from app.services.credit_service import CreditService
         from app.constants import COVERAGE_RUN_COST
         
+        # For batch mode, charge per source (or use a multiplier)
+        if mode == 'batch':
+            cost = COVERAGE_RUN_COST * len(source_ids)
+            description = f'Batch coverage run #{coverage_run.id} ({len(source_ids)} sources)'
+        else:
+            cost = COVERAGE_RUN_COST
+            description = f'Coverage run #{coverage_run.id} ({mode} mode)'
+        
         success, error_msg = CreditService.charge_coverage_run(
             user_id=user_id,
             coverage_run_id=coverage_run.id,
-            amount=COVERAGE_RUN_COST,
-            description=f'Coverage run #{coverage_run.id} ({data["mode"]} mode)'
+            amount=cost,
+            description=description
         )
         
         if not success:
@@ -525,8 +603,12 @@ def create_coverage_run():
             db.session.commit()
             return jsonify({'error': error_msg}), 402  # Payment Required
         
-        # Start async task
-        task = coverage_build_async.apply_async(args=[coverage_run.id])
+        # Start async task - use batch task for batch mode
+        if mode == 'batch':
+            from app.tasks import batch_coverage_build_async
+            task = batch_coverage_build_async.apply_async(args=[coverage_run.id])
+        else:
+            task = coverage_build_async.apply_async(args=[coverage_run.id])
         
         coverage_run.celery_task_id = task.id
         db.session.commit()
@@ -534,7 +616,7 @@ def create_coverage_run():
         return jsonify({
             'coverage_run': coverage_run.to_dict(),
             'task_id': task.id,
-            'credits_charged': COVERAGE_RUN_COST
+            'credits_charged': cost
         }), 201
         
     except Exception as e:
@@ -586,6 +668,54 @@ def get_coverage_run(run_id):
                 }
                 for rank, assignment in enumerate(ordered_assignments, start=1)
             ]
+    elif coverage_run.mode == 'batch':
+        # For batch mode, use learning_set from stats_json (created by batch_coverage_mode)
+        stats = coverage_run.stats_json or {}
+        learning_set = stats.get('learning_set', [])
+
+        # Fallback: build from assignments if stats don't have learning_set
+        if not learning_set:
+            all_assignments = assignments_query.all()
+            # Remove duplicates and sort by sentence index
+            seen_sentences = set()
+            ordered_assignments = []
+            for assignment in all_assignments:
+                if assignment.sentence_index is not None and assignment.sentence_index not in seen_sentences:
+                    seen_sentences.add(assignment.sentence_index)
+                    ordered_assignments.append(assignment)
+            ordered_assignments.sort(key=lambda a: a.sentence_index)
+
+            learning_set = [
+                {
+                    'rank': rank,
+                    'sentence_index': assignment.sentence_index,
+                    'sentence_text': assignment.sentence_text,
+                    'token_count': None,
+                    'new_word_count': None,
+                    'score': assignment.sentence_score,
+                }
+                for rank, assignment in enumerate(ordered_assignments, start=1)
+            ]
+    elif coverage_run.mode == 'filter':
+        # Build learning set from assignments for filter mode
+        all_assignments = assignments_query.all()
+        # Sort by sentence index to maintain original order
+        ordered_assignments = sorted(
+            [a for a in all_assignments if a.sentence_index is not None],
+            key=lambda a: a.sentence_index
+        )
+
+        learning_set = [
+            {
+                'rank': rank,
+                'sentence_index': assignment.sentence_index,
+                'sentence_text': assignment.sentence_text,
+                'token_count': None,
+                'new_word_count': None,
+                'score': assignment.sentence_score,
+            }
+            for rank, assignment in enumerate(ordered_assignments, start=1)
+        ]
     
     return jsonify({
         'coverage_run': coverage_run.to_dict(),
@@ -812,6 +942,205 @@ def download_coverage_run(run_id):
     except Exception as e:
         logger.exception(f"Error downloading coverage run as CSV: {e}")
         return jsonify({'error': f'Download failed: {str(e)}'}), 500
+
+
+@coverage_bp.route('/coverage/runs/<int:run_id>/diagnosis', methods=['GET'])
+@jwt_required()
+def diagnose_coverage_run(run_id):
+    """
+    Diagnose why certain words were not covered in a coverage run.
+
+    Analyzes uncovered words and categorizes them into:
+    - Not in corpus: Words that don't appear in any source sentence
+    - Only in long sentences: Words only found in 9+ word sentences (outside 4-8 range)
+    - Only in short sentences: Words only found in 1-3 word sentences
+    - In valid range but missed: Words in 4-8 word sentences that algorithm didn't select
+
+    Returns JSON with counts and sample words (first 20-30) from each category.
+    """
+    user_id = int(get_jwt_identity())
+
+    coverage_run = CoverageRun.query.filter_by(id=run_id, user_id=user_id).first()
+    if not coverage_run:
+        return jsonify({'error': 'Coverage run not found'}), 404
+
+    if coverage_run.status != 'completed':
+        return jsonify({'error': 'Coverage run must be completed for diagnosis'}), 400
+
+    try:
+        # Get the wordlist used for this run
+        wordlist = WordList.query.get(coverage_run.wordlist_id)
+        if not wordlist or not wordlist.words_json:
+            return jsonify({'error': 'WordList not found or empty'}), 404
+
+        wordlist_keys = set(wordlist.words_json)
+
+        # Get covered words from assignments
+        assignments = CoverageAssignment.query.filter_by(coverage_run_id=run_id).all()
+        covered_words = set(a.word_key for a in assignments)
+
+        # Calculate uncovered words
+        uncovered_words = wordlist_keys - covered_words
+
+        if not uncovered_words:
+            return jsonify({
+                'message': 'All words covered!',
+                'total_words': len(wordlist_keys),
+                'covered_words': len(covered_words),
+                'uncovered_words': 0,
+                'categories': {}
+            }), 200
+
+        # Get source sentences to analyze
+        from app.models import History, Job
+        sentences = []
+
+        if coverage_run.source_type == 'history':
+            history = History.query.get(coverage_run.source_id)
+            if history and history.sentences:
+                sentences = [s.get('normalized', s.get('original', '')) for s in history.sentences]
+        elif coverage_run.source_type == 'job':
+            job = Job.query.get(coverage_run.source_id)
+            if job and job.chunk_results:
+                for chunk_result in job.chunk_results:
+                    chunk_sentences = chunk_result.get('sentences', [])
+                    sentences.extend([s.get('normalized', s.get('original', '')) for s in chunk_sentences])
+
+        if not sentences:
+            return jsonify({'error': 'No source sentences found'}), 404
+
+        # Initialize categories
+        not_in_corpus = set()
+        only_in_long_sentences = set()
+        only_in_short_sentences = set()
+        in_valid_but_missed = set()
+
+        # Analyze each uncovered word
+        from app.services.coverage_service import CoverageService
+        from app.utils.linguistics import LinguisticsUtils
+
+        # Create temporary coverage service for analysis
+        config = coverage_run.config_json or {}
+        temp_service = CoverageService(wordlist_keys=uncovered_words, config=config)
+
+        # Build sentence index to tokenize all sentences
+        sentence_index = temp_service.build_sentence_index(sentences)
+
+        # Build word-to-sentence mapping
+        word_to_sentences = {}
+        for idx, info in sentence_index.items():
+            token_count = info['token_count']
+            sentence_words = temp_service.filter_content_words_only(
+                info,
+                uncovered_words,
+                fold_diacritics=temp_service.fold_diacritics,
+                handle_elisions=temp_service.handle_elisions
+            )
+
+            for word in sentence_words:
+                if word not in word_to_sentences:
+                    word_to_sentences[word] = {'short': 0, 'valid': 0, 'long': 0}
+
+                if token_count < 4:
+                    word_to_sentences[word]['short'] += 1
+                elif token_count <= 8:
+                    word_to_sentences[word]['valid'] += 1
+                else:
+                    word_to_sentences[word]['long'] += 1
+
+        # Categorize uncovered words
+        for word in uncovered_words:
+            if word not in word_to_sentences:
+                # Word doesn't appear in any sentence
+                not_in_corpus.add(word)
+            else:
+                counts = word_to_sentences[word]
+
+                if counts['valid'] > 0:
+                    # Word appears in valid-length sentences but wasn't selected
+                    in_valid_but_missed.add(word)
+                elif counts['long'] > 0 and counts['short'] == 0:
+                    # Word only appears in long sentences
+                    only_in_long_sentences.add(word)
+                elif counts['short'] > 0 and counts['long'] == 0:
+                    # Word only appears in short sentences
+                    only_in_short_sentences.add(word)
+                else:
+                    # Word appears in both short and long, but not in valid range
+                    if counts['short'] > counts['long']:
+                        only_in_short_sentences.add(word)
+                    else:
+                        only_in_long_sentences.add(word)
+
+        # Sample words from each category (first 30)
+        def sample_words(word_set, limit=30):
+            return sorted(list(word_set))[:limit]
+
+        categories = {
+            'not_in_corpus': {
+                'count': len(not_in_corpus),
+                'sample_words': sample_words(not_in_corpus),
+                'description': 'Words that do not appear in any source sentence'
+            },
+            'only_in_long_sentences': {
+                'count': len(only_in_long_sentences),
+                'sample_words': sample_words(only_in_long_sentences),
+                'description': 'Words only found in sentences with 9+ words (outside 4-8 range)'
+            },
+            'only_in_short_sentences': {
+                'count': len(only_in_short_sentences),
+                'sample_words': sample_words(only_in_short_sentences),
+                'description': 'Words only found in sentences with 1-3 words'
+            },
+            'in_valid_but_missed': {
+                'count': len(in_valid_but_missed),
+                'sample_words': sample_words(in_valid_but_missed),
+                'description': 'Words in 4-8 word sentences that the algorithm did not select'
+            }
+        }
+
+        # Generate recommendation
+        recommendation = _generate_recommendation(categories, len(uncovered_words))
+
+        return jsonify({
+            'total_words': len(wordlist_keys),
+            'covered_words': len(covered_words),
+            'uncovered_words': len(uncovered_words),
+            'coverage_percentage': (len(covered_words) / len(wordlist_keys) * 100) if wordlist_keys else 0,
+            'categories': categories,
+            'recommendation': recommendation
+        }), 200
+
+    except Exception as e:
+        logger.exception(f"Error diagnosing coverage run {run_id}: {e}")
+        return jsonify({'error': f'Diagnosis failed: {str(e)}'}), 500
+
+
+def _generate_recommendation(categories, total_uncovered):
+    """Generate a simple recommendation based on diagnosis results"""
+    not_in_corpus = categories['not_in_corpus']['count']
+    only_long = categories['only_in_long_sentences']['count']
+    only_short = categories['only_in_short_sentences']['count']
+    in_valid = categories['in_valid_but_missed']['count']
+
+    recommendations = []
+
+    if not_in_corpus > total_uncovered * 0.5:
+        recommendations.append(f"{not_in_corpus} words ({not_in_corpus/total_uncovered*100:.0f}%) are not in your source material. Upload more novels or expand your corpus.")
+
+    if only_long > total_uncovered * 0.3:
+        recommendations.append(f"{only_long} words only appear in long sentences (9+ words). Consider adjusting the sentence length limit in future runs.")
+
+    if only_short > total_uncovered * 0.2:
+        recommendations.append(f"{only_short} words only appear in very short sentences (1-3 words). These may be function words or fragments.")
+
+    if in_valid > total_uncovered * 0.2:
+        recommendations.append(f"{in_valid} words are in valid-length sentences but weren't selected. The algorithm may need more iterations or the words might be in sentences competing with higher-scoring options.")
+
+    if not recommendations:
+        recommendations.append("Most uncovered words are due to corpus limitations or sentence length constraints. Consider uploading additional source material.")
+
+    return " ".join(recommendations)
 
 
 # Serve coverage logs without authentication (careful: ensure your deployment secures /logs if needed)

@@ -1,5 +1,5 @@
 """Service for managing user credits and ledger operations"""
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -24,12 +24,12 @@ class CreditService:
     @staticmethod
     def get_current_month() -> str:
         """Get current month in YYYY-MM format"""
-        return datetime.utcnow().strftime('%Y-%m')
+        return datetime.now(timezone.utc).strftime('%Y-%m')
     
     @staticmethod
     def get_next_reset_date() -> str:
         """Get the next credit reset date (first day of next month)"""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if now.month == 12:
             next_month = datetime(now.year + 1, 1, 1)
         else:

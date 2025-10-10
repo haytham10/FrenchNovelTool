@@ -180,6 +180,70 @@ def reconcile_stuck_chunks_endpoint():
         return jsonify({'error': str(e)}), 500
 
 
+@main_bp.route('/admin/terminate-stuck-jobs', methods=['POST'])
+@jwt_required()
+def terminate_stuck_jobs_endpoint():
+    """Emergency admin endpoint to terminate jobs stuck in processing state.
+    
+    Request body (optional):
+    {
+        "max_age_hours": 3  // Jobs older than this will be terminated (default: 3)
+    }
+    
+    This triggers the terminate_stuck_jobs task which:
+    - Finds jobs stuck in 'processing' state beyond max_age_hours
+    - Marks them as failed
+    - Marks all their pending/processing chunks as failed
+    - Prevents runaway resource consumption
+    
+    Returns a summary of terminated jobs.
+    """
+    try:
+        user_id = int(get_jwt_identity())
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        
+        # Get max_age_hours from request (default: 3)
+        data = request.get_json() or {}
+        max_age_hours = data.get('max_age_hours', 3)
+        
+        # Validate max_age_hours
+        try:
+            max_age_hours = int(max_age_hours)
+            if max_age_hours < 1 or max_age_hours > 24:
+                return jsonify({'error': 'max_age_hours must be between 1 and 24'}), 400
+        except (ValueError, TypeError):
+            return jsonify({'error': 'max_age_hours must be an integer'}), 400
+        
+        # Import and trigger terminate task
+        from app.tasks import terminate_stuck_jobs
+        
+        task = terminate_stuck_jobs.apply_async(args=[max_age_hours])
+        
+        current_app.logger.info(
+            f'User {user.email} triggered terminate_stuck_jobs (max_age={max_age_hours}h) '
+            f'via admin endpoint, task_id={task.id}'
+        )
+        
+        # Wait briefly for result
+        try:
+            result = task.get(timeout=30)
+            return jsonify({
+                'message': f'Termination completed: {result.get("count", 0)} jobs terminated',
+                'result': result
+            }), 200
+        except Exception:
+            return jsonify({
+                'message': 'Termination started',
+                'task_id': task.id
+            }), 202
+        
+    except Exception as e:
+        current_app.logger.exception('Failed to trigger terminate_stuck_jobs')
+        return jsonify({'error': str(e)}), 500
+
+
 @main_bp.route('/extract-pdf-text', methods=['POST'])
 @jwt_required()
 @limiter.limit("20 per minute")
