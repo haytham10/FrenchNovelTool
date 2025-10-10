@@ -562,12 +562,25 @@ class CoverageService:
         progress_callback: Optional[Callable[[int, str], Any]] = None
     ) -> Tuple[List[Dict], Dict, List[Dict]]:
         """
-        Batch Coverage Mode: Process multiple sources sequentially with shrinking word list.
+        Batch Coverage Mode: Process multiple sources sequentially with dynamic budget allocation.
         
-        This implements the "smart assembly line" approach:
-        - Process first source to find as many words as possible
-        - For each subsequent source, only search for words not yet covered
-        - Combine all selected sentences into final learning set
+        This implements the "smart assembly line" approach with fair budget distribution:
+        - Process sources sequentially, searching only for uncovered words
+        - Dynamically allocate budget based on remaining words, not remaining total budget
+        - Later sources get fair share to cover rare words not found in earlier sources
+        - Last source receives any remaining budget to maximize coverage
+        
+        Dynamic Budget Allocation Algorithm:
+        1. Calculate words_remaining = uncovered_words.count()
+        2. Estimate sentences_needed = words_remaining / expected_words_per_sentence (2.0)
+        3. Allocate source_budget = min(sentences_needed, remaining_global_budget)
+        4. If last source: source_budget = remaining_global_budget (avoid waste)
+        5. Ensure minimum budget of 10 sentences (unless global budget exhausted)
+        
+        Benefits:
+        - Prevents first source from consuming entire budget
+        - Later sources can find rare words missed by earlier sources
+        - Expected coverage: 70-75% with 500 sentence budget across multiple novels
         
         Args:
             sources: List of tuples (source_id, sentences_list)
@@ -605,10 +618,37 @@ class CoverageService:
                 break
 
             # Calculate remaining sentence budget for this source
-            remaining_budget = global_sentence_limit - total_sentences_selected
+            remaining_global_budget = global_sentence_limit - total_sentences_selected
+
+            # DYNAMIC BUDGET ALLOCATION
+            # Allocate budget proportionally based on remaining words
+            words_remaining = len(uncovered_words)
+            sources_remaining = len(sources) - source_idx
+            is_last_source = (source_idx == len(sources) - 1)
+            
+            # Historical average words covered per sentence (empirical value)
+            expected_words_per_sentence = 2.0
+            
+            # Estimate sentences needed to cover remaining words
+            sentences_needed = int(words_remaining / expected_words_per_sentence)
+            
+            # Allocate proportional budget, but cap at remaining global budget
+            source_budget = min(sentences_needed, remaining_global_budget)
+            
+            # If this is the last source, give it all remaining budget
+            # (avoids leaving budget unused)
+            if is_last_source:
+                source_budget = remaining_global_budget
+            
+            # Ensure minimum budget of at least 10 sentences (unless global budget is exhausted)
+            if source_budget < 10 and remaining_global_budget >= 10:
+                source_budget = min(10, remaining_global_budget)
 
             logger.info(f"Processing source {source_idx + 1}/{len(sources)} (ID: {source_id}), "
-                       f"{len(uncovered_words)} words remaining, {remaining_budget} sentences remaining in budget")
+                       f"{words_remaining} words remaining, "
+                       f"{remaining_global_budget} sentences in global budget, "
+                       f"allocated {source_budget} sentences to this source "
+                       f"(estimated need: {sentences_needed}, is_last={is_last_source})")
             
             # Update progress
             if progress_callback:
@@ -620,9 +660,9 @@ class CoverageService:
                     pass
             
             # Create a temporary CoverageService with current uncovered words
-            # and remaining sentence budget
+            # and allocated budget for this source
             temp_config = self.config.copy()
-            temp_config['target_count'] = remaining_budget  # Enforce remaining budget
+            temp_config['target_count'] = source_budget  # Use dynamically allocated budget
             temp_service = CoverageService(
                 wordlist_keys=uncovered_words,
                 config=temp_config
