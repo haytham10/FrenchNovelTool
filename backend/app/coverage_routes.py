@@ -292,6 +292,60 @@ def delete_wordlist(wordlist_id):
 
 
 # ============================================================================
+# Global Wordlist Management Endpoints
+# ============================================================================
+
+@coverage_bp.route('/wordlists/global/stats', methods=['GET'])
+@jwt_required()
+def get_global_wordlist_stats():
+    """Get statistics about global wordlists"""
+    from app.services.global_wordlist_manager import GlobalWordlistManager
+    
+    try:
+        stats = GlobalWordlistManager.get_stats()
+        return jsonify(stats), 200
+    except Exception as e:
+        logger.exception(f"Error getting global wordlist stats: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@coverage_bp.route('/wordlists/global/default', methods=['GET'])
+@jwt_required()
+def get_global_default_wordlist():
+    """Get the global default wordlist"""
+    from app.services.global_wordlist_manager import GlobalWordlistManager
+    
+    try:
+        default = GlobalWordlistManager.get_global_default()
+        
+        if not default:
+            return jsonify({'error': 'No global default wordlist found'}), 404
+        
+        return jsonify(default.to_dict()), 200
+    except Exception as e:
+        logger.exception(f"Error getting global default wordlist: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@coverage_bp.route('/wordlists/global', methods=['GET'])
+@jwt_required()
+def list_global_wordlists():
+    """List all global wordlists (admin/info endpoint)"""
+    from app.services.global_wordlist_manager import GlobalWordlistManager
+    
+    try:
+        global_wordlists = GlobalWordlistManager.list_global_wordlists()
+        
+        return jsonify({
+            'wordlists': [wl.to_dict() for wl in global_wordlists],
+            'total': len(global_wordlists)
+        }), 200
+    except Exception as e:
+        logger.exception(f"Error listing global wordlists: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
 # Coverage Run Endpoints
 # ============================================================================
 

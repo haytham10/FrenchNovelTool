@@ -1488,6 +1488,109 @@ fold_diacritics: true
 }
 ```
 
+### Global Wordlist Management
+
+#### Get Global Wordlist Statistics
+
+**Endpoint:** `GET /api/v1/wordlists/global/stats`
+
+**Authentication:** Required
+
+**Description:** Get statistics about all global wordlists in the system.
+
+**Response:**
+```json
+{
+  "total_global_wordlists": 2,
+  "has_default": true,
+  "default_wordlist": {
+    "id": 1,
+    "name": "French 2K (v1.0.0)",
+    "normalized_count": 1987
+  },
+  "all_global_wordlists": [
+    {
+      "id": 1,
+      "name": "French 2K (v1.0.0)",
+      "normalized_count": 1987,
+      "is_default": true
+    },
+    {
+      "id": 5,
+      "name": "French 5K",
+      "normalized_count": 4823,
+      "is_default": false
+    }
+  ]
+}
+```
+
+#### Get Global Default Wordlist
+
+**Endpoint:** `GET /api/v1/wordlists/global/default`
+
+**Authentication:** Required
+
+**Description:** Get the current global default wordlist that's used when no specific wordlist is selected.
+
+**Response:**
+```json
+{
+  "id": 1,
+  "owner_user_id": null,
+  "name": "French 2K (v1.0.0)",
+  "source_type": "file",
+  "source_ref": "/app/data/wordlists/french_2k.txt",
+  "normalized_count": 1987,
+  "canonical_samples": ["le", "de", "un", "etre", ...],
+  "is_global_default": true,
+  "created_at": "2024-01-15T12:00:00Z",
+  "updated_at": "2024-01-15T12:00:00Z"
+}
+```
+
+**Error Response (404):**
+```json
+{
+  "error": "No global default wordlist found"
+}
+```
+
+#### List All Global Wordlists
+
+**Endpoint:** `GET /api/v1/wordlists/global`
+
+**Authentication:** Required
+
+**Description:** List all global wordlists (those with `owner_user_id=null`). Ordered by default status and creation date.
+
+**Response:**
+```json
+{
+  "wordlists": [
+    {
+      "id": 1,
+      "owner_user_id": null,
+      "name": "French 2K (v1.0.0)",
+      "source_type": "file",
+      "normalized_count": 1987,
+      "is_global_default": true,
+      "created_at": "2024-01-15T12:00:00Z"
+    },
+    {
+      "id": 5,
+      "owner_user_id": null,
+      "name": "French 5K",
+      "source_type": "file",
+      "normalized_count": 4823,
+      "is_global_default": false,
+      "created_at": "2024-02-01T10:00:00Z"
+    }
+  ],
+  "total": 2
+}
+```
+
 ### Coverage Runs
 
 #### Create Coverage Run
