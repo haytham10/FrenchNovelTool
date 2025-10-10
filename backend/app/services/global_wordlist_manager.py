@@ -20,7 +20,8 @@ class GlobalWordlistManager:
     # Configuration
     DEFAULT_WORDLIST_NAME = "French 2K"
     DEFAULT_VERSION = "1.0.0"
-    WORDLIST_DATA_DIR = Path(__file__).parent.parent / 'data' / 'wordlists'
+    # Use absolute path from project root
+    WORDLIST_DATA_DIR = Path(__file__).parent.parent.parent / 'data' / 'wordlists'
     
     @staticmethod
     def ensure_global_default_exists() -> WordList:
@@ -147,7 +148,7 @@ class GlobalWordlistManager:
             WordList: The newly set default wordlist
         """
         # Get the wordlist
-        wordlist = WordList.query.get(wordlist_id)
+        wordlist = db.session.get(WordList, wordlist_id)
         if not wordlist:
             raise ValueError(f"Wordlist not found: {wordlist_id}")
         
