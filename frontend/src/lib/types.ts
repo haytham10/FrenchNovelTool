@@ -104,6 +104,12 @@ export interface Job {
   current_step?: string;
   error_message?: string;
   chunk_results?: ChunkResult[];
+  // Optional fields used by the UI / websocket updates
+  total_chunks?: number;
+  processed_chunks?: number;
+  failed_chunks?: number[];
+  processing_time_seconds?: number;
+  gemini_tokens_used?: number;
   created_at: string;
   updated_at: string;
 }
