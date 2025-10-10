@@ -614,6 +614,49 @@ def get_coverage_run(run_id):
                 }
                 for rank, assignment in enumerate(ordered_assignments, start=1)
             ]
+    elif coverage_run.mode == 'batch':
+        # Build learning set from assignments for batch mode
+        all_assignments = assignments_query.all()
+        # Remove duplicates and sort by sentence index
+        seen_sentences = set()
+        ordered_assignments = []
+        for assignment in all_assignments:
+            if assignment.sentence_index is not None and assignment.sentence_index not in seen_sentences:
+                seen_sentences.add(assignment.sentence_index)
+                ordered_assignments.append(assignment)
+        ordered_assignments.sort(key=lambda a: a.sentence_index)
+
+        learning_set = [
+            {
+                'rank': rank,
+                'sentence_index': assignment.sentence_index,
+                'sentence_text': assignment.sentence_text,
+                'token_count': None,
+                'new_word_count': None,
+                'score': assignment.sentence_score,
+            }
+            for rank, assignment in enumerate(ordered_assignments, start=1)
+        ]
+    elif coverage_run.mode == 'filter':
+        # Build learning set from assignments for filter mode
+        all_assignments = assignments_query.all()
+        # Sort by sentence index to maintain original order
+        ordered_assignments = sorted(
+            [a for a in all_assignments if a.sentence_index is not None],
+            key=lambda a: a.sentence_index
+        )
+
+        learning_set = [
+            {
+                'rank': rank,
+                'sentence_index': assignment.sentence_index,
+                'sentence_text': assignment.sentence_text,
+                'token_count': None,
+                'new_word_count': None,
+                'score': assignment.sentence_score,
+            }
+            for rank, assignment in enumerate(ordered_assignments, start=1)
+        ]
     
     return jsonify({
         'coverage_run': coverage_run.to_dict(),

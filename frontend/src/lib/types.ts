@@ -1,3 +1,5 @@
+import { DiagnosisCategory } from './api';
+
 /**
  * Shared TypeScript types for the application
  */
@@ -239,11 +241,10 @@ export interface CoverageDiagnosis {
   coverage_percentage: number;
   recommendation: string;
   categories: {
-    [key: string]: {
-      description: string;
-      count: number;
-      sample_words: string[];
-    };
+    not_in_corpus: DiagnosisCategory;
+    only_in_long_sentences: DiagnosisCategory;
+    only_in_short_sentences: DiagnosisCategory;
+    in_valid_but_missed: DiagnosisCategory;
   };
 }
 

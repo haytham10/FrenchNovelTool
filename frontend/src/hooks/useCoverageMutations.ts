@@ -11,6 +11,7 @@ import {
   downloadCoverageRunCSV,
   diagnoseCoverageRun,
 } from '@/lib/api';
+import type { CoverageDiagnosis } from '@/lib/types';
 
 interface UseCoverageMutationsProps {
   setSelectedWordListId: (id: number) => void;
@@ -20,7 +21,7 @@ interface UseCoverageMutationsProps {
   setSheetUrl: (url: string) => void;
   setCurrentRunId: (id: number | null) => void;
   setShowExportDialog: (open: boolean) => void;
-  setDiagnosisData: (data: any) => void;
+  setDiagnosisData: (data: CoverageDiagnosis | null) => void;
   setShowDiagnosisDialog: (open: boolean) => void;
   setLoadingDiagnosis: (loading: boolean) => void;
 }
@@ -85,7 +86,14 @@ export function useCoverageMutations({
       wordlistId?: number;
       config: Record<string, unknown>;
     }) => {
-      return createCoverageRun(params);
+      return createCoverageRun({
+        mode: params.mode,
+        source_type: params.sourceType,
+        source_id: params.sourceId,
+        source_ids: params.sourceIds,
+        wordlist_id: params.wordlistId,
+        config: params.config,
+      });
     },
     onSuccess: (data, variables) => {
       setCurrentRunId(data.coverage_run.id);

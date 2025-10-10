@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import type { CoverageRun } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
@@ -33,19 +33,13 @@ export function useCoverageWebSocket({
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
+  // Use refs to store the latest callbacks without triggering reconnects
   const callbacksRef = useRef({ onProgress, onComplete, onError, onCancel });
+
+  // Update refs when callbacks change (without recreating socket)
   useEffect(() => {
     callbacksRef.current = { onProgress, onComplete, onError, onCancel };
   }, [onProgress, onComplete, onError, onCancel]);
-
-  const handleProgress = useCallback((data: CoverageRun) => {
-    setRun(data);
-    const { onProgress, onComplete, onError, onCancel } = callbacksRef.current;
-    if (data.status === 'processing' && onProgress) onProgress(data);
-    else if (data.status === 'completed' && onComplete) onComplete(data);
-    else if (data.status === 'failed' && onError) onError(data);
-    else if (data.status === 'cancelled' && onCancel) onCancel(data);
-  }, []);
 
   useEffect(() => {
     if (!runId || !enabled) return;
@@ -54,6 +48,7 @@ export function useCoverageWebSocket({
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
     const socket: Socket = io(apiUrl, {
+      path: '/socket.io/',
       transports: ['websocket'],
       reconnection: true,
       reconnectionAttempts: 5,
@@ -63,6 +58,15 @@ export function useCoverageWebSocket({
       auth: { token },
       query: { token },
     });
+
+    const handleProgress = (data: CoverageRun) => {
+      setRun(data);
+      const callbacks = callbacksRef.current;
+      if (data.status === 'processing' && callbacks.onProgress) callbacks.onProgress(data);
+      else if (data.status === 'completed' && callbacks.onComplete) callbacks.onComplete(data);
+      else if (data.status === 'failed' && callbacks.onError) callbacks.onError(data);
+      else if (data.status === 'cancelled' && callbacks.onCancel) callbacks.onCancel(data);
+    };
 
     socket.on('connect', () => {
       setConnected(true);
@@ -90,13 +94,11 @@ export function useCoverageWebSocket({
     socket.on('coverage_progress', handleProgress);
 
     return () => {
-      try {
-        socket.emit('leave_coverage_run', { run_id: runId });
-      } finally {
-        socket.disconnect();
-      }
+      // Clean disconnect: leave room first, then disconnect
+      socket.emit('leave_coverage_run', { run_id: runId });
+      socket.disconnect();
     };
-  }, [runId, enabled, handleProgress]);
+  }, [runId, enabled]); // Only recreate socket when runId or enabled changes
 
   return { run, connected, error };
 }

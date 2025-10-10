@@ -23,6 +23,7 @@ import {
   CoverageAssignment,
   LearningSetEntry,
   HistoryEntry,
+  CoverageDiagnosis,
 } from '@/lib/types';
 import { useCoverageWebSocket } from '@/lib/useCoverageWebSocket';
 import RouteGuard from '@/components/RouteGuard';
@@ -71,7 +72,7 @@ export default function CoveragePage() {
   const [showExportDialog, setShowExportDialog] = useState<boolean>(false);
   const [exportSheetName, setExportSheetName] = useState<string>('');
   const [showDiagnosisDialog, setShowDiagnosisDialog] = useState<boolean>(false);
-  const [diagnosisData, setDiagnosisData] = useState(null);
+  const [diagnosisData, setDiagnosisData] = useState<CoverageDiagnosis | null>(null);
   const [loadingDiagnosis, setLoadingDiagnosis] = useState<boolean>(false);
   const [sentenceCap, setSentenceCap] = useState<number>(500);
   const [activeStep, setActiveStep] = useState<number>(currentRunId ? 2 : 0);

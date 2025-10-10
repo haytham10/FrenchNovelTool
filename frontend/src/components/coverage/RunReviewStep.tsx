@@ -202,7 +202,11 @@ export default function RunReviewStep({
           {/* Enhanced KPI Cards */}
           <ResultsKPICards
             mode={coverageRun.mode as 'coverage' | 'filter' | 'batch'}
-            selectedCount={getNumberStat('selected_count') ?? getNumberStat('selected_sentence_count')}
+            selectedCount={
+              coverageRun.mode === 'filter'
+                ? assignments.length
+                : (getNumberStat('selected_count') ?? getNumberStat('selected_sentence_count'))
+            }
             wordsCovered={covered}
             wordsTotal={total}
             filterAcceptanceRatio={getNumberStat('filter_acceptance_ratio')}
@@ -263,12 +267,14 @@ export default function RunReviewStep({
                     placeholder="Search by rank or sentence..."
                     value={resultsSearch}
                     onChange={(e) => { setResultsSearch(e.target.value); setResultsPage(1); }}
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <SearchIcon fontSize="small" />
-                        </InputAdornment>
-                      ),
+                    slotProps={{
+                      input: {
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <SearchIcon fontSize="small" />
+                          </InputAdornment>
+                        ),
+                      },
                     }}
                   />
                 </Box>
