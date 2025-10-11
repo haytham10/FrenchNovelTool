@@ -1020,6 +1020,8 @@ def duplicate_history_entry(entry_id):
 @jwt_required()
 def get_job_status(job_id):
     """Get job status and progress"""
+    JobService.update_job_progress(job_id)  # Update progress before returning status
+    
     user_id = int(get_jwt_identity())
     job = Job.query.get_or_404(job_id)
     

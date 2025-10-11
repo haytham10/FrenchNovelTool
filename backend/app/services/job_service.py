@@ -3,8 +3,8 @@ import math
 from typing import Optional, Dict, Any, Tuple
 from datetime import datetime, timezone
 from flask import current_app
-from app import db
-from app.models import Job, History
+from app import db, socketio
+from app.models import Job, History, JobChunk
 from app.constants import (
     JOB_STATUS_PENDING,
     JOB_STATUS_PROCESSING,
@@ -309,6 +309,43 @@ class JobService:
             query = query.limit(limit)
         
         return query.all()
+
+    @staticmethod
+    def update_job_progress(job_id: int):
+        """
+        Calculates and updates job progress based on completed chunks
+        and emits a socket event to notify the client.
+        """
+        job = JobService.get_job(job_id)
+        if not job:
+            current_app.logger.warning(f"update_job_progress called for non-existent job_id: {job_id}")
+            return
+
+        try:
+            completed_chunks = db.session.query(JobChunk).filter_by(job_id=job_id, status='completed').count()
+            total_chunks = job.total_chunks
+
+            if total_chunks > 0:
+                progress = int((completed_chunks / total_chunks) * 100)
+                job.progress_percent = progress
+            else:
+                job.progress_percent = 0
+            
+            db.session.commit()
+
+            # Emit progress update
+            socketio.emit('job_progress', {
+                'job_id': job.id,
+                'status': job.status,
+                'progress': job.progress_percent,
+                'step': job.current_step
+            }, room=f'job_{job.id}')
+            
+            current_app.logger.info(f"Job {job.id} progress updated to {job.progress_percent}% ({completed_chunks}/{total_chunks} chunks)")
+
+        except Exception as e:
+            current_app.logger.error(f"Error updating job progress for job {job_id}: {e}")
+            db.session.rollback()
     
     @staticmethod
     def estimate_job_cost(text: str, model_preference: str, 
