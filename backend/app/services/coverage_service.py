@@ -304,15 +304,15 @@ class CoverageService:
 
         logger.info(f"Built word frequency index for {len(word_frequency_index)} words")
 
-        # Track uncovered words
-        uncovered_words = self.wordlist_keys.copy()
+        # Track uncovered words - use frozenset for memory efficiency
+        uncovered_words = frozenset(self.wordlist_keys)
 
-        # Track assignments and selections
+        # Track assignments and selections - use more memory-efficient structures
         assignments = []
         word_to_sentence = {}
         selected_sentence_order = []
         selected_sentence_set = set()
-        sentence_contribution = defaultdict(int)
+        sentence_contribution = {}
         sentence_selection_score = {}
         sentence_covered_words = {}  # Track which words each sentence covered
 

@@ -29,14 +29,14 @@ class ChunkingService:
         self._load_spacy_model()
 
     def _load_spacy_model(self):
-        """Load French spaCy model with error handling"""
+        """Load French spaCy model with error handling and memory optimization"""
         try:
             import spacy
-            # Load French model, disable NER for performance
-            # Keep tokenizer, tagger, parser (needed for sentence boundaries and POS tags)
-            # Using fr_core_news_md for production (better memory efficiency)
-            self.nlp = spacy.load("fr_core_news_md", disable=["ner"])
-            logger.info("Successfully loaded spaCy French model (fr_core_news_md)")
+            # Load French model with maximum memory optimization
+            # Disable NER and parser for performance, keep only tokenizer and tagger
+            # Using fr_core_news_sm for minimal memory footprint
+            self.nlp = spacy.load("fr_core_news_sm", disable=["ner", "parser"])
+            logger.info("Successfully loaded spaCy French model (fr_core_news_sm) with memory optimization")
         except Exception as e:
             logger.warning(f"Failed to load spaCy model: {e}. Preprocessing features will be disabled.")
             self.nlp = None

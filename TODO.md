@@ -1,4 +1,0 @@
--- Fix KPI results on batch mode
--- Fix ranking on coverage mode
--- pre-select default wordlist
--- add a sign to default wordlist

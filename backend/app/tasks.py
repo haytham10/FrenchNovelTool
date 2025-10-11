@@ -128,7 +128,7 @@ def get_constants():
     return JOB_STATUS_PROCESSING, JOB_STATUS_COMPLETED, JOB_STATUS_FAILED, MODEL_PREFERENCE_MAP
 
 
-@get_celery().task(bind=True, name='app.tasks.process_chunk')
+@get_celery().task(bind=True, name='app.tasks.process_chunk', soft_time_limit=300, time_limit=360)
 def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
     """
     Process a single PDF chunk with DB-backed state tracking.
@@ -218,14 +218,22 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
             chunk_bytes = base64.b64decode(chunk_info['file_b64'])
             pdf_file = io.BytesIO(chunk_bytes)
             pdf_reader = PdfReader(pdf_file)
-            for page in pdf_reader.pages:
-                text += (page.extract_text() or "") + "\n"
+            for i, page in enumerate(pdf_reader.pages):
+                page_text = page.extract_text() or ""
+                text += page_text + "\n"
+                # Clear page reference to free memory
+                if i % 10 == 0:  # Every 10 pages
+                    del page
         else:
             # Fallback to file path if present
             with open(chunk_info['file_path'], 'rb') as pdf_file:
                 pdf_reader = PdfReader(pdf_file)
-                for page in pdf_reader.pages:
-                    text += (page.extract_text() or "") + "\n"
+                for i, page in enumerate(pdf_reader.pages):
+                    page_text = page.extract_text() or ""
+                    text += page_text + "\n"
+                    # Clear page reference to free memory
+                    if i % 10 == 0:  # Every 10 pages
+                        del page
         
         # If no extractable text, fail this chunk early
         if not text.strip():
@@ -1037,7 +1045,7 @@ def terminate_stuck_jobs(self, max_age_hours: int = 3):
         return {'status': 'error', 'error': str(e)}
 
 
-@get_celery().task(bind=True, name='app.tasks.process_pdf_async')
+@get_celery().task(bind=True, name='app.tasks.process_pdf_async', soft_time_limit=600, time_limit=720)
 def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings: dict, file_b64: Optional[str] = None):
     """
     Process PDF asynchronously with chunking and progress tracking.
@@ -1305,7 +1313,7 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
             pass
 
 
-@get_celery().task(bind=True, name='app.tasks.coverage_build_async')
+@get_celery().task(bind=True, name='app.tasks.coverage_build_async', soft_time_limit=900, time_limit=1080)
 def coverage_build_async(self, run_id: int):
     """
     Asynchronously build vocabulary coverage analysis.

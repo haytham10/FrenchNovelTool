@@ -310,6 +310,8 @@ class JobChunk(db.Model):
     __table_args__ = (
         db.UniqueConstraint('job_id', 'chunk_id', name='unique_job_chunk'),
         db.Index('idx_job_chunks_job_status', 'job_id', 'status'),
+        db.Index('idx_job_chunks_job_chunk', 'job_id', 'chunk_id'),
+        db.Index('idx_job_chunks_job_status_chunk', 'job_id', 'status', 'chunk_id'),
     )
     
     def __repr__(self):
