@@ -1,0 +1,126 @@
+[2025-10-11 15:14:13,164: INFO/ForkPoolWorker-14] Successfully loaded spaCy French model (fr_core_news_sm) with memory optimization
+[2025-10-11 15:14:14,771: WARNING/ForkPoolWorker-13] [2025-10-11 15:14:14,771] INFO in chunking_service: Successfully loaded spaCy French model (fr_core_news_sm) with memory optimization
+[2025-10-11 15:14:14,771: INFO/ForkPoolWorker-13] Successfully loaded spaCy French model (fr_core_news_sm) with memory optimization
+[2025-10-11 15:14:15,432: WARNING/ForkPoolWorker-14] [2025-10-11 15:14:15,432] WARNING in tasks: Chunk 1 (job 82) has exhausted all retry attempts (3/3). Failing permanently.
+[2025-10-11 15:14:15,432: WARNING/ForkPoolWorker-14] Chunk 1 (job 82) has exhausted all retry attempts (3/3). Failing permanently.
+[2025-10-11 15:14:15,456: INFO/ForkPoolWorker-14] Task app.tasks.process_chunk[82ed8ce9-9742-44f3-8a98-c8a4c3c4c2ba] succeeded in 9.462256552651525s: {'chunk_id': 1, 'status': 'failed', 'error': '[E030] Sentence boundaries unset. You can add the \'sentencizer\' component to the pipeline with: `nlp.add_pipe(\'sentencizer\')`. Alternatively, add the dependency parser or sentence recognizer, or set sentence boundaries by setting `doc[i].is_sent_start`.', 'start_page': 38, 'end_page': 79}
+[2025-10-11 15:14:15,462: INFO/MainProcess] Task app.tasks.chunk_watchdog[a3551056-8e88-4f2b-bb44-203bdefbacb2] received
+[2025-10-11 15:14:15,465: INFO/MainProcess] Task app.tasks.chunk_watchdog[afadc89a-04f8-426d-91d8-b20a7f7a55b1] received
+[2025-10-11 15:14:15,468: INFO/MainProcess] Task app.tasks.finalize_job_results[95097368-253e-4af2-a30a-106b54c6256a] received
+[2025-10-11 15:14:16,198: WARNING/ForkPoolWorker-13] [2025-10-11 15:14:16,198] WARNING in tasks: Chunk 2 (job 82) has exhausted all retry attempts (3/3). Failing permanently.
+[2025-10-11 15:14:16,198: WARNING/ForkPoolWorker-13] Chunk 2 (job 82) has exhausted all retry attempts (3/3). Failing permanently.
+[2025-10-11 15:14:16,207: WARNING/ForkPoolWorker-15] [2025-10-11 15:14:16,206] INFO in tasks: Scheduled chunk_watchdog for job 82 chunk 3 in 600s
+[2025-10-11 15:14:16,206: INFO/ForkPoolWorker-15] Scheduled chunk_watchdog for job 82 chunk 3 in 600s
+[2025-10-11 15:14:16,214: INFO/ForkPoolWorker-13] Task app.tasks.process_chunk[8c5c2ded-8adc-4072-b1fc-faaff17292e9] succeeded in 10.508601781912148s: {'chunk_id': 2, 'status': 'failed', 'error': '[E030] Sentence boundaries unset. You can add the \'sentencizer\' component to the pipeline with: `nlp.add_pipe(\'sentencizer\')`. Alternatively, add the dependency parser or sentence recognizer, or set sentence boundaries by setting `doc[i].is_sent_start`.', 'start_page': 78, 'end_page': 119}
+[2025-10-11 15:14:16,219: INFO/MainProcess] Task app.tasks.chunk_watchdog[dfa79546-33ab-4ed0-bc14-d0256b5394ba] received
+[2025-10-11 15:14:16,221: INFO/MainProcess] Task app.tasks.chunk_watchdog[33ba521b-c9b0-40f5-91c6-afb9b0146073] received
+[2025-10-11 15:14:16,224: INFO/MainProcess] Task app.tasks.chunk_watchdog[4b7519f2-270d-4af2-aaff-f0d060e2c86a] received
+[2025-10-11 15:14:16,252: WARNING/ForkPoolWorker-15] [2025-10-11 15:14:16,252] INFO in tasks: process_chunk: memory_before_pdf=237232 KiB
+[2025-10-11 15:14:16,252: INFO/ForkPoolWorker-15] process_chunk: memory_before_pdf=237232 KiB
+[2025-10-11 15:14:16,650: WARNING/ForkPoolWorker-16] [2025-10-11 15:14:16,650] INFO in tasks: Scheduled chunk_watchdog for job 82 chunk 4 in 600s
+[2025-10-11 15:14:16,651: INFO/MainProcess] Task app.tasks.chunk_watchdog[60d1e224-bdb8-4192-9cd3-bd0027d06afd] received
+[2025-10-11 15:14:16,650: INFO/ForkPoolWorker-16] Scheduled chunk_watchdog for job 82 chunk 4 in 600s
+[2025-10-11 15:14:16,703: WARNING/ForkPoolWorker-16] [2025-10-11 15:14:16,703] INFO in tasks: process_chunk: memory_before_pdf=237296 KiB
+[2025-10-11 15:14:16,703: INFO/ForkPoolWorker-16] process_chunk: memory_before_pdf=237296 KiB
+[2025-10-11 15:14:16,815: WARNING/ForkPoolWorker-16] [2025-10-11 15:14:16,815] INFO in tasks: Processing chunk 4 (job 82) pages=158-163 page_count=6 text_len=7561
+[2025-10-11 15:14:16,815: INFO/ForkPoolWorker-16] Processing chunk 4 (job 82) pages=158-163 page_count=6 text_len=7561
+[2025-10-11 15:14:16,816: WARNING/ForkPoolWorker-16] [2025-10-11 15:14:16,816] INFO in tasks: process_chunk: memory_before_gemini=238832 KiB text_len=7561
+[2025-10-11 15:14:16,816: INFO/ForkPoolWorker-16] process_chunk: memory_before_gemini=238832 KiB text_len=7561
+[2025-10-11 15:14:17,102: WARNING/ForkPoolWorker-15] [2025-10-11 15:14:17,102] INFO in tasks: Processing chunk 3 (job 82) pages=118-159 page_count=42 text_len=56169
+[2025-10-11 15:14:17,102: INFO/ForkPoolWorker-15] Processing chunk 3 (job 82) pages=118-159 page_count=42 text_len=56169
+[2025-10-11 15:14:17,102: WARNING/ForkPoolWorker-15] [2025-10-11 15:14:17,102] INFO in tasks: process_chunk: memory_before_gemini=242304 KiB text_len=56169
+[2025-10-11 15:14:17,102: INFO/ForkPoolWorker-15] process_chunk: memory_before_gemini=242304 KiB text_len=56169
+[2025-10-11 15:14:21,917: WARNING/ForkPoolWorker-16] [2025-10-11 15:14:21,916] INFO in chunking_service: Successfully loaded spaCy French model (fr_core_news_sm) with memory optimization
+[2025-10-11 15:14:21,916: INFO/ForkPoolWorker-16] Successfully loaded spaCy French model (fr_core_news_sm) with memory optimization
+[2025-10-11 15:14:22,115: WARNING/ForkPoolWorker-16] [2025-10-11 15:14:22,115] WARNING in tasks: Chunk 4 (job 82) has exhausted all retry attempts (3/3). Failing permanently.
+[2025-10-11 15:14:22,115: WARNING/ForkPoolWorker-16] Chunk 4 (job 82) has exhausted all retry attempts (3/3). Failing permanently.
+[2025-10-11 15:14:22,126: INFO/ForkPoolWorker-16] Task app.tasks.process_chunk[d6ca28c5-3d62-4090-82f8-814bee69e08c] succeeded in 5.570436716079712s: {'chunk_id': 4, 'status': 'failed', 'error': '[E030] Sentence boundaries unset. You can add the \'sentencizer\' component to the pipeline with: `nlp.add_pipe(\'sentencizer\')`. Alternatively, add the dependency parser or sentence recognizer, or set sentence boundaries by setting `doc[i].is_sent_start`.', 'start_page': 158, 'end_page': 163}
+[2025-10-11 15:14:22,577: WARNING/ForkPoolWorker-17] [2025-10-11 15:14:22,577] INFO in tasks: Job 82: finalizing 5 chunk results
+[2025-10-11 15:14:22,577: INFO/ForkPoolWorker-17] Job 82: finalizing 5 chunk results
+[2025-10-11 15:14:22,835: WARNING/ForkPoolWorker-17] [2025-10-11 15:14:22,835] WARNING in tasks: Job 82: 1 chunks still in non-terminal state (statuses: ['processing']). Retrying finalization in 15s (attempt 1/10)
+[2025-10-11 15:14:22,835: WARNING/ForkPoolWorker-17] Job 82: 1 chunks still in non-terminal state (statuses: ['processing']). Retrying finalization in 15s (attempt 1/10)
+[2025-10-11 15:14:22,849: WARNING/ForkPoolWorker-17] [2025-10-11 15:14:22,848] INFO in tasks: Job 82: finalize retry scheduled: Retry in 15s
+[2025-10-11 15:14:22,848: INFO/ForkPoolWorker-17] Job 82: finalize retry scheduled: Retry in 15s
+[2025-10-11 15:14:22,850: INFO/MainProcess] Task app.tasks.finalize_job_results[95097368-253e-4af2-a30a-106b54c6256a] received
+[2025-10-11 15:14:22,859: INFO/ForkPoolWorker-17] Task app.tasks.finalize_job_results[95097368-253e-4af2-a30a-106b54c6256a] retry: Retry in 15s
+[2025-10-11 15:14:23,129: WARNING/ForkPoolWorker-15] [2025-10-11 15:14:23,128] INFO in chunking_service: Successfully loaded spaCy French model (fr_core_news_sm) with memory optimization
+[2025-10-11 15:14:23,128: INFO/ForkPoolWorker-15] Successfully loaded spaCy French model (fr_core_news_sm) with memory optimization
+[2025-10-11 15:14:24,269: WARNING/ForkPoolWorker-15] [2025-10-11 15:14:24,269] WARNING in tasks: Chunk 3 (job 82) has exhausted all retry attempts (3/3). Failing permanently.
+[2025-10-11 15:14:24,269: WARNING/ForkPoolWorker-15] Chunk 3 (job 82) has exhausted all retry attempts (3/3). Failing permanently.
+[2025-10-11 15:14:24,287: INFO/MainProcess] Task app.tasks.finalize_job_results[2a3858d6-54d8-4a80-92c4-3ca748ee6d47] received
+[2025-10-11 15:14:24,287: INFO/ForkPoolWorker-15] Task app.tasks.process_chunk[7dc05fb0-55c5-468c-add9-f3f3f6f50baf] succeeded in 8.48177487961948s: {'chunk_id': 3, 'status': 'failed', 'error': '[E030] Sentence boundaries unset. You can add the \'sentencizer\' component to the pipeline with: `nlp.add_pipe(\'sentencizer\')`. Alternatively, add the dependency parser or sentence recognizer, or set sentence boundaries by setting `doc[i].is_sent_start`.', 'start_page': 118, 'end_page': 159}
+[2025-10-11 15:14:24,634: WARNING/ForkPoolWorker-17] [2025-10-11 15:14:24,634] INFO in tasks: Job 82: finalizing 5 chunk results
+[2025-10-11 15:14:24,634: INFO/ForkPoolWorker-17] Job 82: finalizing 5 chunk results
+[2025-10-11 15:14:24,704: WARNING/ForkPoolWorker-17] [2025-10-11 15:14:24,704] INFO in tasks: Job 82: loaded 5 chunks from DB for finalization
+[2025-10-11 15:14:24,704: INFO/ForkPoolWorker-17] Job 82: loaded 5 chunks from DB for finalization
+[2025-10-11 15:14:24,705: WARNING/ForkPoolWorker-17] [2025-10-11 15:14:24,705] INFO in tasks: Job 82: starting retry round 3/3 for 1 chunks
+[2025-10-11 15:14:24,705: INFO/ForkPoolWorker-17] Job 82: starting retry round 3/3 for 1 chunks
+[2025-10-11 15:14:24,717: WARNING/ForkPoolWorker-17] [2025-10-11 15:14:24,717] INFO in tasks: [EMIT_PROGRESS] Starting emission for job 82
+[2025-10-11 15:14:24,717: INFO/ForkPoolWorker-17] [EMIT_PROGRESS] Starting emission for job 82
+[2025-10-11 15:14:24,722: WARNING/ForkPoolWorker-17] [2025-10-11 15:14:24,722] INFO in socket_events: Emitting job_progress to room=job_82: progress=15%, step=Retrying 1 failed chunks (attempt 3/3), status=processing
+[2025-10-11 15:14:24,722: INFO/ForkPoolWorker-17] Emitting job_progress to room=job_82: progress=15%, step=Retrying 1 failed chunks (attempt 3/3), status=processing
+[2025-10-11 15:14:24,866: WARNING/ForkPoolWorker-17] [2025-10-11 15:14:24,866] INFO in socket_events: Successfully emitted job_progress for job 82
+[2025-10-11 15:14:24,866: INFO/ForkPoolWorker-17] Successfully emitted job_progress for job 82
+[2025-10-11 15:14:24,866: WARNING/ForkPoolWorker-17] [2025-10-11 15:14:24,866] INFO in tasks: [EMIT_PROGRESS] Completed emission for job 82
+[2025-10-11 15:14:24,866: INFO/ForkPoolWorker-17] [EMIT_PROGRESS] Completed emission for job 82
+[2025-10-11 15:14:24,914: WARNING/ForkPoolWorker-17] [2025-10-11 15:14:24,914] INFO in tasks: Job 82: dispatched 1 retry tasks
+[2025-10-11 15:14:24,914: INFO/ForkPoolWorker-17] Job 82: dispatched 1 retry tasks
+[2025-10-11 15:14:24,921: INFO/ForkPoolWorker-17] Task app.tasks.finalize_job_results[2a3858d6-54d8-4a80-92c4-3ca748ee6d47] succeeded in 0.28877062164247036s: {'status': 'retrying', 'message': 'Retrying 1 failed chunks', 'retry_round': 3}
+[2025-10-11 15:14:24,974: INFO/MainProcess] Task app.tasks.process_chunk[69df1e12-5ecb-4d91-85c4-599292b62c45] received
+[2025-10-11 15:14:25,246: WARNING/ForkPoolWorker-18] [2025-10-11 15:14:25,246] INFO in tasks: Scheduled chunk_watchdog for job 82 chunk 0 in 600s
+[2025-10-11 15:14:25,246: INFO/ForkPoolWorker-18] Scheduled chunk_watchdog for job 82 chunk 0 in 600s
+[2025-10-11 15:14:25,246: INFO/MainProcess] Task app.tasks.chunk_watchdog[18dfb828-28d0-4cc8-b0a3-cd7c6bea553d] received
+[2025-10-11 15:14:25,292: WARNING/ForkPoolWorker-18] [2025-10-11 15:14:25,292] INFO in tasks: process_chunk: memory_before_pdf=237308 KiB
+[2025-10-11 15:14:25,292: INFO/ForkPoolWorker-18] process_chunk: memory_before_pdf=237308 KiB
+[2025-10-11 15:14:26,076: WARNING/ForkPoolWorker-18] [2025-10-11 15:14:26,076] INFO in tasks: Processing chunk 0 (job 82) pages=0-39 page_count=40 text_len=47871
+[2025-10-11 15:14:26,076: INFO/ForkPoolWorker-18] Processing chunk 0 (job 82) pages=0-39 page_count=40 text_len=47871
+[2025-10-11 15:14:26,076: WARNING/ForkPoolWorker-18] [2025-10-11 15:14:26,076] INFO in tasks: process_chunk: memory_before_gemini=242380 KiB text_len=47871
+[2025-10-11 15:14:26,076: INFO/ForkPoolWorker-18] process_chunk: memory_before_gemini=242380 KiB text_len=47871
+[2025-10-11 15:14:30,631: WARNING/ForkPoolWorker-18] [2025-10-11 15:14:30,631] INFO in chunking_service: Successfully loaded spaCy French model (fr_core_news_sm) with memory optimization
+[2025-10-11 15:14:30,631: INFO/ForkPoolWorker-18] Successfully loaded spaCy French model (fr_core_news_sm) with memory optimization
+[2025-10-11 15:14:31,757: WARNING/ForkPoolWorker-18] [2025-10-11 15:14:31,756] WARNING in tasks: Chunk 0 (job 82) has exhausted all retry attempts (3/3). Failing permanently.
+[2025-10-11 15:14:31,756: WARNING/ForkPoolWorker-18] Chunk 0 (job 82) has exhausted all retry attempts (3/3). Failing permanently.
+[2025-10-11 15:14:31,800: INFO/MainProcess] Task app.tasks.finalize_job_results[32cf65ff-ea47-44a9-8f1b-e196ca9bb3c8] received
+[2025-10-11 15:14:31,801: INFO/ForkPoolWorker-18] Task app.tasks.process_chunk[69df1e12-5ecb-4d91-85c4-599292b62c45] succeeded in 6.798570141196251s: {'chunk_id': 0, 'status': 'failed', 'error': '[E030] Sentence boundaries unset. You can add the \'sentencizer\' component to the pipeline with: `nlp.add_pipe(\'sentencizer\')`. Alternatively, add the dependency parser or sentence recognizer, or set sentence boundaries by setting `doc[i].is_sent_start`.', 'start_page': 0, 'end_page': 39}
+[2025-10-11 15:14:31,803: WARNING/ForkPoolWorker-17] [2025-10-11 15:14:31,803] INFO in tasks: Job 82: finalizing 1 chunk results
+[2025-10-11 15:14:31,803: INFO/ForkPoolWorker-17] Job 82: finalizing 1 chunk results
+[2025-10-11 15:14:31,855: WARNING/ForkPoolWorker-17] [2025-10-11 15:14:31,855] INFO in tasks: Job 82: loaded 5 chunks from DB for finalization
+[2025-10-11 15:14:31,855: INFO/ForkPoolWorker-17] Job 82: loaded 5 chunks from DB for finalization
+[2025-10-11 15:14:31,855: WARNING/ForkPoolWorker-17] [2025-10-11 15:14:31,855] ERROR in tasks: Job 82: chunk 0 failed with error: [E030] Sentence boundaries unset. You can add the 'sentencizer' component to the pipeline with: `nlp.add_pipe('sentencizer')`. Alternatively, add the dependency parser or sentence recognizer, or set sentence boundaries by setting `doc[i].is_sent_start`.
+[2025-10-11 15:14:31,855: ERROR/ForkPoolWorker-17] Job 82: chunk 0 failed with error: [E030] Sentence boundaries unset. You can add the 'sentencizer' component to the pipeline with: `nlp.add_pipe('sentencizer')`. Alternatively, add the dependency parser or sentence recognizer, or set sentence boundaries by setting `doc[i].is_sent_start`.
+[2025-10-11 15:14:31,855: WARNING/ForkPoolWorker-17] [2025-10-11 15:14:31,855] ERROR in tasks: Job 82: chunk 1 failed with error: [E030] Sentence boundaries unset. You can add the 'sentencizer' component to the pipeline with: `nlp.add_pipe('sentencizer')`. Alternatively, add the dependency parser or sentence recognizer, or set sentence boundaries by setting `doc[i].is_sent_start`.
+[2025-10-11 15:14:31,855: ERROR/ForkPoolWorker-17] Job 82: chunk 1 failed with error: [E030] Sentence boundaries unset. You can add the 'sentencizer' component to the pipeline with: `nlp.add_pipe('sentencizer')`. Alternatively, add the dependency parser or sentence recognizer, or set sentence boundaries by setting `doc[i].is_sent_start`.
+[2025-10-11 15:14:31,856: WARNING/ForkPoolWorker-17] [2025-10-11 15:14:31,856] ERROR in tasks: Job 82: chunk 2 failed with error: [E030] Sentence boundaries unset. You can add the 'sentencizer' component to the pipeline with: `nlp.add_pipe('sentencizer')`. Alternatively, add the dependency parser or sentence recognizer, or set sentence boundaries by setting `doc[i].is_sent_start`.
+[2025-10-11 15:14:31,856: ERROR/ForkPoolWorker-17] Job 82: chunk 2 failed with error: [E030] Sentence boundaries unset. You can add the 'sentencizer' component to the pipeline with: `nlp.add_pipe('sentencizer')`. Alternatively, add the dependency parser or sentence recognizer, or set sentence boundaries by setting `doc[i].is_sent_start`.
+[2025-10-11 15:14:31,856: WARNING/ForkPoolWorker-17] [2025-10-11 15:14:31,856] ERROR in tasks: Job 82: chunk 3 failed with error: [E030] Sentence boundaries unset. You can add the 'sentencizer' component to the pipeline with: `nlp.add_pipe('sentencizer')`. Alternatively, add the dependency parser or sentence recognizer, or set sentence boundaries by setting `doc[i].is_sent_start`.
+[2025-10-11 15:14:31,856: ERROR/ForkPoolWorker-17] Job 82: chunk 3 failed with error: [E030] Sentence boundaries unset. You can add the 'sentencizer' component to the pipeline with: `nlp.add_pipe('sentencizer')`. Alternatively, add the dependency parser or sentence recognizer, or set sentence boundaries by setting `doc[i].is_sent_start`.
+[2025-10-11 15:14:31,856: WARNING/ForkPoolWorker-17] [2025-10-11 15:14:31,856] ERROR in tasks: Job 82: chunk 4 failed with error: [E030] Sentence boundaries unset. You can add the 'sentencizer' component to the pipeline with: `nlp.add_pipe('sentencizer')`. Alternatively, add the dependency parser or sentence recognizer, or set sentence boundaries by setting `doc[i].is_sent_start`.
+[2025-10-11 15:14:31,856: ERROR/ForkPoolWorker-17] Job 82: chunk 4 failed with error: [E030] Sentence boundaries unset. You can add the 'sentencizer' component to the pipeline with: `nlp.add_pipe('sentencizer')`. Alternatively, add the dependency parser or sentence recognizer, or set sentence boundaries by setting `doc[i].is_sent_start`.
+[2025-10-11 15:14:31,869: WARNING/ForkPoolWorker-17] [2025-10-11 15:14:31,869] INFO in tasks: [EMIT_PROGRESS] Starting emission for job 82
+[2025-10-11 15:14:31,869: INFO/ForkPoolWorker-17] [EMIT_PROGRESS] Starting emission for job 82
+[2025-10-11 15:14:31,873: WARNING/ForkPoolWorker-17] [2025-10-11 15:14:31,873] INFO in socket_events: Emitting job_progress to room=job_82: progress=100%, step=Failed, status=failed
+[2025-10-11 15:14:31,873: INFO/ForkPoolWorker-17] Emitting job_progress to room=job_82: progress=100%, step=Failed, status=failed
+[2025-10-11 15:14:31,874: WARNING/ForkPoolWorker-17] [2025-10-11 15:14:31,874] INFO in socket_events: Successfully emitted job_progress for job 82
+[2025-10-11 15:14:31,874: INFO/ForkPoolWorker-17] Successfully emitted job_progress for job 82
+[2025-10-11 15:14:31,875: WARNING/ForkPoolWorker-17] [2025-10-11 15:14:31,874] INFO in tasks: [EMIT_PROGRESS] Completed emission for job 82
+[2025-10-11 15:14:31,874: INFO/ForkPoolWorker-17] [EMIT_PROGRESS] Completed emission for job 82
+[2025-10-11 15:14:31,875: WARNING/ForkPoolWorker-17] [2025-10-11 15:14:31,875] INFO in tasks: Job 82: finalized status=failed sentences=0
+[2025-10-11 15:14:31,875: INFO/ForkPoolWorker-17] Job 82: finalized status=failed sentences=0
+[2025-10-11 15:14:31,877: INFO/ForkPoolWorker-17] Task app.tasks.finalize_job_results[32cf65ff-ea47-44a9-8f1b-e196ca9bb3c8] succeeded in 0.07545615546405315s: {'status': 'success', 'sentences': [], 'total_tokens': 0, 'chunks_processed': 5, 'failed_chunks': [0, 1, 2, 3, 4]}
+[2025-10-11 15:14:37,984: WARNING/ForkPoolWorker-19] [2025-10-11 15:14:37,984] INFO in tasks: Job 82: finalizing 5 chunk results
+[2025-10-11 15:14:37,984: INFO/ForkPoolWorker-19] Job 82: finalizing 5 chunk results
+[2025-10-11 15:14:38,165: WARNING/ForkPoolWorker-19] [2025-10-11 15:14:38,164] INFO in tasks: Job 82: already finalized with status=failed; skipping finalization
+[2025-10-11 15:14:38,164: INFO/ForkPoolWorker-19] Job 82: already finalized with status=failed; skipping finalization
+[2025-10-11 15:14:38,171: INFO/ForkPoolWorker-19] Task app.tasks.finalize_job_results[95097368-253e-4af2-a30a-106b54c6256a] succeeded in 0.3319009877741337s: {'status': 'already_finalized', 'job_id': 82, 'final_status': 'failed'}
+[2025-10-11 15:16:02,609: WARNING/ForkPoolWorker-19] [2025-10-11 15:16:02,609] INFO in tasks: chunk_watchdog: chunk 82/1 in terminal state 'failed', no action
+[2025-10-11 15:16:02,609: INFO/ForkPoolWorker-19] chunk_watchdog: chunk 82/1 in terminal state 'failed', no action
+[2025-10-11 15:16:02,612: INFO/ForkPoolWorker-19] Task app.tasks.chunk_watchdog[03364460-7395-46d7-8c44-5104ff4be1ce] succeeded in 0.03719005919992924s: {'status': 'ok', 'reason': 'terminal_state'}
+[2025-10-11 15:16:17,964: WARNING/ForkPoolWorker-19] [2025-10-11 15:16:17,964] INFO in tasks: chunk_watchdog: chunk 82/2 in terminal state 'failed', no action
+[2025-10-11 15:16:17,964: INFO/ForkPoolWorker-19] chunk_watchdog: chunk 82/2 in terminal state 'failed', no action
+[2025-10-11 15:16:17,967: INFO/ForkPoolWorker-19] Task app.tasks.chunk_watchdog[7d413199-3f1b-4a12-89b8-c13f34704c36] succeeded in 0.03911504801362753s: {'status': 'ok', 'reason': 'terminal_state'}
+[2025-10-11 15:16:30,629: WARNING/ForkPoolWorker-19] [2025-10-11 15:16:30,629] INFO in tasks: chunk_watchdog: chunk 82/3 in terminal state 'failed', no action
+[2025-10-11 15:16:30,629: INFO/ForkPoolWorker-19] chunk_watchdog: chunk 82/3 in terminal state 'failed', no action
+[2025-10-11 15:16:30,632: INFO/ForkPoolWorker-19] Task app.tasks.chunk_watchdog[a72e2812-1520-49d2-8e4a-da9d0e0a40fc] succeeded in 0.028364107944071293s: {'status': 'ok', 'reason': 'terminal_state'}
+[2025-10-11 15:16:42,479: WARNING/ForkPoolWorker-19] [2025-10-11 15:16:42,479] INFO in tasks: chunk_watchdog: chunk 82/4 in terminal state 'failed', no action
+[2025-10-11 15:16:42,479: INFO/ForkPoolWorker-19] chunk_watchdog: chunk 82/4 in terminal state 'failed', no action
+[2025-10-11 15:16:42,481: INFO/ForkPoolWorker-19] Task app.tasks.chunk_watchdog[cf3c5979-a6d0-45dc-8bbd-5379b8c72bb3] succeeded in 0.013976125977933407s: {'status': 'ok', 'reason': 'terminal_state'}

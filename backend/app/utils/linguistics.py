@@ -49,7 +49,7 @@ def get_nlp():
             # errors). If neither model is available, fall back to the DummyNLP
             # which provides a graceful degradation.
             import os
-            preferred = os.environ.get("SPACY_MODEL", "fr_core_news_lg")
+            preferred = os.environ.get("SPACY_MODEL", "fr_core_news_sm")
             tried = []
             # Determine disabled components to save RAM
             disable_env = os.environ.get("SPACY_DISABLE", "parser,ner").strip()
@@ -61,6 +61,9 @@ def get_nlp():
                 tried.append(model)
                 try:
                     _nlp = spacy.load(model, disable=disable)
+                    # Add sentencizer for sentence boundary detection when parser is disabled
+                    if "parser" in disable and "sentencizer" not in _nlp.pipe_names:
+                        _nlp.add_pipe("sentencizer")
                     logger.info("Loaded spaCy French model: %s (disable=%s)", model, ",".join(disable))
                     break
                 except OSError:

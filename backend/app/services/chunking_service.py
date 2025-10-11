@@ -34,9 +34,12 @@ class ChunkingService:
             import spacy
             # Load French model with maximum memory optimization
             # Disable NER and parser for performance, keep only tokenizer and tagger
-            # Using fr_core_news_lg for better accuracy
-            self.nlp = spacy.load("fr_core_news_lg", disable=["ner", "parser"])
-            logger.info("Successfully loaded spaCy French model (fr_core_news_lg) with memory optimization")
+            # Using smaller model for better performance
+            self.nlp = spacy.load("fr_core_news_sm", disable=["ner", "parser"])
+            # Add sentencizer component for sentence boundary detection
+            if "sentencizer" not in self.nlp.pipe_names:
+                self.nlp.add_pipe("sentencizer")
+            logger.info("Successfully loaded spaCy French model (fr_core_news_sm) with memory optimization + sentencizer")
         except Exception as e:
             logger.warning(f"Failed to load spaCy model: {e}. Preprocessing features will be disabled.")
             self.nlp = None

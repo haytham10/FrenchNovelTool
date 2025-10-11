@@ -30,10 +30,20 @@ class SentenceValidator:
 
     def __init__(self):
         """Initialize the validator with French spaCy model."""
-        # Load French spaCy model (disable NER for speed)
-        # We only need: tokenizer, tagger, parser for sentence validation
-        # Using fr_core_news_lg for production (better accuracy)
-        self.nlp = spacy.load("fr_core_news_lg", disable=["ner"])
+        # Load French spaCy model with memory optimization
+        # Use smaller model for better performance and add sentencizer for sentence boundaries
+        try:
+            import spacy
+            # Try to load the small model first for better performance
+            self.nlp = spacy.load("fr_core_news_sm", disable=["ner", "parser"])
+            # Add sentencizer component for sentence boundary detection
+            if "sentencizer" not in self.nlp.pipe_names:
+                self.nlp.add_pipe("sentencizer")
+            logger.info("SentenceValidator initialized with French spaCy model fr_core_news_sm + sentencizer")
+        except Exception as e:
+            logger.warning(f"Failed to load spaCy model: {e}. Falling back to basic tokenization.")
+            # Fallback to a simple tokenizer
+            self.nlp = None
 
         # Validation statistics
         self.stats = {
@@ -43,8 +53,6 @@ class SentenceValidator:
             'failed_no_verb': 0,
             'failed_fragment': 0
         }
-
-        logger.info("SentenceValidator initialized with French spaCy model fr_core_news_lg")
 
     def validate_batch(
         self,
@@ -124,7 +132,22 @@ class SentenceValidator:
         if not sentence or not sentence.strip():
             return False, "empty"
 
-        # Parse with spaCy
+        # Parse with spaCy or use fallback
+        if not self.nlp:
+            # Fallback validation without spaCy - basic length check only
+            words = sentence.strip().split()
+            word_count = len(words)
+            
+            # Basic length validation
+            if word_count < 4 or word_count > 8:
+                logger.debug(f"REJECT (length): {sentence[:50]} [{word_count} words] - spaCy unavailable")
+                return False, "length"
+            
+            # Without spaCy, we can't check for verbs or fragments
+            logger.debug(f"ACCEPT (basic): {sentence[:50]} [{word_count} words] - spaCy unavailable")
+            return True, None
+        
+        # Use spaCy for advanced validation
         doc = self.nlp(sentence.strip())
 
         # Extract content words (exclude punctuation, spaces)
