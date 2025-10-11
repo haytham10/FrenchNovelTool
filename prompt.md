@@ -1,2 +1,18 @@
-I want you to look into gemini, job, pdf, and chunking services all, analyze the current state, and work on a plan to imrove the aspect of sentence normalization we need for coverage, since coverage tool is perfect now, the only bottleneck is the actual sentence splitter, think hard about how to imrpove it to achieve my goal of generating the least amount of sentences that cover all the targeted words in our wordlist. you can find a sample of the pdf novels in sample/test.pdf.
-Again our goal is to scan the novel, rewrite it into 8 words sentences maintaing it's meaning and liguastic integrity, and trying to keep the maximum amount of words from originial, each sentence should be meaningful even without context, and should contain a verb.
+Okay, let's solve our main bottleneck: the sentence normalization pipeline. The `Coverage Tool` is perfect, but it needs better input to help us achieve our ultimate goal of 100% vocabulary coverage with the smallest possible learning set.
+
+**Your task:** Analyze my existing services (`gemini`, `job`, `pdf`, `chunking`) and design a comprehensive plan to improve them.
+
+**The "Definition of Success" for each output sentence remains the same:**
+*   4-8 words long.
+*   Grammatically complete, meaningful on its own, and **must contain a verb.**
+*   Preserves the maximum amount of original vocabulary and meaning.
+
+Your plan should be a holistic blueprint. You have full context on the project. Think hard about every stage:
+
+1.  **Preprocessing:** How can we improve the `chunking_service` *before* calling the AI? Should we be using `spaCy` to send cleaner, more structured text to the LLM?
+2.  **AI Strategy:** What is the most effective way to use a model like Gemini for this specific rewriting task? Design a new, more intelligent prompt.
+3.  **Post-processing & Validation:** How do we build a reliable quality-gate to automatically verify the AI's output (e.g., check for a verb, check length) and discard any failures?
+
+I'm looking for a robust, end-to-end plan that I can use to build a world-class sentence normalization engine.
+
+ps: you can find a sample novel pdf in `/sample/test.pdf`
