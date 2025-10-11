@@ -393,6 +393,9 @@ class CoverageService:
                     continue
 
                 # OPTIMIZATION 4: Enhanced scoring with multi-level rarity bonuses
+                # Only consider sentences with 4+ words from target wordlist
+                if len(new_words) < 4:
+                    continue
                 score = (len(new_words) * new_word_weight) - info['token_count']
 
                 # Get word-source counts if available (from batch mode)
@@ -817,6 +820,7 @@ class CoverageService:
             temp_config = self.config.copy()
             temp_config['target_count'] = source_budget if not unlimited_mode else 0
             temp_config['word_source_counts'] = word_source_counts  # For rarity weighting
+            temp_config['min_content_words'] = 4  # Require 4+ words from target wordlist
             temp_service = CoverageService(
                 wordlist_keys=uncovered_words,
                 config=temp_config
@@ -939,7 +943,8 @@ class CoverageService:
                     temp_service = CoverageService(wordlist_keys=uncovered_words, config={
                         'len_min': self.len_min,
                         'len_max': self.len_max,
-                        'target_count': remaining_slots
+                        'target_count': remaining_slots,
+                        'min_content_words': 4  # Require 4+ words from target wordlist
                     })
 
                     # Run greedy on the pool to try to pick extra sentences
@@ -1047,7 +1052,7 @@ class CoverageService:
             Tuple of (selected_sentences, stats)
         """
         # Thresholds (min_content_words is configurable via service config)
-        min_content_words = int(self.config.get('min_content_words', 3))
+        min_content_words = int(self.config.get('min_content_words', 4))
         max_tokens = int(self.config.get('max_tokens', 8))
 
         # Build sentence index
