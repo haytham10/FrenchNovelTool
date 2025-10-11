@@ -34,9 +34,9 @@ class ChunkingService:
             import spacy
             # Load French model with maximum memory optimization
             # Disable NER and parser for performance, keep only tokenizer and tagger
-            # Using fr_core_news_sm for minimal memory footprint
-            self.nlp = spacy.load("fr_core_news_sm", disable=["ner", "parser"])
-            logger.info("Successfully loaded spaCy French model (fr_core_news_sm) with memory optimization")
+            # Using fr_core_news_lg for better accuracy
+            self.nlp = spacy.load("fr_core_news_lg", disable=["ner", "parser"])
+            logger.info("Successfully loaded spaCy French model (fr_core_news_lg) with memory optimization")
         except Exception as e:
             logger.warning(f"Failed to load spaCy model: {e}. Preprocessing features will be disabled.")
             self.nlp = None

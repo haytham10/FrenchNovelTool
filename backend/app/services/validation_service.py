@@ -32,8 +32,8 @@ class SentenceValidator:
         """Initialize the validator with French spaCy model."""
         # Load French spaCy model (disable NER for speed)
         # We only need: tokenizer, tagger, parser for sentence validation
-        # Using fr_core_news_md for production (better memory efficiency)
-        self.nlp = spacy.load("fr_core_news_md", disable=["ner"])
+        # Using fr_core_news_lg for production (better accuracy)
+        self.nlp = spacy.load("fr_core_news_lg", disable=["ner"])
 
         # Validation statistics
         self.stats = {
