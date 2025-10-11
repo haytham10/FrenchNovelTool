@@ -63,10 +63,12 @@ def get_db():
 def emit_progress(job_id: int):
     """Emit job progress via WebSocket (deferred import to avoid circular dependency)"""
     try:
+        logger.info(f"[EMIT_PROGRESS] Starting emission for job {job_id}")
         from app.socket_events import emit_job_progress
         emit_job_progress(job_id)
+        logger.info(f"[EMIT_PROGRESS] Completed emission for job {job_id}")
     except Exception as e:
-        logger.warning(f"Failed to emit WebSocket progress for job {job_id}: {e}")
+        logger.error(f"[EMIT_PROGRESS] Failed to emit WebSocket progress for job {job_id}: {e}", exc_info=True)
 
 
 def safe_db_commit(db, max_retries=3, retry_delay=1):

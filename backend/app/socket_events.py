@@ -20,10 +20,14 @@ def emit_job_progress(job_id: int):
         job = Job.query.get(job_id)
         if job:
             room = f'job_{job_id}'
-            socketio.emit('job_progress', job.to_dict(), room=room)
-            logger.debug(f'Emitted job_progress for job {job_id}: {job.progress_percent}% - {job.current_step}')
+            # Log at INFO level so we can see emissions in production
+            logger.info(f'Emitting job_progress to room={room}: progress={job.progress_percent}%, step={job.current_step}, status={job.status}')
+            socketio.emit('job_progress', job.to_dict(), room=room, namespace='/')
+            logger.info(f'Successfully emitted job_progress for job {job_id}')
+        else:
+            logger.warning(f'Cannot emit progress: Job {job_id} not found in database')
     except Exception as e:
-        logger.error(f'Error emitting job progress for job {job_id}: {e}')
+        logger.error(f'Error emitting job progress for job {job_id}: {e}', exc_info=True)
 
 
 def emit_coverage_progress(run_id: int):
