@@ -884,6 +884,9 @@ class CoverageService:
         all_assignments.sort(key=lambda a: (a.get('source_rank', 0), a.get('sentence_index', 0)))
 
         # Re-rank the combined learning set
+        # If we still have remaining budget and uncovered words, attempt a consolidation
+        # pass: run a final greedy selection across all selected sentences to try and
+        # cover any remaining words using available sentence slots.
         combined_learning_set = []
         for rank, sentence_data in enumerate(all_selected_sentences, start=1):
             combined_learning_set.append({
@@ -920,6 +923,66 @@ class CoverageService:
             # Store learning set in stats for API compatibility
             'learning_set': combined_learning_set
         }
+
+        # If coverage seems low and we have budget left, attempt a consolidation pass
+        try:
+            if (not unlimited_mode) and total_sentences_selected < global_sentence_limit and uncovered_words:
+                remaining_slots = global_sentence_limit - total_sentences_selected
+                if remaining_slots > 0 and all_selected_sentences:
+                    # Prepare a unified sentence pool from all sources and run a light-weight
+                    # coverage greedy to pick sentences that cover remaining uncovered words.
+                    # Build a pool of all sentences from all sources (not just previously selected)
+                    pool_sentences = []
+                    for _src_id, src_sentences in sources:
+                        pool_sentences.extend(src_sentences)
+
+                    temp_service = CoverageService(wordlist_keys=uncovered_words, config={
+                        'len_min': self.len_min,
+                        'len_max': self.len_max,
+                        'target_count': remaining_slots
+                    })
+
+                    # Run greedy on the pool to try to pick extra sentences
+                    extra_assignments, extra_stats = temp_service.coverage_mode_greedy(pool_sentences)
+
+                    # Append any new assignments we found and compute newly covered words
+                    if extra_assignments:
+                        existing_words = {a.get('word_key') for a in all_assignments}
+                        added = 0
+                        newly_covered_words = set()
+                        for a in extra_assignments:
+                            wk = a.get('word_key')
+                            if not wk:
+                                continue
+                            if wk in existing_words or wk in newly_covered_words:
+                                continue
+                            newly_covered_words.add(wk)
+                            a['source_id'] = None
+                            a['source_rank'] = None
+                            a['source_list_index'] = None
+                            all_assignments.append(a)
+                            combined_learning_set.append({
+                                'rank': len(combined_learning_set) + 1,
+                                'source_id': None,
+                                'sentence_index': None,
+                                'sentence_text': a.get('sentence_text'),
+                                'token_count': None,
+                                'new_word_count': 1,
+                                'score': None,
+                            })
+                            added += 1
+
+                        if added:
+                            # Update covered counts and coverage percentage
+                            total_words_covered += len(newly_covered_words)
+                            coverage_percentage = (total_words_covered / total_words_initial * 100) if total_words_initial > 0 else 0
+                            combined_stats['words_covered'] = total_words_covered
+                            combined_stats['coverage_percentage'] = coverage_percentage
+                            combined_stats['selected_sentence_count'] = total_sentences_selected + added
+                            combined_stats['learning_set'] = combined_learning_set
+        except Exception:
+            # Non-fatal: consolidation is an optimization. If it fails, continue.
+            logger.exception('Consolidation pass failed - continuing without it')
 
         if unlimited_mode:
             logger.info(f"Batch coverage complete (UNLIMITED). Words covered: {total_words_covered}/{total_words_initial} "
@@ -983,9 +1046,9 @@ class CoverageService:
         Returns:
             Tuple of (selected_sentences, stats)
         """
-        # Thresholds
-        min_content_words = 4  # Minimum content words (not function words)
-        max_tokens = 8
+        # Thresholds (min_content_words is configurable via service config)
+        min_content_words = int(self.config.get('min_content_words', 3))
+        max_tokens = int(self.config.get('max_tokens', 8))
 
         # Build sentence index
         sentence_index = self.build_sentence_index(sentences)
@@ -1003,7 +1066,7 @@ class CoverageService:
 
         for i, (idx, info) in enumerate(sentence_index.items(), start=1):
             token_count = info['token_count']
-            
+
             # First check basic criteria
             if token_count > max_tokens:
                 if progress_callback and (i % step == 0 or i == total):
@@ -1014,7 +1077,7 @@ class CoverageService:
                     except Exception:
                         pass
                 continue
-            
+
             # Filter to only content words from the matched set using pre-tokenized tokens
             matched_content_words = self.filter_content_words_only(
                 info,
@@ -1022,9 +1085,9 @@ class CoverageService:
                 fold_diacritics=self.fold_diacritics,
                 handle_elisions=self.handle_elisions
             )
-            
+
             content_word_count = len(matched_content_words)
-            
+
             if content_word_count >= min_content_words:
                 ratio = info['in_list_ratio'] if token_count > 0 else 0.0
                 selected.append({
@@ -1046,7 +1109,7 @@ class CoverageService:
                 except Exception:
                     pass
 
-    # No sorting/scoring: preserve original sentence order for selected results
+        # No sorting/scoring: preserve original sentence order for selected results
 
         # Stats (preserve some keys for compatibility)
         selected_count = len(selected)
@@ -1054,6 +1117,9 @@ class CoverageService:
             'total_sentences': len(sentences),
             'selected_count': selected_count,
             'filter_acceptance_ratio': (selected_count / len(sentences)) if sentences else 0.0,
+            # Backwards-compatible key expected by some front-end tests/components
+            'candidates_passed_filter': selected_count,
+            # Provide more granular breakdown for multi-pass filtering
             'min_content_words': min_content_words,
             'max_tokens': max_tokens,
             # Compatibility fields retained (not used by this simplified filter):
@@ -1063,7 +1129,8 @@ class CoverageService:
             'len_max': self.len_max,
             'target_count': self.target_count,
             'candidates_by_pass': {
-                'content_words_>=4_len_<=8': selected_count
+                # Keep an informative pass key for legacy UI that looks for 4-8 word pass
+                f'content_words_>={min_content_words}_len_<={max_tokens}': selected_count
             },
         }
 
