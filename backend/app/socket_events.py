@@ -17,6 +17,12 @@ def emit_job_progress(job_id: int):
         job_id: ID of the job to emit progress for
     """
     try:
+        from app.extensions import db
+        
+        # Ensure we have the latest data by expiring the session
+        # This is important in Celery worker context where sessions might be stale
+        db.session.expire_all()
+        
         job = Job.query.get(job_id)
         if job:
             room = f'job_{job_id}'
