@@ -7,7 +7,10 @@ from typing import Dict, List
 from typing import Optional
 import base64
 import tempfile
+
 from app.pdf_compat import PdfReader
+from app.services.chunking_service import ChunkingService
+from app.services.validation_service import SentenceValidator
 from celery import group, chord
 from celery.exceptions import SoftTimeLimitExceeded
 
@@ -252,9 +255,6 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
             
             return error_result
 
-        # Process with Gemini
-        prompt = gemini_service.build_prompt()
-
         # Log basic chunk metadata before calling Gemini (avoid large text dumps)
         logger.info(
             "Processing chunk %s (job %s) pages=%s-%s page_count=%s text_len=%s",
@@ -267,11 +267,43 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
         if mem_before_gemini:
             logger.info(f"process_chunk: memory_before_gemini={mem_before_gemini} KiB text_len={len(text)}")
 
-        result = gemini_service.normalize_text(text, prompt)
+        # STAGE 1: Preprocessing - spaCy-based intelligent sentence segmentation
+        chunking_service = ChunkingService()
+        preprocessed_data = chunking_service.preprocess_text_with_spacy(text)
+        
+        # STAGE 2: Adaptive AI Strategy - three-tier prompt system
+        result = gemini_service.normalize_text_adaptive(preprocessed_data['metadata'])
 
         mem_after_gemini = get_memory_usage_kib()
         if mem_after_gemini:
             logger.info(f"process_chunk: memory_after_gemini={mem_after_gemini} KiB delta={mem_after_gemini - (mem_before_gemini or mem_after_gemini)}")
+        
+        # STAGE 3: Post-Processing Quality Gate - validate sentences with spaCy
+        validator = SentenceValidator()
+        
+        gemini_sentences = [s.get('normalized', s.get('original', '')) for s in result['sentences']]
+        
+        valid_sentences, validation_report = validator.validate_batch(
+            gemini_sentences,
+            discard_failures=current_app.config.get('VALIDATION_DISCARD_FAILURES', True)
+        )
+        
+        logger.info(
+            f"Chunk {chunk_id}: {validation_report['valid']}/{validation_report['total']} "
+            f"sentences passed validation ({validation_report['pass_rate']:.1f}%)"
+        )
+        
+        # Log validation warnings if pass rate is low
+        if validation_report['pass_rate'] < 70.0:
+            logger.warning(
+                f"Low validation pass rate for chunk {chunk_id}: {validation_report['pass_rate']:.1f}% "
+                f"(failed_length={validation_report['stats']['failed_length']}, "
+                f"failed_no_verb={validation_report['stats']['failed_no_verb']}, "
+                f"failed_fragment={validation_report['stats']['failed_fragment']})"
+            )
+        
+        final_sentences = [{'normalized': s, 'original': s} for s in valid_sentences]
+        result['sentences'] = final_sentences
         
         # Check if a fallback method was used and persist marker to DB
         fallback_method = result.get('_fallback_method')

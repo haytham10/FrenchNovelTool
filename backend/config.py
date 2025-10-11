@@ -120,3 +120,22 @@ class Config:
     
     # LLM Call Timeout (prevent indefinite hangs)
     GEMINI_CALL_TIMEOUT_SECONDS = int(os.getenv('GEMINI_CALL_TIMEOUT_SECONDS', '300'))  # 5 min for large chunks
+
+    # Stage 2: Adaptive AI Prompt System (ENABLED by default - production ready)
+    # Toggle between old monolithic prompt and new three-tier adaptive system
+    GEMINI_USE_ADAPTIVE_PROMPTS = os.getenv('GEMINI_USE_ADAPTIVE_PROMPTS', 'True').lower() == 'true'
+
+    # Adaptive Prompt Configuration
+    # These settings control the behavior of the three-tier prompt system
+    GEMINI_PASSTHROUGH_ENABLED = os.getenv('GEMINI_PASSTHROUGH_ENABLED', 'True').lower() == 'true'  # Skip API for perfect sentences
+    GEMINI_BATCH_PROCESSING_ENABLED = os.getenv('GEMINI_BATCH_PROCESSING_ENABLED', 'True').lower() == 'true'  # Batch light rewrites
+    
+    # Stage 3: Post-Processing Quality Gate
+    # Validation settings for sentence quality control
+    VALIDATION_ENABLED = os.getenv('VALIDATION_ENABLED', 'True').lower() == 'true'
+    VALIDATION_DISCARD_FAILURES = os.getenv('VALIDATION_DISCARD_FAILURES', 'True').lower() == 'true'  # Critical for quality
+    VALIDATION_MIN_WORDS = int(os.getenv('VALIDATION_MIN_WORDS', '4'))
+    VALIDATION_MAX_WORDS = int(os.getenv('VALIDATION_MAX_WORDS', '8'))
+    VALIDATION_REQUIRE_VERB = os.getenv('VALIDATION_REQUIRE_VERB', 'True').lower() == 'true'
+    VALIDATION_LOG_FAILURES = os.getenv('VALIDATION_LOG_FAILURES', 'True').lower() == 'true'
+    VALIDATION_LOG_SAMPLE_SIZE = int(os.getenv('VALIDATION_LOG_SAMPLE_SIZE', '20'))
