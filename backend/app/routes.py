@@ -505,23 +505,17 @@ def process_pdf():
         # Log successful processing
         current_app.logger.info(f'Successfully processed PDF: {original_filename}, extracted {len(processed_sentences)} sentences')
         
-        # Add user-specific history entry with processing settings
-        history_entry = history_service.add_entry(
-            user_id=user_id,
-            original_filename=original_filename,
-            processed_sentences_count=len(processed_sentences),
-            error_message=None,
-            processing_settings=processing_settings
-        )
-
-        # If job exists, finalize it with actual token usage
-        if job:
+        # If a job is not associated, the history will be created by the async task
+        if not job:
+            current_app.logger.info(f'User {user.email} processed PDF: {original_filename} (async)')
+        else:
+            # If job exists, finalize it with actual token usage
             # Get actual token count from Gemini response if available
             # For now, estimate from output
             actual_tokens = JobService.estimate_tokens_heuristic(' '.join(processed_sentences))
             
-            # Complete the job
-            JobService.complete_job(job.id, actual_tokens, history_entry.id)
+            # The history entry will be created by the async task, so we pass history_id=None
+            JobService.complete_job(job.id, actual_tokens, history_id=None)
             
             # Adjust credits based on actual usage
             CreditService.adjust_final_credits(
@@ -530,10 +524,7 @@ def process_pdf():
                 reserved_amount=job.estimated_credits,
                 actual_amount=JobService.calculate_credits(actual_tokens, job.model)
             )
-            
-            # Update history entry with job_id
-            history_entry.job_id = job.id
-            db.session.commit()
+            current_app.logger.info(f'User {user.email} processed PDF: {original_filename} (sync for job {job.id})')
 
         current_app.logger.info(f'User {user.email} processed PDF: {original_filename}')
         return jsonify({

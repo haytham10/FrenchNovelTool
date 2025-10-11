@@ -753,7 +753,7 @@ def finalize_job_results(self, chunk_results, job_id):
         # Create History entry for completed/partial jobs with results
         if success_count > 0:
             try:
-                from app.models import History
+                from app.services.history_service import HistoryService
                 
                 # Format sentences for History storage
                 formatted_sentences = []
@@ -771,22 +771,17 @@ def finalize_job_results(self, chunk_results, job_id):
                 
                 # Collect chunk IDs for drill-down
                 chunk_ids = [chunk.id for chunk in db_chunks] if db_chunks else []
-                
-                # Create history entry
-                history_entry = History(
+
+                history_service = HistoryService()
+                history_entry = history_service.add_entry(
                     user_id=job.user_id,
                     job_id=job.id,
                     original_filename=job.original_filename,
                     processed_sentences_count=len(all_sentences),
                     sentences=formatted_sentences,
                     processing_settings=job.processing_settings,
-                    exported_to_sheets=False,
-                    spreadsheet_url=None,
-                    export_sheet_url=None,
                     chunk_ids=chunk_ids
                 )
-                db.session.add(history_entry)
-                db.session.flush()  # Get history.id
                 
                 # Link job to history
                 job.history_id = history_entry.id

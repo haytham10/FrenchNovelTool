@@ -486,32 +486,14 @@ def import_sentences_from_sheets():
             
             logger.info(f"Imported {len(sentences)} sentences from Google Sheets {spreadsheet_id}")
             
-            # Create a temporary History entry to store the sentences
-            from app.models import History
-            
-            # Format sentences like the History model expects
-            formatted_sentences = [
-                {
-                    'original': sentence,
-                    'normalized': sentence  # Will be normalized during coverage analysis
-                }
-                for sentence in sentences
-            ]
-            
-            history = History(
-                user_id=user_id,
-                original_filename=f"Google Sheets Import ({spreadsheet.get('properties', {}).get('title', 'Untitled')})",
-                sentences=formatted_sentences,
-                processed_sentences_count=len(sentences)
-            )
-            
-            db.session.add(history)
-            db.session.commit()
+            # This endpoint should not create a history entry. 
+            # It should return the sentences directly to the client, 
+            # which will then be used to create a coverage run.
             
             return jsonify({
-                'history_id': history.id,
+                'sentences': sentences,
                 'sentence_count': len(sentences),
-                'filename': history.original_filename
+                'filename': f"Google Sheets Import ({spreadsheet.get('properties', {}).get('title', 'Untitled')})"
             }), 201
             
         except Exception as e:
