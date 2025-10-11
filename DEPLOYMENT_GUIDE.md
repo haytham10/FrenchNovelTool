@@ -87,8 +87,10 @@ git push origin <branch>
 
 # List services to find worker service ID
 railway service list
+# Look for a service named "celery-worker", "worker", or "backend-worker"
+# Note the Service ID (format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
 
-# Manually redeploy worker (CRITICAL - won't auto-deploy)
+# Manually redeploy worker (replace with actual service ID from above)
 railway redeploy --service=<celery-worker-service-id>
 ```
 

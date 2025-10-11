@@ -4,11 +4,22 @@
 
 ### 1. Verify Worker Service Redeployed (CRITICAL)
 
+First, find your Celery Worker service ID:
 ```bash
-# SSH into Railway worker or check logs
+# List all Railway services to find the worker
+railway service list
+
+# Look for a service named like "celery-worker", "worker", "backend-worker", etc.
+# Note the Service ID (format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
+```
+
+Then verify new code is deployed:
+```bash
+# SSH into Railway worker (replace with your service ID from above)
 railway ssh --service=<celery-worker-id>
 
 # Check for new code (should find multiple matches)
+# Note: Path is /app/app/tasks.py for standard Railway deployments
 grep "from app.task_config import" /app/app/tasks.py
 
 # Expected output:
@@ -126,19 +137,47 @@ For a **100-page PDF**:
 
 ### 7. Emergency Recovery
 
-If job is stuck:
+If job is stuck, first get your backend URL and job ID:
+```bash
+# Get your Railway backend URL from Railway dashboard
+# Or use CLI to find it:
+railway env | grep RAILWAY_PUBLIC_DOMAIN
+
+# Get stuck job ID from:
+# - Frontend URL (e.g., /jobs/123 shows job ID 123)
+# - API response when job was created
+# - Database query if you have access
+```
+
+Then force recovery:
 ```bash
 # Option 1: Force finalize via admin endpoint
-curl -X POST https://your-backend.railway.app/api/v1/admin/jobs/{job_id}/force-finalize \
+# Replace YOUR_BACKEND_URL with your actual Railway backend URL
+# Replace JOB_ID with the actual job ID number
+curl -X POST https://YOUR_BACKEND_URL/api/v1/admin/jobs/JOB_ID/force-finalize \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 
-# Option 2: Reconcile stuck chunks
-curl -X POST https://your-backend.railway.app/api/v1/admin/reconcile-stuck-chunks \
+# Option 2: Reconcile stuck chunks (affects all jobs)
+curl -X POST https://YOUR_BACKEND_URL/api/v1/admin/reconcile-stuck-chunks \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
+**Getting JWT Token:**
+- Log into frontend
+- Open browser DevTools → Application/Storage → LocalStorage
+- Copy the `access_token` value
+
 ### 8. Monitoring Commands
 
+First, get your Celery Worker service ID:
+```bash
+# List all Railway services
+railway service list
+# Look for service named "celery-worker", "worker", or similar
+# Note the Service ID (format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
+```
+
+Then use these monitoring commands (replace `<worker-id>` with actual ID from above):
 ```bash
 # Watch worker logs in real-time
 railway logs --service=<worker-id> --tail 100 --follow

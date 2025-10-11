@@ -181,6 +181,11 @@ Performed comprehensive analysis of the French Novel Tool codebase to identify i
 
 3. **MANUALLY redeploy Celery Worker** ⚠️
    ```bash
+   # First, list services to find the worker ID
+   railway service list
+   # Look for "celery-worker" or similar service name
+   
+   # Then redeploy using the Service ID from above
    # Railway Dashboard: Select Worker Service → Deploy → Redeploy
    # OR via CLI:
    railway redeploy --service=<celery-worker-service-id>
