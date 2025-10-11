@@ -101,7 +101,10 @@ def handle_join_job(data):
         job_id = data.get('job_id')
         token = data.get('token')
         
+        logger.info(f'[JOIN_JOB] Received join request for job {job_id}')
+        
         if not job_id or not token:
+            logger.warning(f'[JOIN_JOB] Missing job_id or token')
             emit('error', {'message': 'Missing job_id or token'})
             return
         
@@ -110,18 +113,22 @@ def handle_join_job(data):
             decoded = decode_token(token)
             user_id = int(decoded['sub'])
         except ExpiredSignatureError:
+            logger.warning(f'[JOIN_JOB] Token expired for job {job_id}')
             emit('error', {'message': 'token_expired'})
             return
         except InvalidTokenError:
+            logger.warning(f'[JOIN_JOB] Invalid token for job {job_id}')
             emit('error', {'message': 'invalid_token'})
             return
         
         job = Job.query.get(job_id)
         if not job:
+            logger.error(f'[JOIN_JOB] Job {job_id} not found in database')
             emit('error', {'message': f'Job {job_id} not found'})
             return
             
         if job.user_id != user_id:
+            logger.warning(f'[JOIN_JOB] User {user_id} attempted to access job {job_id} owned by {job.user_id}')
             emit('error', {'message': 'Unauthorized access to job'})
             return
         
@@ -129,13 +136,16 @@ def handle_join_job(data):
         room = f'job_{job_id}'
         join_room(room)
         
-        logger.info(f'User {user_id} joined room {room}')
+        logger.info(f'[JOIN_JOB] User {user_id} joined room {room}')
         
         # Send initial job state
-        emit('job_progress', job.to_dict(), room=room)
+        job_dict = job.to_dict()
+        logger.info(f'[JOIN_JOB] Sending initial state for job {job_id}: status={job.status}, progress={job.progress_percent}%, step={job.current_step}')
+        emit('job_progress', job_dict, room=room)
+        logger.info(f'[JOIN_JOB] Initial state sent for job {job_id}')
         
     except Exception as e:
-        logger.error(f'Error joining job room: {e}')
+        logger.error(f'[JOIN_JOB] Error joining job room: {e}', exc_info=True)
         emit('error', {'message': 'Failed to join job room'})
 
 
