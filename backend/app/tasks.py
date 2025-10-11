@@ -174,15 +174,14 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
                 safe_db_commit(db)
                 # Schedule a per-chunk watchdog to detect stuck processing tasks.
                 try:
-                    from flask import current_app
-                    watchdog_seconds = int(current_app.config.get('CHUNK_WATCHDOG_SECONDS', 1800))
+                    from app.task_config import CHUNK_WATCHDOG_SECONDS
                     # Use delayed call to chunk_watchdog which will check DB state
                     # and either schedule a retry or mark the chunk failed.
                     try:
-                        chunk_watchdog.apply_async(args=[chunk_db_record.job_id, chunk_db_record.chunk_id], countdown=watchdog_seconds)
+                        chunk_watchdog.apply_async(args=[chunk_db_record.job_id, chunk_db_record.chunk_id], countdown=CHUNK_WATCHDOG_SECONDS)
                         logger.info(
                             "Scheduled chunk_watchdog for job %s chunk %s in %ss",
-                            chunk_db_record.job_id, chunk_db_record.chunk_id, watchdog_seconds
+                            chunk_db_record.job_id, chunk_db_record.chunk_id, CHUNK_WATCHDOG_SECONDS
                         )
                     except Exception as _e:
                         logger.warning("Failed to schedule chunk_watchdog for job %s chunk %s: %s", chunk_db_record.job_id, chunk_db_record.chunk_id, _e)
@@ -273,8 +272,14 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
         chunking_service = ChunkingService()
         preprocessed_data = chunking_service.preprocess_text_with_spacy(text)
         
+        input_sentence_count = len(preprocessed_data.get('sentences', []))
+        logger.info(f"Chunk {chunk_id}: STAGE 1 (Preprocessing) → {input_sentence_count} sentences")
+        
         # STAGE 2: Adaptive AI Strategy - three-tier prompt system
         result = gemini_service.normalize_text_adaptive(preprocessed_data['metadata'])
+        
+        gemini_sentence_count = len(result.get('sentences', []))
+        logger.info(f"Chunk {chunk_id}: STAGE 2 (AI Normalization) → {gemini_sentence_count} sentences")
 
         mem_after_gemini = get_memory_usage_kib()
         if mem_after_gemini:
@@ -285,14 +290,17 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
         
         gemini_sentences = [s.get('normalized', s.get('original', '')) for s in result['sentences']]
         
+        # Use task_config instead of current_app to avoid context issues
+        from app.task_config import VALIDATION_DISCARD_FAILURES
         valid_sentences, validation_report = validator.validate_batch(
             gemini_sentences,
-            discard_failures=current_app.config.get('VALIDATION_DISCARD_FAILURES', True)
+            discard_failures=VALIDATION_DISCARD_FAILURES
         )
         
         logger.info(
-            f"Chunk {chunk_id}: {validation_report['valid']}/{validation_report['total']} "
-            f"sentences passed validation ({validation_report['pass_rate']:.1f}%)"
+            f"Chunk {chunk_id}: STAGE 3 (Validation) → {validation_report['valid']}/{validation_report['total']} "
+            f"sentences passed validation ({validation_report['pass_rate']:.1f}%) - "
+            f"Pipeline: {input_sentence_count} input → {gemini_sentence_count} gemini → {len(valid_sentences)} final"
         )
         
         # Log validation warnings if pass rate is low
@@ -303,6 +311,42 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
                 f"failed_no_verb={validation_report['stats']['failed_no_verb']}, "
                 f"failed_fragment={validation_report['stats']['failed_fragment']})"
             )
+        
+        # Fail chunk if validation pass rate is critically low (prevents bad data)
+        if validation_report['pass_rate'] < 30.0:
+            error_msg = (
+                f"Validation pass rate critically low ({validation_report['pass_rate']:.1f}%). "
+                f"Only {validation_report['valid']} of {validation_report['total']} sentences passed. "
+                f"Possible PDF quality issue or normalization failure."
+            )
+            logger.error(f"Chunk {chunk_id}: {error_msg}")
+            
+            # Cleanup chunk file
+            try:
+                fp = chunk_info.get('file_path')
+                if fp and os.path.exists(fp):
+                    os.remove(fp)
+            except Exception:
+                pass
+            
+            # Persist error to DB chunk record
+            if chunk_db_record:
+                try:
+                    chunk_db_record.status = 'failed'
+                    chunk_db_record.last_error = error_msg[:1000]
+                    chunk_db_record.last_error_code = 'VALIDATION_FAILED'
+                    chunk_db_record.updated_at = datetime.utcnow()
+                    safe_db_commit(db)
+                except Exception as e:
+                    logger.warning(f"Failed to persist chunk validation error to DB: {e}")
+            
+            return {
+                'chunk_id': chunk_info['chunk_id'],
+                'status': 'failed',
+                'error': error_msg,
+                'start_page': chunk_info['start_page'],
+                'end_page': chunk_info['end_page']
+            }
         
         final_sentences = [{'normalized': s, 'original': s} for s in valid_sentences]
         result['sentences'] = final_sentences
@@ -429,7 +473,7 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
         return error_result
     except Exception as e:
         # Decide whether to retry on transient errors
-        from flask import current_app
+        from app.task_config import CHUNK_TASK_MAX_RETRIES, CHUNK_TASK_RETRY_DELAY
 
         def _is_transient(err: Exception) -> bool:
             transient_types = (TimeoutError, ConnectionError)
@@ -449,8 +493,8 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
             ])
             return isinstance(err, transient_types) or retryable_by_name or retryable_by_msg
 
-        max_retries = int(current_app.config.get('CHUNK_TASK_MAX_RETRIES', current_app.config.get('GEMINI_MAX_RETRIES', 3)))
-        base_delay = int(current_app.config.get('CHUNK_TASK_RETRY_DELAY', current_app.config.get('GEMINI_RETRY_DELAY', 1)))
+        max_retries = CHUNK_TASK_MAX_RETRIES
+        base_delay = CHUNK_TASK_RETRY_DELAY
 
         # CRITICAL: Check if chunk DB record has exceeded max_retries
         # This prevents Celery-level retries from conflicting with job-level retries
@@ -588,9 +632,9 @@ def finalize_job_results(self, chunk_results, job_id):
             ]
             
             if non_terminal_chunks:
-                from flask import current_app
-                max_finalize_retries = int(current_app.config.get('FINALIZE_MAX_RETRIES', 10))
-                finalize_retry_delay = int(current_app.config.get('FINALIZE_RETRY_DELAY', 30))
+                from app.task_config import FINALIZE_MAX_RETRIES, FINALIZE_RETRY_DELAY
+                max_finalize_retries = FINALIZE_MAX_RETRIES
+                finalize_retry_delay = FINALIZE_RETRY_DELAY
                 
                 if self.request.retries < max_finalize_retries:
                     logger.warning(
@@ -847,7 +891,7 @@ def chunk_watchdog(self, job_id: int, chunk_id: int):
     """
     db = get_db()
     from app.models import JobChunk
-    from flask import current_app
+    from app.task_config import CHUNK_TASK_MAX_RETRIES, CHUNK_TASK_RETRY_DELAY
 
     try:
         chunk = JobChunk.query.filter_by(job_id=job_id, chunk_id=chunk_id).first()
@@ -861,8 +905,8 @@ def chunk_watchdog(self, job_id: int, chunk_id: int):
             return {'status': 'ok', 'reason': 'terminal_state'}
 
         # Determine retry policy
-        max_retries = int(current_app.config.get('CHUNK_TASK_MAX_RETRIES', 3))
-        retry_delay = int(current_app.config.get('CHUNK_TASK_RETRY_DELAY', 2))
+        max_retries = CHUNK_TASK_MAX_RETRIES
+        retry_delay = CHUNK_TASK_RETRY_DELAY
 
         if chunk.attempts < chunk.max_retries and chunk.attempts < max_retries:
             # Schedule a retry by marking the chunk for retry and dispatching process_chunk
@@ -908,11 +952,11 @@ def reconcile_stuck_chunks(self, age_seconds: Optional[int] = None, limit: int =
     """
     db = get_db()
     from app.models import JobChunk, Job
-    from flask import current_app
+    from app.task_config import CHUNK_STUCK_THRESHOLD_SECONDS, CHUNK_TASK_MAX_RETRIES
     import time
 
     try:
-        threshold = int(age_seconds or current_app.config.get('CHUNK_STUCK_THRESHOLD_SECONDS', 900))
+        threshold = int(age_seconds or CHUNK_STUCK_THRESHOLD_SECONDS)
         cutoff = datetime.utcnow().timestamp() - int(threshold)
 
         # Find stuck chunks
@@ -935,8 +979,7 @@ def reconcile_stuck_chunks(self, age_seconds: Optional[int] = None, limit: int =
                 continue
 
             # If retry remains, schedule a retry (similar logic as chunk_watchdog)
-            max_retries = int(current_app.config.get('CHUNK_TASK_MAX_RETRIES', 3))
-            if chunk.attempts < chunk.max_retries and chunk.attempts < max_retries:
+            if chunk.attempts < chunk.max_retries and chunk.attempts < CHUNK_TASK_MAX_RETRIES:
                 chunk.status = 'retry_scheduled'
                 chunk.updated_at = datetime.utcnow()
                 db.session.add(chunk)
@@ -1204,9 +1247,9 @@ def process_pdf_async(self, job_id: int, file_path: str, user_id: int, settings:
             # which will cause finalization to read chunk rows from the DB. The timeout
             # is configurable via CHORD_WATCHDOG_SECONDS; fallback to a conservative value.
             try:
-                from flask import current_app
+                from app.task_config import CHORD_WATCHDOG_SECONDS
                 watchdog_default = max(1800, int(len(chunks) * 60))  # at least 30 minutes or 1min/chunk
-                watchdog_seconds = int(current_app.config.get('CHORD_WATCHDOG_SECONDS', watchdog_default))
+                watchdog_seconds = CHORD_WATCHDOG_SECONDS if CHORD_WATCHDOG_SECONDS > 0 else watchdog_default
                 # Schedule a delayed finalize_job_results call as a safety net
                 finalize_job_results.apply_async(args=[[], job_id], countdown=watchdog_seconds)
                 logger.info(f"Job {job_id}: scheduled finalize watchdog in {watchdog_seconds}s")

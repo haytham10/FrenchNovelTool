@@ -88,7 +88,11 @@ export function useJobWebSocket({
 
     const handleJobProgress = (data: Job) => {
       setJob(data);
-      // Job progress received (no debug logging)
+      
+      // Log progress updates for debugging (can be removed in production)
+      console.debug(
+        `[WebSocket] Job ${data.id}: ${data.progress_percent || 0}% - ${data.current_step || 'Initializing'} (${data.status})`
+      );
 
       // Use the latest callbacks from the ref
       const { onProgress, onComplete, onError, onCancel } = callbacksRef.current;
