@@ -1,4 +1,5 @@
 """API routes for Vocabulary Coverage Tool"""
+import json
 import logging
 import re
 from flask import Blueprint, request, jsonify, send_from_directory, abort, current_app
@@ -486,12 +487,19 @@ def import_sentences_from_sheets():
             
             logger.info(f"Imported {len(sentences)} sentences from Google Sheets {spreadsheet_id}")
             
-            # This endpoint should not create a history entry. 
-            # It should return the sentences directly to the client, 
-            # which will then be used to create a coverage run.
+            # Create a history entry for the imported sentences
+            from app.models import History
+            history_entry = History(
+                user_id=user_id,
+                original_filename=f"Google Sheets Import ({spreadsheet.get('properties', {}).get('title', 'Untitled')})",
+                processed_sentences_count=len(sentences),
+                sentences=[{'normalized': s, 'original': s} for s in sentences]
+            )
+            db.session.add(history_entry)
+            db.session.commit()
             
             return jsonify({
-                'sentences': sentences,
+                'history_id': history_entry.id,
                 'sentence_count': len(sentences),
                 'filename': f"Google Sheets Import ({spreadsheet.get('properties', {}).get('title', 'Untitled')})"
             }), 201
