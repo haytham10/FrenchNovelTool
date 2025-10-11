@@ -1178,18 +1178,25 @@ class GeminiService:
             model_name, (len(prompt) if prompt else 0), (len(text) if text else 0), timeout_seconds
         )
 
-        # Set timeout alarm (Unix only; Windows will skip this)
+        # Set timeout alarm (Unix only; Windows will skip this). For Windows
+        # and other environments without SIGALRM, run the SDK call in a
+        # ThreadPoolExecutor and use future.result(timeout=...) to enforce a
+        # hard timeout. This prevents worker threads from being blocked
+        # indefinitely when signal-based alarms are unavailable.
         old_handler = None
+        use_thread_timeout = False
         try:
             if hasattr(signal, 'SIGALRM'):
                 old_handler = signal.signal(signal.SIGALRM, timeout_handler)
                 signal.alarm(timeout_seconds)
+            else:
+                use_thread_timeout = True
         except (AttributeError, ValueError):
-            # Windows or restricted environment - skip signal-based timeout
-            current_app.logger.debug('Signal-based timeout not available; relying on Celery soft_time_limit')
-        
-        try:
-            response = self.client.models.generate_content(
+            # Windows or restricted environment - will use thread-based timeout
+            use_thread_timeout = True
+
+        def _sdk_call():
+            return self.client.models.generate_content(
                 model=model_name,
                 contents=contents,
                 config=types.GenerateContentConfig(
@@ -1201,6 +1208,25 @@ class GeminiService:
                     ]
                 ),
             )
+
+        try:
+            if use_thread_timeout:
+                # Use a thread to enforce timeout on platforms without SIGALRM
+                from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+
+                with ThreadPoolExecutor(max_workers=1) as exe:
+                    future = exe.submit(_sdk_call)
+                    try:
+                        response = future.result(timeout=timeout_seconds)
+                    except FutureTimeout:
+                        # Cancel the future if possible and raise TimeoutError
+                        try:
+                            future.cancel()
+                        except Exception:
+                            pass
+                        raise TimeoutError(f'Gemini API call exceeded {timeout_seconds}s timeout')
+            else:
+                response = _sdk_call()
         finally:
             # Cancel alarm if set
             if hasattr(signal, 'SIGALRM') and old_handler is not None:
