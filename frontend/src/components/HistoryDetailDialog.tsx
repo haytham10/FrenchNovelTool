@@ -34,7 +34,7 @@ import {
 } from '@mui/material';
 import { X, Download, ExternalLink, ChevronDown, CheckCircle, XCircle, Clock, RefreshCw, Copy, Search, Eye, Database, BookOpen } from 'lucide-react';
 import { useHistoryDetail, useHistoryChunks, useExportHistoryToSheets, useRefreshHistoryFromChunks } from '@/lib/queries';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow } from '@/lib/date-utils';
 import { useSnackbar } from 'notistack';
 import Icon from './Icon';
 import CoverageRunDialog from './CoverageRunDialog';

@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Button, Box, Typography } from '@mui/material';
 import { useSnackbar } from 'notistack';
-import useDrivePicker from 'react-google-drive-picker';
 
 interface DriveFolderPickerProps {
   onFolderSelect: (folderId: string, folderName: string) => void;
@@ -14,6 +13,35 @@ interface DriveFolderPickerProps {
 const CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
 
+// Lightweight custom Google Drive Picker implementation
+// Replaces react-google-drive-picker to reduce bundle size
+const loadGooglePicker = async (): Promise<void> => {
+  // Check if already loaded
+  if (typeof window !== 'undefined' && window.google) {
+    return;
+  }
+
+  // Load Google API script
+  await new Promise<void>((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://apis.google.com/js/api.js';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Failed to load Google API'));
+    document.head.appendChild(script);
+  });
+
+  // Wait for gapi to be ready
+  await new Promise<void>((resolve, reject) => {
+    if (window.gapi) {
+      window.gapi.load('picker', () => resolve());
+    } else {
+      reject(new Error('Google API (gapi) not available'));
+    }
+  });
+};
+
 export default function DriveFolderPicker({ 
   onFolderSelect, 
   selectedFolderName, 
@@ -21,8 +49,8 @@ export default function DriveFolderPicker({
   onPickerOpen,
   onPickerCancel
 }: DriveFolderPickerProps) {
-  const [openPicker] = useDrivePicker();
   const [missingCredentials, setMissingCredentials] = useState(false);
+  const [loading, setLoading] = useState(false);
   const { enqueueSnackbar } = useSnackbar();
 
   useEffect(() => {
@@ -34,7 +62,7 @@ export default function DriveFolderPicker({
     }
   }, [enqueueSnackbar]);
 
-  const handleOpenPicker = () => {
+  const handleOpenPicker = async () => {
     if (missingCredentials) {
       enqueueSnackbar('Google API credentials are required before selecting a folder.', { 
         variant: 'error' 
@@ -47,38 +75,53 @@ export default function DriveFolderPicker({
       return;
     }
 
-    // Notify parent that picker is opening
-    onPickerOpen?.();
+    try {
+      setLoading(true);
+      onPickerOpen?.();
 
-    openPicker({
-      clientId: CLIENT_ID,
-      developerKey: API_KEY,
-      viewId: 'FOLDERS',
-      setSelectFolderEnabled: true,
-      setIncludeFolders: true,
-      supportDrives: true,
-      multiselect: false,
-      // Match backend OAuth scopes exactly to avoid scope mismatch errors
-      customScopes: [
-        'https://www.googleapis.com/auth/spreadsheets',
-        'https://www.googleapis.com/auth/userinfo.email',
-        'https://www.googleapis.com/auth/userinfo.profile',
-        'openid',
-        'https://www.googleapis.com/auth/drive.file'
-      ],
-      callbackFunction: (data) => {
-        if (data.action === 'cancel') {
-          onPickerCancel?.();
-          return;
-        }
-        
-        if (data.action === 'picked' && data.docs && data.docs.length > 0) {
-          const folder = data.docs[0];
-          onFolderSelect(folder.id, folder.name);
-          enqueueSnackbar(`Folder "${folder.name}" selected`, { variant: 'success' });
-        }
-      },
-    });
+      // Load Google Picker API
+      await loadGooglePicker();
+      
+      // Check if google is available
+      if (!window.google) {
+        throw new Error('Google Picker API failed to load');
+      }
+
+      // Get OAuth token from localStorage (set by AuthContext)
+      const accessToken = localStorage.getItem('accessToken');
+      if (!accessToken) {
+        enqueueSnackbar('Please sign in to select a folder.', { variant: 'error' });
+        setLoading(false);
+        return;
+      }
+
+      // Create and show picker
+      const view = new window.google.picker.DocsView(window.google.picker.ViewId.FOLDERS)
+        .setSelectFolderEnabled(true)
+        .setIncludeFolders(true);
+
+      const picker = new window.google.picker.PickerBuilder()
+        .addView(view)
+        .setOAuthToken(accessToken)
+        .setDeveloperKey(API_KEY)
+        .setCallback((data) => {
+          if (data.action === window.google!.picker.Action.CANCEL) {
+            onPickerCancel?.();
+          } else if (data.action === window.google!.picker.Action.PICKED && data.docs && data.docs.length > 0) {
+            const folder = data.docs[0];
+            onFolderSelect(folder.id, folder.name);
+            enqueueSnackbar(`Folder "${folder.name}" selected`, { variant: 'success' });
+          }
+          setLoading(false);
+        })
+        .build();
+
+      picker.setVisible(true);
+    } catch (error) {
+      console.error('Error opening picker:', error);
+      enqueueSnackbar('Failed to open folder picker.', { variant: 'error' });
+      setLoading(false);
+    }
   };
 
   return (
@@ -90,9 +133,9 @@ export default function DriveFolderPicker({
         <Button 
           variant="outlined" 
           onClick={handleOpenPicker} 
-          disabled={missingCredentials}
+          disabled={missingCredentials || loading}
         >
-          Select Folder
+          {loading ? 'Loading...' : 'Select Folder'}
         </Button>
         {selectedFolderName && onClearSelection && (
           <Button variant="text" size="small" onClick={onClearSelection}>

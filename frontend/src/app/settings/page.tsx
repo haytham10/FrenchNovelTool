@@ -1,9 +1,17 @@
+'use client';
+
 import React from 'react';
-import { Box, Typography, Paper, Button, Container } from '@mui/material';
+import dynamic from 'next/dynamic';
+import { Box, Typography, Paper, Button, Container, Skeleton } from '@mui/material';
 import Link from 'next/link';
-import SettingsForm from '@/components/SettingsForm';
 import RouteGuard from '@/components/RouteGuard';
 import Breadcrumbs from '@/components/Breadcrumbs';
+
+// Lazy load the SettingsForm
+const SettingsForm = dynamic(() => import('@/components/SettingsForm'), {
+  loading: () => <Skeleton variant="rectangular" height={400} />,
+  ssr: false,
+});
 
 export default function SettingsPage() {
   return (

@@ -32,6 +32,9 @@ export function useCoverageWebSocket({
   const [run, setRun] = useState<CoverageRun | null>(null);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  
+  // Store socket in ref for cleanup on page unload
+  const socketRef = useRef<Socket | null>(null);
 
   // Use refs to store the latest callbacks without triggering reconnects
   const callbacksRef = useRef({ onProgress, onComplete, onError, onCancel });
@@ -40,6 +43,19 @@ export function useCoverageWebSocket({
   useEffect(() => {
     callbacksRef.current = { onProgress, onComplete, onError, onCancel };
   }, [onProgress, onComplete, onError, onCancel]);
+  
+  // Cleanup on page unload to prevent memory leaks
+  useEffect(() => {
+    const handleUnload = () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+    };
+    
+    window.addEventListener('beforeunload', handleUnload);
+    return () => window.removeEventListener('beforeunload', handleUnload);
+  }, []);
 
   useEffect(() => {
     if (!runId || !enabled) return;
@@ -58,6 +74,9 @@ export function useCoverageWebSocket({
       auth: { token },
       query: { token },
     });
+    
+    // Store socket in ref for cleanup
+    socketRef.current = socket;
 
     const handleProgress = (data: CoverageRun) => {
       setRun(data);
@@ -97,6 +116,7 @@ export function useCoverageWebSocket({
       // Clean disconnect: leave room first, then disconnect
       socket.emit('leave_coverage_run', { run_id: runId });
       socket.disconnect();
+      socketRef.current = null;
     };
   }, [runId, enabled]); // Only recreate socket when runId or enabled changes
 

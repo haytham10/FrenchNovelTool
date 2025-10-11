@@ -1,14 +1,13 @@
 "use client";
 
 import React, { useState } from 'react';
+import dynamic from 'next/dynamic';
 import FileUpload from '@/components/FileUpload';
 import ResultsTable from '@/components/ResultsTable';
 import NormalizeControls from '@/components/NormalizeControls';
-import ExportDialog from '@/components/ExportDialog';
-import PreflightModal from '@/components/PreflightModal';
 import { getApiErrorMessage } from '@/lib/api';
 import { useProcessPdf, useExportToSheet, useEstimatePdfCost, useStartPdfProcessingJob, useCredits } from '@/lib/queries';
-import { CircularProgress, Button, Typography, Box, Container, Paper, Divider, List, ListItem, ListItemText, LinearProgress } from '@mui/material';
+import { CircularProgress, Button, Typography, Box, Container, Paper, Divider, List, ListItem, ListItemText, LinearProgress, Skeleton } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import UploadStepper from '@/components/UploadStepper';
 import ResultsSkeleton from '@/components/ResultsSkeleton';
@@ -23,6 +22,17 @@ import { useJobWebSocket } from '@/lib/useJobWebSocket';
 
 import type { ExportOptions } from '@/components/ExportDialog';
 import type { CostEstimate, Job, ChunkResult, Sentence } from '@/lib/types';
+
+// Dynamic imports for components only needed after specific user actions
+const ExportDialog = dynamic(() => import('@/components/ExportDialog'), {
+  loading: () => <Skeleton variant="rectangular" height={400} />,
+  ssr: false,
+});
+
+const PreflightModal = dynamic(() => import('@/components/PreflightModal'), {
+  loading: () => <Skeleton variant="rectangular" height={400} />,
+  ssr: false,
+});
 
 export default function Home() {
   const { user } = useAuth();
