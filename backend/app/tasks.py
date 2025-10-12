@@ -1044,6 +1044,11 @@ def chunk_watchdog(self, job_id: int, chunk_id: int):
             chunk.updated_at = datetime.utcnow()
             db.session.add(chunk)
             safe_db_commit(db)
+            # Emit progress for the parent job so UI can reflect change
+            try:
+                emit_progress(job_id)
+            except Exception:
+                pass
             logger.error(
                 "chunk_watchdog: marked job %s chunk %s as failed (no retries left)",
                 job_id,

@@ -114,27 +114,37 @@ class HistoryService:
             .all()
         )
 
-        # Rebuild sentences from successful chunks
-        all_sentences = []
+        # Collect per-chunk result dicts (only for chunks with a result)
+        chunk_results = []
         for chunk in chunks:
-            if chunk.status == "success" and chunk.result_json:
-                chunk_sentences = chunk.result_json.get("sentences", [])
-                all_sentences.extend(chunk_sentences)
+            if chunk.result_json:
+                chunk_results.append(chunk.result_json)
 
-        # Format sentences consistently
-        formatted_sentences = []
-        for sentence in all_sentences:
-            if isinstance(sentence, dict):
-                formatted_sentences.append(
-                    {
-                        "normalized": sentence.get("normalized", ""),
-                        "original": sentence.get("original", sentence.get("normalized", "")),
-                    }
-                )
-            else:
-                formatted_sentences.append({"normalized": str(sentence), "original": str(sentence)})
+        # Merge results with simple overlap-aware deduplication similar to app.tasks.merge_chunk_results
+        # Strategy: preserve order by chunk_id; for chunk_id>0, skip sentences whose normalized prefix (100 chars)
+        # was already seen in previous chunks.
+        sorted_chunks = sorted(chunk_results, key=lambda x: x.get("chunk_id", 0))
+        merged = []
+        seen_keys = set()
+        for res in sorted_chunks:
+            sentences = res.get("sentences", [])
+            for s in sentences:
+                if isinstance(s, dict):
+                    key = (s.get("normalized") or s.get("original") or "")[:100]
+                    norm = s.get("normalized", "")
+                    orig = s.get("original", norm)
+                else:
+                    key = str(s)[:100]
+                    norm = str(s)
+                    orig = str(s)
+                if not key:
+                    continue
+                if key in seen_keys and res.get("chunk_id", 0) > 0:
+                    continue
+                seen_keys.add(key)
+                merged.append({"normalized": norm, "original": orig})
 
-        return formatted_sentences
+        return merged
 
     def get_entry_with_details(self, entry_id, user_id, use_live_chunks=True):
         """
@@ -222,7 +232,7 @@ class HistoryService:
         if not entry:
             return None
 
-        # Rebuild sentences from chunks
+        # Rebuild sentences from chunks (overlap-aware and deduped)
         live_sentences = self.rebuild_sentences_from_chunks(entry_id, user_id)
         if live_sentences is None:
             return None

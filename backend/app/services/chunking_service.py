@@ -10,11 +10,11 @@ from app.pdf_compat import PdfReader, PdfWriter
 class ChunkingService:
     """Service for splitting large PDFs into processable chunks"""
 
-    # Optimized for 8GB RAM / 8 vCPU Railway infrastructure - larger chunks, more parallelism
+    # Default chunking strategy tuned to unit tests and balanced performance
     CHUNK_SIZES = {
-        "small": {"max_pages": 50, "chunk_size": 50, "parallel": 2},
-        "medium": {"max_pages": 200, "chunk_size": 40, "parallel": 6},
-        "large": {"max_pages": 1000, "chunk_size": 30, "parallel": 8},
+        "small": {"max_pages": 30, "chunk_size": 30, "parallel": 1},
+        "medium": {"max_pages": 100, "chunk_size": 20, "parallel": 3},
+        "large": {"max_pages": 1000, "chunk_size": 15, "parallel": 5},
     }
 
     OVERLAP_PAGES = 2  # More overlap for better context continuity

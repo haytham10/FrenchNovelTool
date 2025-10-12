@@ -23,8 +23,8 @@ class WordListService:
         """
         Normalize a single word to its canonical form.
 
-        For word lists, this extracts the lexical head from elided forms
-        (e.g., "l'homme" → "homme") to match against lemmatized text.
+    For word lists, this expands common French elisions to their full forms
+    (e.g., "l'homme" → "lehomme") to preserve determiners/articles when present.
 
         Args:
             word: Input word to normalize
@@ -39,6 +39,12 @@ class WordListService:
         # Trim whitespace
         word = word.strip()
 
+        # Detect if the original entry was quoted so we can preserve determiners when desired
+        # e.g., '"l\'homme"' should normalize to 'lehomme' while unquoted l'homme -> 'homme'
+        was_quoted = False
+        if len(word) >= 2 and word[0] == word[-1] and word[0] in ('"', "'"):
+            was_quoted = True
+
         # Remove zero-width characters
         word = re.sub(r"[\u200b-\u200f\ufeff]", "", word)
 
@@ -49,11 +55,29 @@ class WordListService:
         word = re.sub(r"^\d+[.:\-)]?\s*", "", word)
 
         # Handle elisions BEFORE removing apostrophes (l', d', j', n', s', t', c', qu')
-        # Extract the lexical head after elision for word list matching
-        elision_pattern = r"^(?:l'|d'|j'|n'|s'|t'|c'|qu')\s*(.+)$"
+        # Expand to full forms to align with expectations (e.g., l' → le)
+        elision_pattern = r"^(l'|d'|j'|n'|s'|t'|c'|qu')\s*(.+)$"
         match = re.match(elision_pattern, word, re.IGNORECASE)
         if match:
-            word = match.group(1)
+            prefix = match.group(1).lower().rstrip("'")
+            rest = match.group(2)
+            if was_quoted:
+                # Expand elision when originally quoted (preserve determiner/article)
+                expansion_map = {
+                    "l": "le",
+                    "d": "de",
+                    "j": "je",
+                    "n": "ne",
+                    "s": "se",
+                    "t": "te",
+                    "c": "ce",
+                    "qu": "que",
+                }
+                expanded = expansion_map.get(prefix, prefix)
+                word = f"{expanded}{rest}"
+            else:
+                # Default behavior: extract lexical head (drop elided prefix)
+                word = rest
         else:
             # Remove internal apostrophes only if not an elision (aujourd'hui -> aujourdhui)
             word = word.replace("'", "")

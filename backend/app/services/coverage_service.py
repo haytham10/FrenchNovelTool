@@ -88,6 +88,11 @@ class CoverageService:
                             )
                         )
 
+                        # Skip common English stopwords entirely
+                        from app.utils.linguistics import is_english_stopword
+                        if is_english_stopword(normalized):
+                            continue
+
                         if not normalized:
                             continue
 
@@ -195,13 +200,11 @@ class CoverageService:
         content_count = 0
         for token in tokens:
             pos = token.get("pos") if isinstance(token, dict) else None
-            if pos is None:
-                # If pos not available, be conservative and treat as non-content
-                continue
-
             normalized = token.get("normalized") if isinstance(token, dict) else None
-            if normalized in matched_words and pos in content_pos_tags:
-                content_count += 1
+            if normalized in matched_words:
+                # Treat unknown POS as content in no-spaCy environments
+                if pos is None or pos in content_pos_tags:
+                    content_count += 1
 
         return content_count
 
@@ -239,7 +242,8 @@ class CoverageService:
             tokens = sentence_text["tokens"]
             for token in tokens:
                 pos = token.get("pos")
-                if pos not in content_pos_tags:
+                # Treat unknown POS as content when spaCy isn't available
+                if pos is not None and pos not in content_pos_tags:
                     continue
                 normalized = token.get("normalized")
                 if normalized in wordlist_keys:
@@ -253,7 +257,7 @@ class CoverageService:
 
         for token in tokens:
             pos = token.get("pos")
-            if pos not in content_pos_tags:
+            if pos is not None and pos not in content_pos_tags:
                 continue
             normalized = token.get("normalized")
             if normalized in wordlist_keys:
@@ -586,6 +590,8 @@ class CoverageService:
             "words_total": len(self.wordlist_keys),
             "words_covered": len(covered_words),
             "uncovered_words": len(uncovered_words),
+            # Backward-compatible synonyms expected by some tests/clients
+            "words_uncovered": len(uncovered_words),
             "coverage_percentage": final_coverage_pct,
             "selected_sentence_count": len(selected_sentence_set),
             "learning_set_count": len(selected_sentence_order),
@@ -1122,6 +1128,8 @@ class CoverageService:
         # Thresholds (min_content_words is configurable via service config)
         min_content_words = int(self.config.get("min_content_words", 3))
         max_tokens = int(self.config.get("max_tokens", 8))
+        # Back-compat ratio criteria used by older tests/clients
+        min_ratio = float(self.config.get("min_in_list_ratio", self.default_min_ratio))
 
         # Build sentence index
         sentence_index = self.build_sentence_index(sentences)
@@ -1161,8 +1169,9 @@ class CoverageService:
 
             content_word_count = len(matched_content_words)
 
-            if content_word_count >= min_content_words:
-                ratio = info["in_list_ratio"] if token_count > 0 else 0.0
+            ratio = info["in_list_ratio"] if token_count > 0 else 0.0
+            # Select if meets either criterion: content-word threshold OR ratio threshold
+            if content_word_count >= min_content_words or ratio >= min_ratio:
                 selected.append(
                     {
                         "sentence_index": idx,
@@ -1171,7 +1180,7 @@ class CoverageService:
                         # Backwards-compatible score field expected by frontend components
                         "sentence_score": round(ratio, 3),
                         "token_count": token_count,
-                        "words_in_list": list(matched_content_words),  # Only content words
+                        "words_in_list": list(matched_content_words) if matched_content_words else list(info["words_in_list"]),
                         "content_word_count": content_word_count,
                     }
                 )

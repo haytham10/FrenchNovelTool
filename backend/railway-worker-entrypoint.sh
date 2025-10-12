@@ -110,12 +110,12 @@ echo "🎯 Starting Celery worker (8GB RAM / 8 vCPU optimized)..."
 celery -A celery_worker.celery worker \
     --loglevel=info \
     --concurrency=${CELERY_CONCURRENCY:-8} \
-    --max-tasks-per-child=100 \
-    --max-memory-per-child=900000 \
+    --max-tasks-per-child=${CELERY_MAX_TASKS_PER_CHILD:-50} \
+    --max-memory-per-child=${CELERY_MAX_MEMORY_PER_CHILD:-900000} \
+    --prefetch-multiplier=${CELERY_PREFETCH_MULTIPLIER:-1} \
     --task-events \
     --time-limit=3600 \
-    --soft-time-limit=3300 \
-    --prefetch-multiplier=2
+    --soft-time-limit=3300
 
 rc=$?
 echo "Celery exited with code: $rc"
