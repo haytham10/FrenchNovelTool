@@ -49,6 +49,10 @@ class Config:
     GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
     GEMINI_MAX_RETRIES = int(os.getenv("GEMINI_MAX_RETRIES", "3"))
     GEMINI_RETRY_DELAY = int(os.getenv("GEMINI_RETRY_DELAY", "1"))
+    # When Gemini exhausts all retries or returns empty/blocked responses,
+    # allow a conservative local segmentation fallback to avoid hard-failing chunks.
+    # Default: True (can be disabled via env if strict behavior is desired)
+    GEMINI_ALLOW_LOCAL_FALLBACK = os.getenv("GEMINI_ALLOW_LOCAL_FALLBACK", "True").lower() == "true"
 
     # Quality Gate Configuration - Post-processing validation layer
     QUALITY_GATE_ENABLED = os.getenv("QUALITY_GATE_ENABLED", "True").lower() == "true"

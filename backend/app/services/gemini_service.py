@@ -70,7 +70,9 @@ class GeminiService:
         self.retry_delay = current_app.config["GEMINI_RETRY_DELAY"]
         # Allow operator to disable local segmentation fallback via config.
         # Default: True to preserve existing behaviour unless explicitly changed.
-        self.allow_local_fallback = current_app.config.get("GEMINI_ALLOW_LOCAL_FALLBACK", False)
+        self.allow_local_fallback = bool(
+            current_app.config.get("GEMINI_ALLOW_LOCAL_FALLBACK", True)
+        )
         # Repair controls (to limit additional Gemini API calls which can be slow)
         # Enable / disable the targeted long-sentence repair step
         self.enable_repair = bool(current_app.config.get("GEMINI_ENABLE_REPAIR", True))
@@ -1049,6 +1051,21 @@ class GeminiService:
                     ]
                 ),
             )
+            # If the SDK indicates the prompt was blocked by safety filters, fast-fail so
+            # callers can choose an alternative (e.g., local fallback) instead of retrying.
+            try:
+                pf = getattr(response, "prompt_feedback", None)
+                block_reason = getattr(pf, "block_reason", None) if pf else None
+                if block_reason:
+                    current_app.logger.warning(
+                        "Gemini safety blocked content (reason=%s) for model=%s",
+                        block_reason,
+                        model_name,
+                    )
+                    raise GeminiAPIError(f"GeminiSafetyBlocked:{block_reason}")
+            except Exception:
+                # If prompt_feedback inspection fails, continue normal handling
+                pass
         finally:
             # Cancel alarm if set
             if hasattr(signal, "SIGALRM") and old_handler is not None:
@@ -1260,6 +1277,14 @@ class GeminiService:
                     current_app.logger.debug(
                         "Gemini raw_response present but could not be displayed"
                     )
+            # If failure was due to safety block and local fallback is allowed, shortcut to local fallback
+            if self.allow_local_fallback and "GeminiSafetyBlocked" in str(e):
+                current_app.logger.warning(
+                    "Gemini call blocked by safety; using local fallback as fast path"
+                )
+                result = self.local_normalize_text(text)
+                result["_fallback_method"] = "local_segmentation_blocked"
+                return result
         except Exception as e:
             current_app.logger.exception(
                 "Unexpected error during primary Gemini call with model=%s: %s",
