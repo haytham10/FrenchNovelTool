@@ -4,6 +4,15 @@ import pytest
 from backend.app.utils.error_handlers import get_user_friendly_error, ERROR_MESSAGES
 
 
+# Test configuration constants
+TECHNICAL_TERMS_TO_AVOID = ['exception', 'traceback', 'stack', 'null', 'undefined']
+UNPROFESSIONAL_WORDS_TO_AVOID = ['oops', 'uh-oh', 'whoops', 'damn', 'crap', 'stupid', 'dumb']
+ACTIONABLE_WORDS = [
+    'try', 'please', 'check', 'upload', 'add', 'wait', 
+    'contact', 'authorize', 'split', 're-authorize'
+]
+
+
 def test_corrupted_pdf_error_message():
     """Test Phase 2.2 Acceptance: User uploads corrupted PDF gets helpful message.
     
@@ -43,9 +52,8 @@ def test_all_error_codes_have_user_friendly_messages():
         
         # Message should be user-friendly (no technical terms)
         # Allow "API" as it's widely understood
-        technical_terms = ['exception', 'traceback', 'stack', 'null', 'undefined']
         message_lower = message.lower()
-        for term in technical_terms:
+        for term in TECHNICAL_TERMS_TO_AVOID:
             assert term not in message_lower, f"Message for {error_code} contains technical term: {term}"
 
 
@@ -169,16 +177,11 @@ def test_quality_gate_error_messages():
 def test_error_messages_are_actionable():
     """Test that error messages provide clear next steps."""
     
-    actionable_words = [
-        'try', 'please', 'check', 'upload', 'add', 'wait', 
-        'contact', 'authorize', 'split', 're-authorize'
-    ]
-    
     # Most error messages should suggest an action
     actionable_count = 0
     for message in ERROR_MESSAGES.values():
         message_lower = message.lower()
-        if any(word in message_lower for word in actionable_words):
+        if any(word in message_lower for word in ACTIONABLE_WORDS):
             actionable_count += 1
     
     # At least 80% of messages should be actionable
@@ -190,14 +193,9 @@ def test_error_messages_are_actionable():
 def test_error_messages_are_professional():
     """Test that error messages maintain a professional tone."""
     
-    # Words to avoid in professional error messages
-    unprofessional_words = [
-        'oops', 'uh-oh', 'whoops', 'damn', 'crap', 'stupid', 'dumb'
-    ]
-    
     for error_code, message in ERROR_MESSAGES.items():
         message_lower = message.lower()
-        for word in unprofessional_words:
+        for word in UNPROFESSIONAL_WORDS_TO_AVOID:
             assert word not in message_lower, \
                 f"Message for {error_code} contains unprofessional word: {word}"
         

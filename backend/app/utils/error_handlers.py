@@ -26,8 +26,8 @@ ERROR_MESSAGES = {
     'TIMEOUT': 'Processing timed out. This PDF may be too complex or too large. Please try a smaller file.',
     'FINALIZE_TIMEOUT': 'Job finalization took too long. Some chunks may not have completed. Please check your results.',
     
-    # Quality Gate Errors
-    'NO_VALID_SENTENCES': 'No valid sentences could be extracted from this PDF. The content may not meet our quality standards (4-8 words, complete sentences).',
+    # Quality Gate Errors (Note: Word limits are configurable via QualityGate class)
+    'NO_VALID_SENTENCES': 'No valid sentences could be extracted from this PDF. The content may not meet our quality standards (complete sentences with proper structure).',
     'HIGH_REJECTION_RATE': 'Most sentences in this PDF were rejected by our quality filter. The text may be too fragmented or not suitable for processing.',
     
     # Credit System Errors

@@ -443,8 +443,8 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
         # ═══════════════════════════════════════════════════════════════
         logger.error(
             f"Timeout processing chunk {chunk_info.get('chunk_id')} (job {job_id}): "
-            f"pages={chunk_info.get('start_page')}-{chunk_info.get('end_page')}, "
-            f"page_count={chunk_info.get('page_count')}. "
+            f"pages={chunk_info.get('start_page', 'unknown')}-{chunk_info.get('end_page', 'unknown')}, "
+            f"page_count={chunk_info.get('page_count', 'unknown')}. "
             f"PDF may be too complex or Gemini API too slow.",
             exc_info=True
         )
@@ -486,7 +486,7 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
         logger.error(
             f"Error processing chunk {chunk_info.get('chunk_id')} (job {job_id}): "
             f"type={type(e).__name__}, message={str(e)}, "
-            f"pages={chunk_info.get('start_page')}-{chunk_info.get('end_page')}, "
+            f"pages={chunk_info.get('start_page', 'unknown')}-{chunk_info.get('end_page', 'unknown')}, "
             f"text_length={len(text) if 'text' in locals() else 'unknown'}",
             exc_info=True  # Include full stack trace
         )
