@@ -251,6 +251,24 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
                     logger.warning(f"Failed to persist chunk error to DB: {e}")
             
             return error_result
+        
+        # ═══════════════════════════════════════════════════════════════
+        # BATTLESHIP PHASE 1.1: Pre-process text with spaCy
+        # ═══════════════════════════════════════════════════════════════
+        from app.services.chunking_service import ChunkingService
+        chunking_service = ChunkingService()
+        
+        # Clean and segment text before sending to Gemini
+        # This gives the LLM better-structured input
+        original_text_len = len(text)
+        text = chunking_service.preprocess_text(text)
+        preprocessed_text_len = len(text)
+        
+        logger.debug(
+            f"Text preprocessing (chunk {chunk_info.get('chunk_id')}): "
+            f"original_len={original_text_len} preprocessed_len={preprocessed_text_len}"
+        )
+        # ═══════════════════════════════════════════════════════════════
 
         # Process with Gemini
         prompt = gemini_service.build_prompt()
@@ -272,6 +290,114 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
         mem_after_gemini = get_memory_usage_kib()
         if mem_after_gemini:
             logger.info(f"process_chunk: memory_after_gemini={mem_after_gemini} KiB delta={mem_after_gemini - (mem_before_gemini or mem_after_gemini)}")
+        
+        # ═══════════════════════════════════════════════════════════════
+        # BATTLESHIP PHASE 1.3b: Apply Quality Gate to ensure audio-ready sentences
+        # ═══════════════════════════════════════════════════════════════
+        from app.services.quality_gate import quality_gate
+        
+        raw_sentence_count = len(result.get('sentences', []))
+        if raw_sentence_count > 0:
+            # Extract normalized sentence strings from the result while
+            # preserving mapping to the original dict entry
+            raw_sentences: List[str] = []
+            sentence_dicts: List[Dict] = []
+            for sentence_dict in result['sentences']:
+                if isinstance(sentence_dict, dict):
+                    normalized = sentence_dict.get('normalized', '')
+                elif isinstance(sentence_dict, str):
+                    normalized = sentence_dict
+                    sentence_dict = {'normalized': normalized, 'original': normalized}
+                else:
+                    continue
+                if normalized:
+                    raw_sentences.append(normalized)
+                    sentence_dicts.append(sentence_dict)
+
+            # First validation pass (with details so we can target repairs)
+            details = quality_gate.validate_sentences(raw_sentences, return_details=True)
+            # Compute rejection reason distribution for diagnostics
+            try:
+                reason_counts: Dict[str, int] = {}
+                for d in details:
+                    if d.get('valid'):
+                        continue
+                    for r in d.get('reasons', []) or []:
+                        reason_counts[r] = reason_counts.get(r, 0) + 1
+                if reason_counts:
+                    logger.info(
+                        "Quality Gate rejection breakdown (top 5): %s",
+                        sorted(reason_counts.items(), key=lambda kv: kv[1], reverse=True)[:5]
+                    )
+            except Exception:
+                pass
+            initially_valid: List[str] = [d['sentence'] for d in details if d.get('valid')]
+            initially_invalid: List[Dict] = [d for d in details if not d.get('valid')]
+
+            # Identify sentences rejected ONLY because they are too long
+            overlong_originals: List[str] = []
+            for d in initially_invalid:
+                reasons = d.get('reasons') or []
+                if reasons and all(r.startswith('Too long') for r in reasons):
+                    overlong_originals.append(d['sentence'])
+
+            repaired_new: List[str] = []
+            repaired_mappings: List[Dict[str, str]] = []
+            if overlong_originals:
+                try:
+                    repaired_mappings = gemini_service.repair_overlong_sentences(overlong_originals)
+                    repaired_candidates = [m['normalized'] for m in repaired_mappings if m.get('normalized')]
+                    # Re-validate repaired outputs only
+                    repaired_new = quality_gate.validate_sentences(repaired_candidates)
+                    logger.info(
+                        "Repair pass: overlong=%d -> repaired_valid=%d",
+                        len(overlong_originals), len(repaired_new)
+                    )
+                except Exception as _e:
+                    logger.warning("Repair pass failed: %s", _e)
+
+            # Merge originally valid sentences with repaired ones.
+            merged_valid = []
+            seen = set()
+            for s in initially_valid + repaired_new:
+                if s not in seen:
+                    seen.add(s)
+                    merged_valid.append(s)
+
+            rejected_count = raw_sentence_count - len(initially_valid)
+            if rejected_count > 0:
+                logger.info(
+                    f"Quality Gate: chunk {chunk_info.get('chunk_id')} (job {chunk_info.get('job_id')}) - "
+                    f"Rejected {rejected_count}/{raw_sentence_count} sentences "
+                    f"({rejected_count/raw_sentence_count*100:.1f}%) that failed quality checks"
+                )
+
+            # Rebuild result with validated (and repaired) sentences, preserving 'original'
+            validated_sentence_dicts: List[Dict] = []
+            valid_set = set(merged_valid)
+            # Keep original entries that are valid
+            for sd in sentence_dicts:
+                if sd.get('normalized') in valid_set:
+                    validated_sentence_dicts.append(sd)
+            # Add repaired sentences (map original -> repaired) using provided mappings
+            if repaired_new and repaired_mappings:
+                for m in repaired_mappings:
+                    orig = m.get('original')
+                    out = m.get('normalized')
+                    if not out or out not in valid_set:
+                        continue
+                    if all(d.get('normalized') != out for d in validated_sentence_dicts):
+                        validated_sentence_dicts.append({'normalized': out, 'original': orig})
+
+            result['sentences'] = validated_sentence_dicts
+            result['_quality_gate_stats'] = {
+                'raw_count': raw_sentence_count,
+                'validated_count': len(merged_valid),
+                'rejected_count': raw_sentence_count - len(merged_valid),
+                'rejection_rate': (raw_sentence_count - len(merged_valid)) / raw_sentence_count if raw_sentence_count > 0 else 0,
+                'repaired_from_overlong': len(repaired_new),
+            }
+        # ═══════════════════════════════════════════════════════════════
         
         # Check if a fallback method was used and persist marker to DB
         fallback_method = result.get('_fallback_method')
@@ -365,6 +491,18 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
         return result_dict
         
     except SoftTimeLimitExceeded:
+        # ═══════════════════════════════════════════════════════════════
+        # BATTLESHIP PHASE 2.1: Enhanced Timeout Error Logging
+        # ═══════════════════════════════════════════════════════════════
+        logger.error(
+            f"Timeout processing chunk {chunk_info.get('chunk_id')} (job {job_id}): "
+            f"pages={chunk_info.get('start_page', 'unknown')}-{chunk_info.get('end_page', 'unknown')}, "
+            f"page_count={chunk_info.get('page_count', 'unknown')}. "
+            f"PDF may be too complex or Gemini API too slow.",
+            exc_info=True
+        )
+        # ═══════════════════════════════════════════════════════════════
+        
         # Cleanup chunk file before returning
         try:
             fp = chunk_info.get('file_path')
@@ -394,6 +532,19 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
         
         return error_result
     except Exception as e:
+        # ═══════════════════════════════════════════════════════════════
+        # BATTLESHIP PHASE 2.1: Enhanced Error Logging with Full Context
+        # ═══════════════════════════════════════════════════════════════
+        # Log with complete context for debugging
+        logger.error(
+            f"Error processing chunk {chunk_info.get('chunk_id')} (job {job_id}): "
+            f"type={type(e).__name__}, message={str(e)}, "
+            f"pages={chunk_info.get('start_page', 'unknown')}-{chunk_info.get('end_page', 'unknown')}, "
+            f"text_length={len(text) if 'text' in locals() else 'unknown'}",
+            exc_info=True  # Include full stack trace
+        )
+        # ═══════════════════════════════════════════════════════════════
+        
         # Decide whether to retry on transient errors
         from flask import current_app
 

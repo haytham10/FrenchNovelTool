@@ -1,10 +1,23 @@
-"""Service for splitting large PDFs into processable chunks"""
+"""Service for splitting large PDFs into processable chunks
+
+This service implements Battleship Phase 1.1 text pre-processing:
+- Extracts text from PDF pages
+- Uses spaCy to segment into clean sentences (when available)
+- Creates context-aware chunks with sentence overlap
+- Optimized for Railway 8GB/8vCPU infrastructure
+"""
 import os
 import io
 import base64
-from typing import List, Dict
+from typing import List, Dict, Optional
 from datetime import datetime, timezone
 from app.pdf_compat import PdfReader, PdfWriter
+
+try:
+    import spacy
+    _nlp = spacy.load("fr_core_news_sm")
+except Exception:
+    _nlp = None
 
 
 class ChunkingService:
@@ -18,6 +31,80 @@ class ChunkingService:
     }
     
     OVERLAP_PAGES = 2  # More overlap for better context continuity
+    
+    def __init__(self):
+        """Initialize chunking service with optional spaCy support."""
+        self._nlp = _nlp
+    
+    def preprocess_text(self, text: str) -> str:
+        """Pre-process extracted text using spaCy (Battleship Phase 1.1).
+        
+        Uses spaCy to:
+        - Segment into clean sentences
+        - Fix common PDF extraction issues
+        - Prepare text for optimal Gemini processing
+        
+        Args:
+            text: Raw text extracted from PDF
+            
+        Returns:
+            Cleaned and segmented text
+        """
+        if not text or not text.strip():
+            return ""
+        
+        if not self._nlp:
+            # Fallback: basic cleanup without spaCy
+            return self._basic_text_cleanup(text)
+        
+        try:
+            # First apply basic cleanup to remove extreme spacing/newline issues
+            text = self._basic_text_cleanup(text)
+            
+            # Use spaCy to segment into sentences
+            doc = self._nlp(text)
+            
+            # Extract clean sentences
+            sentences = []
+            for sent in doc.sents:
+                sent_text = sent.text.strip()
+                if sent_text:
+                    sentences.append(sent_text)
+            
+            # Rejoin sentences with proper spacing
+            # This gives Gemini clean, well-structured input
+            cleaned_text = ' '.join(sentences)
+            
+            return cleaned_text
+            
+        except Exception as e:
+            # If spaCy processing fails, fall back to basic cleanup
+            import logging
+            logging.warning(f"spaCy preprocessing failed: {e}, using basic cleanup")
+            return self._basic_text_cleanup(text)
+    
+    def _basic_text_cleanup(self, text: str) -> str:
+        """Basic text cleanup without spaCy.
+        
+        Handles common PDF extraction issues:
+        - Multiple spaces
+        - Line breaks in middle of sentences
+        - Hyphenation artifacts
+        """
+        if not text:
+            return text
+        
+        # Replace multiple spaces with single space
+        import re
+        text = re.sub(r' +', ' ', text)
+        
+        # Replace multiple newlines with single newline
+        text = re.sub(r'\n+', '\n', text)
+        
+        # Fix hyphenation at line breaks (e.g., "ex-\nample" -> "example")
+        text = re.sub(r'(\w+)-\s*\n\s*(\w+)', r'\1\2', text)
+        
+        return text.strip()
     
     def calculate_chunks(self, page_count: int) -> Dict:
         """

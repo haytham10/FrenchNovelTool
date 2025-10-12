@@ -195,7 +195,14 @@ def initialize_global_wordlist(app):
         app.logger.info("Global wordlist initialization finished and lock released.")
 
 def configure_logging(app):
-    """Configure application logging"""
+    """Configure application logging (Battleship Phase 2.1: Centralized Error Logging)
+    
+    Implements robust, centralized logging with:
+    - Detailed error context (job_id, chunk_id, user_id where applicable)
+    - Rotating file handler for production
+    - Configurable log levels
+    - Stack traces for debugging
+    """
     if not app.debug and not app.testing:
         # The Dockerfile creates /app/logs and chowns it to appuser.
         # This path is guaranteed to be writable.
@@ -205,17 +212,43 @@ def configure_logging(app):
         
         log_file = os.path.join(log_dir, 'app.log')
 
-        # File handler
+        # Enhanced logging format with more context (Battleship Phase 2.1)
+        detailed_formatter = logging.Formatter(
+            '[%(asctime)s] %(levelname)s [%(name)s:%(lineno)d] [%(funcName)s] %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+
+        # File handler for general logs
         file_handler = RotatingFileHandler(
             log_file,
             maxBytes=10240000,  # 10MB
             backupCount=10
         )
-        file_handler.setFormatter(logging.Formatter(
-            '[%(asctime)s] %(levelname)s in %(module)s: %(message)s'
-        ))
+        file_handler.setFormatter(detailed_formatter)
         file_handler.setLevel(getattr(logging, app.config['LOG_LEVEL']))
         app.logger.addHandler(file_handler)
         
+        # Separate error log file for easier debugging (Battleship Phase 2.1)
+        error_log_file = os.path.join(log_dir, 'errors.log')
+        error_handler = RotatingFileHandler(
+            error_log_file,
+            maxBytes=10240000,  # 10MB
+            backupCount=10
+        )
+        error_handler.setFormatter(detailed_formatter)
+        error_handler.setLevel(logging.ERROR)  # Only ERROR and above
+        app.logger.addHandler(error_handler)
+        
         app.logger.setLevel(getattr(logging, app.config['LOG_LEVEL']))
-        app.logger.info('French Novel Tool startup')
+        app.logger.info('French Novel Tool startup (Battleship logging enabled)')
+    
+    # Configure root logger for all modules (ensures tasks.py logging works)
+    root_logger = logging.getLogger()
+    if not root_logger.handlers:
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(logging.Formatter(
+            '[%(asctime)s] %(levelname)s [%(name)s] %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        ))
+        root_logger.addHandler(console_handler)
+        root_logger.setLevel(getattr(logging, app.config.get('LOG_LEVEL', 'INFO')))
