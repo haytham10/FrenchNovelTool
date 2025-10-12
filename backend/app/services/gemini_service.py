@@ -8,6 +8,10 @@ from google import genai
 from google.genai import types
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
+# Import new modular prompt system
+from app.services.prompts import build_sentence_normalizer_prompt
+from app.services.prompts.sentence_normalizer_prompt import build_minimal_prompt as build_minimal_prompt_v2
+
 
 class GeminiAPIError(Exception):
     """Raised when Gemini returns an empty, malformed or unparseable response.
@@ -89,8 +93,79 @@ class GeminiService:
             current_app.config.get('GEMINI_REJECT_ON_HIGH_FRAGMENT_RATE', False)
         )
 
+        # A/B Testing: Prompt version selection
+        # Options: 'legacy' (original 170-line prompt) or 'v2' (new few-shot prompt)
+        self.prompt_version = current_app.config.get('GEMINI_PROMPT_VERSION', 'legacy')
+        current_app.logger.info(
+            'GeminiService initialized with prompt_version=%s',
+            self.prompt_version
+        )
+
+        # Quality Gate: spaCy-based fragment rejection
+        self.quality_gate_enabled = bool(
+            current_app.config.get('QUALITY_GATE_ENABLED', True)
+        )
+        self.quality_gate = None
+        self.rejected_sentences = []  # Track rejected sentences
+        self.quality_gate_rejections = 0  # Track rejection count
+
+        if self.quality_gate_enabled:
+            try:
+                from app.services.quality_gate_service import QualityGateService
+                self.quality_gate = QualityGateService(config={
+                    'min_length': self.min_sentence_length,
+                    'max_length': self.sentence_length_limit,
+                    'require_verb': True
+                })
+                current_app.logger.info('Quality Gate enabled with spaCy verb detection')
+            except Exception as e:
+                current_app.logger.warning(
+                    'Failed to initialize Quality Gate (will continue without it): %s',
+                    str(e)
+                )
+                self.quality_gate_enabled = False
+
     def build_prompt(self, base_prompt: Optional[str] = None) -> str:
-        """Build the advanced Gemini prompt for French literary processing."""
+        """Build the Gemini prompt for French literary processing.
+
+        Routes to either legacy or v2 prompt based on GEMINI_PROMPT_VERSION config.
+        This enables A/B testing of different prompt strategies.
+
+        Args:
+            base_prompt: If provided, use this exact prompt (overrides version routing)
+
+        Returns:
+            Prompt string for Gemini API
+        """
+        if base_prompt:
+            return base_prompt
+
+        # A/B Testing: Route to appropriate prompt version
+        if self.prompt_version == 'v2':
+            return self.build_prompt_v2()
+        else:
+            # Default to legacy prompt for backwards compatibility
+            return self.build_prompt_legacy()
+
+    def build_prompt_v2(self) -> str:
+        """Build the new few-shot prompt (v2) designed to eliminate fragments.
+
+        This is a concise ~40-line prompt using few-shot examples instead of
+        lengthy rule explanations. Target fragment rate: <0.5%
+        """
+        return build_sentence_normalizer_prompt(
+            sentence_length_limit=self.sentence_length_limit,
+            min_sentence_length=self.min_sentence_length,
+            ignore_dialogue=self.ignore_dialogue,
+            preserve_formatting=self.preserve_formatting,
+            fix_hyphenation=self.fix_hyphenation,
+        )
+
+    def build_prompt_legacy(self, base_prompt: Optional[str] = None) -> str:
+        """Build the legacy (original) Gemini prompt for French literary processing.
+
+        This is the original 170-line prompt kept for rollback safety and A/B comparison.
+        """
         if base_prompt:
             return base_prompt
 
@@ -288,11 +363,19 @@ class GeminiService:
     
     def build_minimal_prompt(self) -> str:
         """Build a minimal prompt that only asks for JSON sentence list.
-        
+
         Used as a fallback when the full prompt fails due to hallucination or format issues.
         Even in minimal mode, we emphasize complete sentences over segmentation.
+
+        Routes to v2 minimal prompt if prompt_version='v2', otherwise uses legacy.
         """
-        # Compact minimal prompt (keeps it short for quick fallback use)
+        if self.prompt_version == 'v2':
+            return build_minimal_prompt_v2(
+                sentence_length_limit=self.sentence_length_limit,
+                min_sentence_length=self.min_sentence_length,
+            )
+
+        # Legacy minimal prompt (keeps it short for quick fallback use)
         return (
             f"Rewrite into independent French sentences ({self.min_sentence_length}-{self.sentence_length_limit} words). "
             f"Return ONLY JSON: {{\"sentences\": [\"Sentence 1.\", \"Sentence 2.\"]}}."
