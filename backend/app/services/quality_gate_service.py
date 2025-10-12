@@ -34,14 +34,34 @@ class QualityGateService:
 
         Args:
             config: Optional configuration dict with keys:
-                - min_length: Minimum sentence length (default: 4)
-                - max_length: Maximum sentence length (default: 8)
+                - min_length: Minimum sentence length (default: from Flask config)
+                - max_length: Maximum sentence length (default: from Flask config)
                 - require_verb: Require verb presence (default: True)
+                - strict_mode: Strict rejection mode (default: from Flask config)
+                - min_verb_count: Minimum verb count required (default: from Flask config)
         """
+        # Get defaults from Flask config if available
         config = config or {}
-        self.min_length = config.get("min_length", 4)
-        self.max_length = config.get("max_length", 8)
+        
+        # Try to get Flask app config, fall back to hardcoded defaults if not available
+        try:
+            flask_config = current_app.config
+            default_min_length = flask_config.get("MIN_SENTENCE_LENGTH", 4)
+            default_max_length = flask_config.get("MAX_SENTENCE_LENGTH", 8)
+            default_strict_mode = flask_config.get("QUALITY_GATE_STRICT_MODE", False)
+            default_min_verb_count = flask_config.get("MIN_VERB_COUNT", 1)
+        except RuntimeError:
+            # Outside Flask app context
+            default_min_length = 4
+            default_max_length = 8
+            default_strict_mode = False
+            default_min_verb_count = 1
+        
+        self.min_length = config.get("min_length", default_min_length)
+        self.max_length = config.get("max_length", default_max_length)
         self.require_verb = config.get("require_verb", True)
+        self.strict_mode = config.get("strict_mode", default_strict_mode)
+        self.min_verb_count = config.get("min_verb_count", default_min_verb_count)
 
         # Load spaCy French model
         try:
@@ -52,7 +72,8 @@ class QualityGateService:
                 current_app.logger.info(
                     "QualityGateService initialized with fr_core_news_sm model "
                     f"(min_length={self.min_length}, max_length={self.max_length}, "
-                    f"require_verb={self.require_verb})"
+                    f"require_verb={self.require_verb}, strict_mode={self.strict_mode}, "
+                    f"min_verb_count={self.min_verb_count})"
                 )
             except OSError:
                 current_app.logger.error(
@@ -120,7 +141,7 @@ class QualityGateService:
         return True, None
 
     def _check_verb_presence(self, sentence: str) -> Tuple[bool, Optional[str]]:
-        """Check if sentence contains at least one main verb using spaCy POS tagging.
+        """Check if sentence contains sufficient verbs using spaCy POS tagging.
 
         Uses spaCy to identify VERB tokens (not AUX/auxiliary verbs).
 
@@ -129,18 +150,19 @@ class QualityGateService:
 
         Returns:
             Tuple of (has_verb, reason)
-            - has_verb: True if sentence contains at least one VERB
-            - reason: None if has verb, otherwise description of missing verb
+            - has_verb: True if sentence contains at least min_verb_count VERBs
+            - reason: None if has sufficient verbs, otherwise description of missing verb
         """
         try:
             doc = self.nlp(sentence)
 
             # Look for main verbs (VERB tag, not AUX)
             verbs = [token for token in doc if token.pos_ == "VERB"]
+            verb_count = len(verbs)
 
-            if verbs:
+            if verb_count >= self.min_verb_count:
                 current_app.logger.debug(
-                    f"Found {len(verbs)} verb(s) in sentence: {[v.text for v in verbs]}"
+                    f"Found {verb_count} verb(s) in sentence (required: {self.min_verb_count}): {[v.text for v in verbs]}"
                 )
                 return True, None
 
@@ -153,10 +175,10 @@ class QualityGateService:
                 current_app.logger.debug(f"Found auxiliary verb(s): {[v.text for v in aux_verbs]}")
                 return True, None
 
-            # No verb found
+            # No sufficient verbs found
             token_pos = [(t.text, t.pos_) for t in doc]
-            current_app.logger.debug(f"No verb found. Token POS tags: {token_pos}")
-            return False, f"No verb found (POS tags: {token_pos})"
+            current_app.logger.debug(f"Insufficient verbs found ({verb_count}/{self.min_verb_count}). Token POS tags: {token_pos}")
+            return False, f"Insufficient verbs ({verb_count}/{self.min_verb_count}) - POS tags: {token_pos}"
 
         except Exception as e:
             current_app.logger.exception(f"Error in spaCy verb detection: {e}")
@@ -361,6 +383,9 @@ class QualityGateService:
             "entre",
         ]
         if first_word_lower in preposition_starts:
+            # In strict mode, be more aggressive about rejecting preposition starts
+            if self.strict_mode and len(words) < 6:
+                return True, f"Strict mode: Preposition start '{first_word_lower}' with insufficient length ({len(words)} words)"
             # These are often fragments unless they have proper structure
             # The verb check should have already validated, but we can add extra
             # heuristic checks here
@@ -369,15 +394,16 @@ class QualityGateService:
         # 2. Conjunction-starting fragments
         conjunction_starts = ["et", "mais", "donc", "car", "or", "ni", "puis"]
         if first_word_lower in conjunction_starts:
-            # Conjunctions at start are often fragments unless very short imperative
-            # or question
-            if len(words) < 4:
-                return True, f"Conjunction fragment: starts with '{first_word_lower}' but too short"
+            # In strict mode, be more aggressive about conjunction fragments
+            threshold = 5 if self.strict_mode else 4
+            if len(words) < threshold:
+                return True, f"Conjunction fragment: starts with '{first_word_lower}' but too short (strict_mode={self.strict_mode})"
 
         # 3. Temporal expression fragments
         temporal_starts = ["quand", "lorsque", "pendant", "durant", "avant", "après", "depuis"]
-        if first_word_lower in temporal_starts and len(words) < 5:
-            return True, f"Temporal fragment: starts with '{first_word_lower}' without main clause"
+        threshold = 6 if self.strict_mode else 5
+        if first_word_lower in temporal_starts and len(words) < threshold:
+            return True, f"Temporal fragment: starts with '{first_word_lower}' without main clause (strict_mode={self.strict_mode})"
 
         # 4. Relative pronoun fragments
         relative_starts = [
@@ -390,10 +416,11 @@ class QualityGateService:
             "lesquels",
             "lesquelles",
         ]
-        if first_word_lower in relative_starts and len(words) < 4:
+        threshold = 5 if self.strict_mode else 4
+        if first_word_lower in relative_starts and len(words) < threshold:
             return (
                 True,
-                f"Relative clause fragment: starts with '{first_word_lower}' without main clause",
+                f"Relative clause fragment: starts with '{first_word_lower}' without main clause (strict_mode={self.strict_mode})",
             )
 
         # 5. Check for idiomatic fragments

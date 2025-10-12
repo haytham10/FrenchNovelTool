@@ -46,9 +46,16 @@ class Config:
 
     # Gemini API
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-    GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
     GEMINI_MAX_RETRIES = int(os.getenv("GEMINI_MAX_RETRIES", "3"))
     GEMINI_RETRY_DELAY = int(os.getenv("GEMINI_RETRY_DELAY", "1"))
+
+    # Quality Gate Configuration - Post-processing validation layer
+    QUALITY_GATE_ENABLED = os.getenv("QUALITY_GATE_ENABLED", "True").lower() == "true"
+    QUALITY_GATE_STRICT_MODE = os.getenv("QUALITY_GATE_STRICT_MODE", "False").lower() == "true"
+    MIN_VERB_COUNT = int(os.getenv("MIN_VERB_COUNT", "1"))
+    MIN_SENTENCE_LENGTH = int(os.getenv("MIN_SENTENCE_LENGTH", "4"))
+    MAX_SENTENCE_LENGTH = int(os.getenv("MAX_SENTENCE_LENGTH", "8"))
 
     # Google APIs
     CLIENT_SECRETS_FILE = os.getenv(

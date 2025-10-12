@@ -115,6 +115,8 @@ class GeminiService:
                         "min_length": self.min_sentence_length,
                         "max_length": self.sentence_length_limit,
                         "require_verb": True,
+                        "strict_mode": current_app.config.get("QUALITY_GATE_STRICT_MODE", False),
+                        "min_verb_count": current_app.config.get("MIN_VERB_COUNT", 1),
                     }
                 )
                 current_app.logger.info("Quality Gate enabled with spaCy verb detection")
