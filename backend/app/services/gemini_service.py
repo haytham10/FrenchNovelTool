@@ -604,8 +604,24 @@ class GeminiService:
                             processed.append(r)
                         # Skip the normal handling for this original chunk
                         continue
-                
-                # Check for fragments and log warnings
+
+                # Quality Gate validation (spaCy-based verb detection)
+                if self.quality_gate_enabled and self.quality_gate:
+                    is_valid, rejection_reason = self.quality_gate.validate_sentence(chunk)
+                    if not is_valid:
+                        self.quality_gate_rejections += 1
+                        self.rejected_sentences.append({
+                            'text': chunk,
+                            'reason': rejection_reason,
+                            'index': idx
+                        })
+                        current_app.logger.warning(
+                            'Quality gate rejected sentence at index %s: "%s" (reason: %s)',
+                            idx, chunk[:50], rejection_reason
+                        )
+                        continue  # Skip this sentence - do not add to processed
+
+                # Check for fragments and log warnings (legacy heuristic)
                 if self._is_likely_fragment(chunk):
                     fragment_count += 1
                     fragment_details.append({

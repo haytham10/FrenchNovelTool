@@ -4,7 +4,10 @@
       "Bash(git add:*)",
       "Bash(npm run lint)",
       "Bash(git checkout:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(pip install:*)",
+      "Bash(git stash:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []
