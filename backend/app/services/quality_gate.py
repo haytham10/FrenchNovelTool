@@ -90,12 +90,22 @@ class QualityGate:
             
         sentence = sentence.strip()
         
-        # Check 1: Must start with capital letter
-        if not sentence[0].isupper():
+        # Check 1: Must start with capital letter (ignore leading quotes/dashes)
+        leading_strip = '«"\'\(\[—–-\s'
+        i = 0
+        while i < len(sentence) and sentence[i] in ' «"\'\(\[—–-':
+            i += 1
+        if i < len(sentence):
+            if not sentence[i].isupper():
+                return True
+        else:
             return True
         
-        # Check 2: Must end with proper punctuation
-        if not sentence[-1] in '.!?…»"\'':
+        # Check 2: Must end with proper punctuation (allow closing quotes)
+        j = len(sentence) - 1
+        while j >= 0 and sentence[j] in ' »"\'\)]':
+            j -= 1
+        if j < 0 or sentence[j] not in '.!?…':
             return True
         
         # Check 3: Check for fragment-prone starters

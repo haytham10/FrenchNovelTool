@@ -69,7 +69,7 @@ class GeminiService:
         # Enable / disable the targeted long-sentence repair step
         self.enable_repair = bool(current_app.config.get('GEMINI_ENABLE_REPAIR', True))
         # Only attempt repair if sentence length > sentence_length_limit * repair_multiplier
-        self.repair_multiplier = float(current_app.config.get('GEMINI_REPAIR_MULTIPLIER', 1.5))
+        self.repair_multiplier = float(current_app.config.get('GEMINI_REPAIR_MULTIPLIER', 1.0))
         # Maximum repair attempts per unique chunk within a single request
         self.max_repair_attempts = int(current_app.config.get('GEMINI_MAX_REPAIR_ATTEMPTS', 1))
         # Simple in-request cache to avoid repeating repairs for identical chunks
@@ -285,6 +285,67 @@ class GeminiService:
         except Exception as e:
             current_app.logger.warning('Long-sentence repair failed: %s; sentence=%r', e, sentence[:200])
             return []
+
+    def repair_overlong_sentences(self, sentences: List[str], max_repairs: int | None = None) -> List[Dict[str, str]]:
+        """Public helper to split sentences that exceed the word limit.
+
+        This performs a best-effort pass to convert overlong sentences into
+        multiple short, independent sentences that respect the configured
+        sentence_length_limit. It limits API calls via the optional
+        ``max_repairs`` parameter (default comes from config).
+
+        Args:
+            sentences: Input sentences to inspect
+            max_repairs: Maximum number of API repair calls to perform
+
+        Returns:
+            List of mapping dicts: {"original": <overlong_input>, "normalized": <repaired_output>}.
+            Sentences that do not exceed the limit are returned unchanged as
+            single-item mappings where original==normalized.
+        """
+        if not sentences:
+            return []
+
+        # Enforce an upper bound on repair calls to control latency/cost.
+        try:
+            from flask import current_app as _ca
+            default_cap = int(_ca.config.get('GEMINI_MAX_REPAIR_CALLS', 200))
+        except Exception:
+            default_cap = 50
+
+        cap = max_repairs if isinstance(max_repairs, int) and max_repairs >= 0 else default_cap
+
+        repaired: List[Dict[str, str]] = []
+        repairs_used = 0
+
+        for s in sentences:
+            try:
+                wc = len(str(s).split())
+            except Exception:
+                wc = len(str(s or '').split())
+
+            if wc > self.sentence_length_limit and repairs_used < cap:
+                pieces = self._split_long_sentence(str(s))
+                if pieces:
+                    for p in pieces:
+                        repaired.append({'original': str(s), 'normalized': p})
+                    repairs_used += 1
+                    continue  # Skip adding the original overlong sentence
+
+            # Either not over limit or we hit the cap – keep as-is
+            if s and str(s).strip():
+                repaired.append({'original': str(s).strip(), 'normalized': str(s).strip()})
+
+        try:
+            from flask import current_app as _ca
+            _ca.logger.info(
+                'repair_overlong_sentences: inspected=%d, repairs_used=%d, cap=%d',
+                len(sentences), repairs_used, cap
+            )
+        except Exception:
+            pass
+
+        return repaired
     
     def build_minimal_prompt(self) -> str:
         """Build a minimal prompt that only asks for JSON sentence list.
