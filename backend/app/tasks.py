@@ -907,6 +907,7 @@ def finalize_job_results(self, chunk_results, job_id):
                     spreadsheet_url=None,
                     export_sheet_url=None,
                     chunk_ids=chunk_ids,
+                    status=job.status,
                 )
                 db.session.add(history_entry)
                 db.session.flush()  # Get history.id
