@@ -438,6 +438,18 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
         return result_dict
         
     except SoftTimeLimitExceeded:
+        # ═══════════════════════════════════════════════════════════════
+        # BATTLESHIP PHASE 2.1: Enhanced Timeout Error Logging
+        # ═══════════════════════════════════════════════════════════════
+        logger.error(
+            f"Timeout processing chunk {chunk_info.get('chunk_id')} (job {job_id}): "
+            f"pages={chunk_info.get('start_page')}-{chunk_info.get('end_page')}, "
+            f"page_count={chunk_info.get('page_count')}. "
+            f"PDF may be too complex or Gemini API too slow.",
+            exc_info=True
+        )
+        # ═══════════════════════════════════════════════════════════════
+        
         # Cleanup chunk file before returning
         try:
             fp = chunk_info.get('file_path')
@@ -467,6 +479,19 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
         
         return error_result
     except Exception as e:
+        # ═══════════════════════════════════════════════════════════════
+        # BATTLESHIP PHASE 2.1: Enhanced Error Logging with Full Context
+        # ═══════════════════════════════════════════════════════════════
+        # Log with complete context for debugging
+        logger.error(
+            f"Error processing chunk {chunk_info.get('chunk_id')} (job {job_id}): "
+            f"type={type(e).__name__}, message={str(e)}, "
+            f"pages={chunk_info.get('start_page')}-{chunk_info.get('end_page')}, "
+            f"text_length={len(text) if 'text' in locals() else 'unknown'}",
+            exc_info=True  # Include full stack trace
+        )
+        # ═══════════════════════════════════════════════════════════════
+        
         # Decide whether to retry on transient errors
         from flask import current_app
 
