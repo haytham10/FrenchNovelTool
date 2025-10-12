@@ -1,86 +1,67 @@
-Project Battleship — Sentence Normalizer Overhaul
-===============================================
+### **Project Battleship — Sentence Normalizer Overhaul (Version 2.0)**
 
-Purpose
--------
-This document delegates the "Battleship" action plan across parallel agents and defines branching/PR conventions for the Project Overhaul that creates a "bulletproof" Sentence Normalizer.
+**Purpose:**
+This document delegates the "Battleship" action plan and defines the development process for a "bulletproof" Sentence Normalizer. The goal is to produce linguistically perfect, audio-ready sentences to fuel the client's learning system.
 
-High-level phases
-------------------
-- Phase 1: Architect the "Bulletproof" Sentence Normalizer (the Brain)
-  - 1.1 Pre-Processing (Perfect Chunks)
-  - 1.2 Prompt Engineering (Perfect Instructions)
-  - 1.3 Post-Processing & Validation (Quality Gate)
-- Phase 2: System Hardening & Reliability (the Armor)
-  - 2.1 Centralized Error Logging
-  - 2.2 User-Facing Error Messages
+---
 
-Branching strategy
-------------------
-- Base branch: `battleship` (created from `master`) — parent branch for the overhaul
-- Feature/task branches (forked from `battleship`):
-  - `battleship/phase1-preprocessing`
-  - `battleship/phase1-prompt-engineering`
-  - `battleship/phase1-quality-gate`
-  - `battleship/phase2-logging`
-  - `battleship/phase2-user-errors`
+**High-Level Phases:**
 
-Delegation & Parallel Agents
-----------------------------
-Each feature branch is intended for a dedicated agent or small team. The agent should:
+*   **Phase 1: Architect the "Bulletproof" Sentence Normalizer (The Brain)**
+    *   1.1 Pre-Processing (Perfect Chunks)
+    *   1.2 Prompt Engineering (Perfect Instructions)
+    *   1.3 Post-Processing & Validation (The Quality Gate)
+*   **Phase 2: System Hardening & Reliability (The Armor)**
+    *   2.1 Centralized Error Logging
+    *   2.2 User-Facing Error Messages
 
-1. Create the feature branch locally from `battleship`.
-2. Implement changes and tests.
-3. Push branch and open a PR targeting `battleship`.
+---
 
-Acceptance criteria (for each task)
-----------------------------------
-- Code compiles / lints and unit tests pass for modified areas.
-- New behavior covered by unit tests (happy path + 1-2 edge cases).
-- Clear, concise commit history and PR description referencing this doc.
+**[UPDATE] New Core Acceptance Criteria for the Entire Project:**
 
-PR naming and templates
------------------------
-- PR title format: [battleship][phase#][short-task] e.g. "[battleship][1.1] spaCy chunker: context-aware chunks"
-- PR description must contain:
-  - Short summary
-  - Files changed (major components)
-  - How to test locally
-  - Any migration / config changes
+Before any individual task is considered complete, the final output of the entire pipeline must adhere to these "Stan-Ready" criteria:
 
-Quality gates
--------------
-- Run backend unit tests with `pytest`.
-- Lint: `black .` (python) and `npm run lint` for frontend changes.
+*   **Audio-Ready:** Every sentence must be grammatically and structurally sound, suitable for direct use in a Text-to-Speech (TTS) engine like `Natural Reader`. This means no fragments, hanging punctuation, or awkward phrasing.
+*   **High Semantic Density:** Sentences must be rich in meaningful vocabulary, prioritizing content words over filler.
+*   **Batch Integrity:** The system must be able to process a large batch of source files (e.g., 500 PDFs) in a single run without crashing or producing inconsistent results.
 
-Initial tasks for agents
-------------------------
-- Phase 1.1 agent: Implement spaCy sentencizer, create context-aware chunks (2-3 sentences per chunk). Add tests and fixtures.
-- Phase 1.2 agent: Implement prompt templates, LLM integration hooks, and unit tests mocking LLM responses.
-- Phase 1.3 agent: Implement `quality_gate` service in `backend/app/services/quality_gate.py`. Validate verb presence and 4-8 token length using spaCy POS/tokenization. Add unit tests.
-- Phase 2.1 agent: Implement structured logging and integrate with Sentry (optional). Ensure all services use the logger.
-- Phase 2.2 agent: Add mapping of internal errors to friendly messages and update frontend components to display them.
+---
 
-Testing & verification
-----------------------
-- Use `pytest` for backend tests and the existing frontend test harness for UI checks.
-- Provide examples (sample PDF, sample chunk inputs) in `tests/fixtures` where relevant.
+**Delegation & Task Breakdown:**
 
-Branch workflow example
------------------------
-1. Create `battleship` from `master`.
-2. Checkout `battleship/phase1-preprocessing` from `battleship`.
-3. Implement changes and tests.
-4. Push `battleship/phase1-preprocessing` to origin.
-5. Open PR into `battleship` following naming conventions.
+**Phase 1.1: Pre-Processing (Agent: NLP Specialist)**
+*   **Branch:** `battleship/phase1-preprocessing`
+*   **Task:** Refactor the `chunking_service`. Use `spaCy` to segment the raw text from PDFs into clean, individual sentences first. Then, create overlapping "context-aware chunks" of 2-3 sentences to provide richer context for the LLM.
+*   **Acceptance:** Unit tests confirm that given a block of raw text, the service outputs clean, structured sentence chunks.
 
-Notes
------
-- Keep changes small and test-focused. Aim for iterative merges into `battleship`.
-- If a task grows beyond scope, create sub-branches under the feature branch.
+**Phase 1.2: Prompt Engineering (Agent: AI Specialist)**
+*   **Branch:** `battleship/phase1-prompt-engineering`
+*   **Task:** Design and implement a new, sophisticated "Chain of Thought" prompt for the LLM. The prompt must explicitly instruct the model to identify core ideas, rewrite them as complete sentences, and strictly adhere to all constraints (4-8 words, verb presence, etc.). The output must be a clean JSON array.
+*   **[UPDATE] Acceptance:** Unit tests will mock the LLM response. A key test will be to feed the prompt a fragment (e.g., "Dans la rue.") and verify that the LLM, following the prompt's instructions, either completes it into a full sentence or returns an empty array because it cannot meet the criteria.
 
-Contact
--------
-Primary maintainer: repo owner. For urgent merge coordination, comment on the parent `battleship` branch's PR thread.
+**Phase 1.3: Post-Processing & Validation (Agent: Backend Developer)**
+*   **Branch:** `battleship/phase1-quality-gate`
+*   **Task:** Build the `quality_gate` service. This service receives the JSON array from the LLM and iterates through each sentence.
+*   **[UPDATE] Acceptance:** This "Quality Gate" is our most critical defense. It must have unit tests for the following checks:
+    1.  **Verb Check:** Use `spaCy` POS tagging to confirm the presence of at least one `VERB`.
+    2.  **Length Check:** Confirm token count is between 4 and 8.
+    3.  **Fragment Check:** Add a heuristic to detect and discard likely fragments (e.g., sentences that don't start with a capital letter or end with proper punctuation).
+    *   **Only sentences that pass ALL checks are saved to the database.**
 
--- End of document
+**Phase 2.1: Centralized Error Logging (Agent: DevOps/Backend)**
+*   **Branch:** `battleship/phase2-logging`
+*   **Task:** Implement a robust, centralized logging system (e.g., Python's `logging` module, potentially integrated with Sentry). Ensure all services, especially the new Normalizer pipeline, log errors with clear context (e.g., which PDF, which chunk failed).
+*   **Acceptance:** A test that intentionally causes an LLM API failure is correctly logged with a full stack trace and contextual info.
+
+**Phase 2.2: User-Facing Error Messages (Agent: Frontend/UX)**
+*   **Branch:** `battleship/phase2-user-errors`
+*   **Task:** Create a mapping of common backend error codes to user-friendly, helpful messages. Update the frontend components to display these messages instead of generic "Error" alerts.
+*   **[UPDATE] Acceptance:** A specific test where a user uploads a corrupted PDF should result in the frontend displaying a clear, helpful message like: "This PDF appears to be corrupted or in an unsupported format. Please try another file."
+
+---
+
+**Testing & Verification:**
+*   A new end-to-end test script will be created: `test_battleship_pipeline.py`. This script will take a sample PDF (`tests/fixtures/stan_test_novel.pdf`), run it through the entire new Normalization pipeline, and assert that the number of sentences saved to the database is greater than zero and that every saved sentence passes all Quality Gate checks.
+
+---
+*End of Updated Document*
