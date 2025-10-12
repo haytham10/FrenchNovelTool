@@ -171,7 +171,6 @@ class TestPromptValidation:
             "GEMINI_FRAGMENT_RATE_RETRY_THRESHOLD": 3.0,
             "GEMINI_REJECT_ON_HIGH_FRAGMENT_RATE": False,
             "GEMINI_CALL_TIMEOUT_SECONDS": 180,
-            "GEMINI_PROMPT_VERSION": "v2",  # Use new prompt
         }
         self.mock_app.logger = MagicMock()
 

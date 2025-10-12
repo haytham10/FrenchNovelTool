@@ -130,7 +130,6 @@ export default function HelpModal({ open, onClose }: HelpModalProps) {
         <Box component="ul" sx={{ mt: 1, pl: 2, color: 'text.secondary' }}>
           <li>Start with sentence length of 8 words for balanced results</li>
           <li>Prefer &quot;Balanced&quot; for literary texts to save cost; use &quot;Speed&quot; for quick tests.</li>
-          <li style={{ color: '#ff9800', fontWeight: 700 }}>Quality mode: disabled. My wallet: crying.</li>
           <li>Enable &quot;Fix hyphenations&quot; for scanned books</li>
           <li>Review and edit results before exporting</li>
           <li>Keep your Google authorization current</li>

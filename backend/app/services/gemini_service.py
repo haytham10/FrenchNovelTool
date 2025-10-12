@@ -95,11 +95,9 @@ class GeminiService:
             current_app.config.get("GEMINI_REJECT_ON_HIGH_FRAGMENT_RATE", False)
         )
 
-        # A/B Testing: Prompt version selection
-        # Options: 'legacy' (original 170-line prompt) or 'v2' (new few-shot prompt)
-        self.prompt_version = current_app.config.get("GEMINI_PROMPT_VERSION", "v2")
+        # Use new prompt framework exclusively
         current_app.logger.info(
-            "GeminiService initialized with prompt_version=%s", self.prompt_version
+            "GeminiService initialized with new prompt framework (v2)"
         )
 
         # Quality Gate: spaCy-based fragment rejection
@@ -127,13 +125,10 @@ class GeminiService:
                 self.quality_gate_enabled = False
 
     def build_prompt(self, base_prompt: Optional[str] = None) -> str:
-        """Build the Gemini prompt for French literary processing.
-
-        Routes to either legacy or v2 prompt based on GEMINI_PROMPT_VERSION config.
-        This enables A/B testing of different prompt strategies.
+        """Build the Gemini prompt using the new prompt framework.
 
         Args:
-            base_prompt: If provided, use this exact prompt (overrides version routing)
+            base_prompt: If provided, use this exact prompt (overrides default)
 
         Returns:
             Prompt string for Gemini API
@@ -141,12 +136,7 @@ class GeminiService:
         if base_prompt:
             return base_prompt
 
-        # A/B Testing: Route to appropriate prompt version
-        if self.prompt_version == "v2":
-            return self.build_prompt_v2()
-        else:
-            # Default to legacy prompt for backwards compatibility
-            return self.build_prompt_legacy()
+        return self.build_prompt_v2()
 
     def build_prompt_v2(self) -> str:
         """Build the new few-shot prompt (v2) designed to eliminate fragments.
@@ -161,188 +151,6 @@ class GeminiService:
             preserve_formatting=self.preserve_formatting,
             fix_hyphenation=self.fix_hyphenation,
         )
-
-    def build_prompt_legacy(self, base_prompt: Optional[str] = None) -> str:
-        """Build the legacy (original) Gemini prompt for French literary processing.
-
-        This is the original 170-line prompt kept for rollback safety and A/B comparison.
-        """
-        if base_prompt:
-            return base_prompt
-
-        dialogue_rule = (
-            "If a sentence is enclosed in quotation marks (« », \" \", or ' '), "
-            "keep it as-is without splitting regardless of length."
-            if self.ignore_dialogue
-            else "For dialogue, maintain grammatical completeness. Do not split it unless absolutely necessary; "
-            "ensure each output sentence preserves the speaker's complete thought."
-        )
-
-        min_length_rule = (
-            f"Each output sentence must contain at least {self.min_sentence_length} words. "
-            f"If simplification would create a sentence shorter than this (i.e. shorter than {self.min_sentence_length} words), "
-            "either rephrase to maintain minimum length or merge it with the previous or next sentence to avoid fragments."
-        )
-
-        formatting_rules: List[str] = []
-        if self.preserve_formatting:
-            formatting_rules.append(
-                "Preserve the original quotation marks, italics markers, and ellipses."
-            )
-            formatting_rules.append(
-                "Keep the literary formatting intact unless it conflicts with readability."
-            )
-        if self.fix_hyphenation:
-            formatting_rules.append(
-                "Hyphenation: If words are split with hyphens because of line breaks (e.g., 'ex- ample'), rejoin them into a single word."
-            )
-
-        sections = [
-            "You are a French linguistic expert specialized in literary text rewriting. Your SOLE PURPOSE is to transform complex French text into simple, complete, grammatically perfect sentences.",
-            "",
-            "═══════════════════════════════════════════════════════════════",
-            "🚫 CRITICAL CONSTRAINT: ZERO TOLERANCE FOR FRAGMENTS",
-            "═══════════════════════════════════════════════════════════════",
-            "",
-            f"ABSOLUTE RULE: Every output sentence MUST be a complete, independent, grammatically correct sentence with {self.min_sentence_length}-{self.sentence_length_limit} words.",
-            f"ABSOLUTE HARD LIMIT: No output sentence may contain more than {self.sentence_length_limit} words. If necessary, rewrite into multiple sentences each not exceeding this limit.",
-            "Each sentence must be linguistically complete.",
-            min_length_rule,
-            "Your task is to extract and process every single sentence from the entire document. Do not skip content.",
-            "",
-            "❌ FORBIDDEN OUTPUT PATTERNS (These are WRONG and will be REJECTED):",
-            '   • "le standard d\'Elvis Presley" ← Noun phrase, NOT a sentence',
-            '   • "It\'s Now or Never" ← Title reference without context',
-            '   • "dans la rue sombre" ← Prepositional phrase fragment',
-            '   • "et froide" ← Conjunction fragment',
-            '   • "Pour toujours et à jamais" ← Incomplete prepositional phrase',
-            '   • "Avec le temps" ← Adverbial phrase without verb',
-            '   • "Dans quinze ans" ← Time expression without predicate',
-            '   • "De retour dans la chambre" ← Participial phrase without subject',
-            "",
-            "✅ CORRECT OUTPUT PATTERNS (These are RIGHT):",
-            '   • "Le standard d\'Elvis Presley joue à la radio." ← Complete sentence',
-            '   • "La chanson It\'s Now or Never résonne." ← Complete with context',
-            '   • "La rue était sombre." ← Complete subject-verb-complement',
-            '   • "Il faisait froid." ← Complete weather description',
-            '   • "Ils s\'aimeront pour toujours." ← Complete with verb',
-            '   • "Le temps passera lentement." ← Complete with subject + verb',
-            '   • "Dans quinze ans, ce sera différent." ← Complete with predicate',
-            '   • "Il est retourné dans la chambre." ← Complete action',
-            "",
-            "═══════════════════════════════════════════════════════════════",
-            "📋 YOUR TASK: LINGUISTIC REWRITING (NOT SEGMENTATION)",
-            "CRITICAL: Linguistic Rewriting",
-            "FORBIDDEN: sentence fragments",
-            "═══════════════════════════════════════════════════════════════",
-            "",
-            "**Rewriting Methodology:**",
-            "**Context-Awareness:**",
-            "**Dialogue Handling:**",
-            "**Style and Tone Preservation:**",
-            "**Hyphenation & Formatting:**",
-            "",
-            "PROCESS:",
-            "REWRITE and PARAPHRASE",
-            "1. Read the ENTIRE source text thoroughly",
-            f"2. For sentences ≤ {self.sentence_length_limit} words: Output them unchanged",
-            f"3. For sentences > {self.sentence_length_limit} words: REWRITE them into multiple complete sentences",
-            "4. NEVER split at commas, conjunctions, or punctuation alone",
-            "5. ALWAYS ensure each output sentence can stand alone grammatically",
-            "",
-            "REWRITING STRATEGY:",
-            "• IDENTIFY the core propositions in complex sentences",
-            "• EXTRACT each proposition into a standalone sentence",
-            "• ADD subjects/verbs/complements as needed to create grammatical completeness",
-            "• PARAPHRASE to simplify while preserving meaning",
-            "• VERIFY each output sentence is grammatically independent",
-            "",
-            "EXAMPLE TRANSFORMATION:",
-            "❌ WRONG (Segmentation approach):",
-            '   Input: "Il marchait lentement dans la rue sombre et froide, pensant à elle."',
-            '   Output: ["dans la rue sombre", "et froide", "pensant à elle"] ← FRAGMENTS!',
-            "",
-            "✅ CORRECT (Rewriting approach):",
-            '   Input: "Il marchait lentement dans la rue sombre et froide, pensant à elle."',
-            '   Output: ["Il marchait lentement dans la rue.", "La rue était sombre et froide.", "Il pensait à elle."]',
-            "",
-            "GRAMMATICAL REQUIREMENTS FOR EACH OUTPUT SENTENCE:",
-            "✓ Must have a SUBJECT (explicit or understood)",
-            "✓ Must have a CONJUGATED VERB (not just infinitive or participle)",
-            "✓ Must express a COMPLETE THOUGHT",
-            "✓ Must be able to stand alone with ZERO context",
-            "✓ Must end with proper punctuation (. ! ? …)",
-            f"✓ Must contain {self.min_sentence_length}-{self.sentence_length_limit} words",
-            "",
-            "═══════════════════════════════════════════════════════════════",
-            "🔍 FRAGMENT DETECTION TEST",
-            "═══════════════════════════════════════════════════════════════",
-            "",
-            "Before outputting ANY sentence, ask yourself:",
-            "1. Can this sentence be understood completely on its own?",
-            "2. Does it have both a subject AND a conjugated verb?",
-            "3. Would a native French speaker consider this grammatically complete?",
-            "4. Is it a dependent clause that needs a main clause?",
-            "",
-            "If ANY answer is NO → REWRITE until all answers are YES",
-            "",
-            "FRAGMENT PATTERNS TO AVOID:",
-            "• Starting with: dans, sur, avec, sans, pour (without full sentence)",
-            "• Starting with: et, mais, donc, car (without imperative or complete structure)",
-            "• Ending with comma instead of period/punctuation",
-            "• Only containing: adjective phrases, noun phrases, infinitive phrases",
-            "• Participial phrases without auxiliary verbs",
-            "",
-            "═══════════════════════════════════════════════════════════════",
-            "📖 ADDITIONAL REQUIREMENTS",
-            "═══════════════════════════════════════════════════════════════",
-            "",
-            f"**Dialogue Handling:** {dialogue_rule}",
-            "",
-            "**Narrative Coherence:**",
-            "• Maintain chronological sequence",
-            "• Preserve cause-and-effect relationships",
-            "• Keep character actions and motivations clear",
-            "• The simplified text should read as a coherent story",
-            "",
-            "**Style Preservation:**",
-            "• Maintain the author's literary tone",
-            "• Preserve vocabulary choices where possible",
-            "• Keep the emotional atmosphere",
-            "• Simplify structure, not meaning",
-            "",
-            "**Formatting:**",
-        ]
-
-        if formatting_rules:
-            sections.extend(f"• {rule}" for rule in formatting_rules)
-        else:
-            sections.append("• Maintain consistent spacing and punctuation.")
-
-        sections.extend(
-            [
-                "",
-                "═══════════════════════════════════════════════════════════════",
-                "📤 OUTPUT FORMAT (STRICT JSON)",
-                "═══════════════════════════════════════════════════════════════",
-                "",
-                "Return ONLY a JSON object with this structure:",
-                '{"sentences": ["Complete sentence 1.", "Complete sentence 2.", "Complete sentence 3.", ...]}',
-                "",
-                "VALIDATION CHECKLIST before submitting output:",
-                "☐ Every sentence is grammatically complete",
-                "☐ Every sentence can stand alone",
-                "☐ No sentence fragments",
-                "☐ No dependent clauses as standalone sentences",
-                "☐ No incomplete thoughts",
-                f"☐ All sentences are {self.min_sentence_length}-{self.sentence_length_limit} words",
-                "☐ JSON is valid and properly formatted",
-                "",
-                "PROCESS THE ENTIRE TEXT. BEGIN NOW.",
-            ]
-        )
-
-        return "\n".join(sections)
 
     def _split_long_sentence(self, sentence: str) -> List[str]:
         """Ask the model to rewrite a single long sentence into multiple sentences
@@ -379,23 +187,13 @@ class GeminiService:
             return []
 
     def build_minimal_prompt(self) -> str:
-        """Build a minimal prompt that only asks for JSON sentence list.
+        """Build a minimal prompt using the new prompt framework.
 
         Used as a fallback when the full prompt fails due to hallucination or format issues.
-        Even in minimal mode, we emphasize complete sentences over segmentation.
-
-        Routes to v2 minimal prompt if prompt_version='v2', otherwise uses legacy.
         """
-        if self.prompt_version == "v2":
-            return build_minimal_prompt_v2(
-                sentence_length_limit=self.sentence_length_limit,
-                min_sentence_length=self.min_sentence_length,
-            )
-
-        # Legacy minimal prompt (keeps it short for quick fallback use)
-        return (
-            f"Rewrite into independent French sentences ({self.min_sentence_length}-{self.sentence_length_limit} words). "
-            f'Return ONLY JSON: {{"sentences": ["Sentence 1.", "Sentence 2."]}}.'
+        return build_minimal_prompt_v2(
+            sentence_length_limit=self.sentence_length_limit,
+            min_sentence_length=self.min_sentence_length,
         )
 
     @retry(
