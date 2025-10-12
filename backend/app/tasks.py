@@ -251,6 +251,24 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
                     logger.warning(f"Failed to persist chunk error to DB: {e}")
             
             return error_result
+        
+        # ═══════════════════════════════════════════════════════════════
+        # BATTLESHIP PHASE 1.1: Pre-process text with spaCy
+        # ═══════════════════════════════════════════════════════════════
+        from app.services.chunking_service import ChunkingService
+        chunking_service = ChunkingService()
+        
+        # Clean and segment text before sending to Gemini
+        # This gives the LLM better-structured input
+        original_text_len = len(text)
+        text = chunking_service.preprocess_text(text)
+        preprocessed_text_len = len(text)
+        
+        logger.debug(
+            f"Text preprocessing (chunk {chunk_info.get('chunk_id')}): "
+            f"original_len={original_text_len} preprocessed_len={preprocessed_text_len}"
+        )
+        # ═══════════════════════════════════════════════════════════════
 
         # Process with Gemini
         prompt = gemini_service.build_prompt()
