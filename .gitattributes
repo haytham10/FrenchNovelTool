@@ -1,0 +1,17 @@
+# Enforce LF line endings for all text files (we're on Linux)
+* text=auto eol=lf
+
+# Explicitly ensure scripts are LF
+*.sh text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.rb text eol=lf
+*.Dockerfile text eol=lf
+*.bat text eol=crlf
