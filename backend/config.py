@@ -57,6 +57,11 @@ class Config:
     MIN_SENTENCE_LENGTH = int(os.getenv("MIN_SENTENCE_LENGTH", "4"))
     MAX_SENTENCE_LENGTH = int(os.getenv("MAX_SENTENCE_LENGTH", "8"))
 
+    # Optional pre-segmentation with sentence windows (Phase 1 - Preprocessing)
+    ENABLE_SENTENCE_WINDOWING = os.getenv("ENABLE_SENTENCE_WINDOWING", "False").lower() == "true"
+    WINDOW_SIZE = int(os.getenv("WINDOW_SIZE", "3"))
+    WINDOW_STRIDE = int(os.getenv("WINDOW_STRIDE", "2"))
+
     # Google APIs
     CLIENT_SECRETS_FILE = os.getenv(
         "CLIENT_SECRETS_FILE", os.path.join(basedir, "client_secret.json")

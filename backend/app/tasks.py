@@ -289,14 +289,70 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
             (len(text) if text else 0),
         )
 
-        # Process with Gemini (includes intelligent retry cascade)
+        # Optionally pre-segment into windows of 2-3 sentences to reduce fragments
+        use_windows = False
+        try:
+            from flask import current_app as _flask_app
+
+            use_windows = bool(_flask_app.config.get("ENABLE_SENTENCE_WINDOWING", False))
+            window_size = int(_flask_app.config.get("WINDOW_SIZE", 3))
+            window_stride = int(_flask_app.config.get("WINDOW_STRIDE", 2))
+        except Exception:
+            # Outside app context or config not available
+            use_windows = False
+            window_size = 3
+            window_stride = 2
+
         mem_before_gemini = get_memory_usage_kib()
         if mem_before_gemini:
             logger.info(
-                f"process_chunk: memory_before_gemini={mem_before_gemini} KiB text_len={len(text)}"
+                f"process_chunk: memory_before_gemini={mem_before_gemini} KiB text_len={len(text)} use_windows={use_windows}"
             )
 
-        result = gemini_service.normalize_text(text, prompt)
+        if use_windows:
+            try:
+                from app.services.text_windowing_service import TextWindowingService
+
+                tw = TextWindowingService(window_size=window_size, window_stride=window_stride)
+                windows = tw.build_windows(text)
+                if not windows:
+                    # Fallback to single-call behavior
+                    result = gemini_service.normalize_text(text, prompt)
+                else:
+                    merged_sentences = []
+                    total_tokens = 0
+                    for idx, window in enumerate(windows):
+                        try:
+                            sub = gemini_service.normalize_text(window, prompt)
+                            merged_sentences.extend(sub.get("sentences", []))
+                            total_tokens += int(sub.get("tokens", 0) or 0)
+                        except Exception as e:
+                            logger.warning(
+                                "Window %s/%s failed, falling back to direct text: %s",
+                                idx + 1,
+                                len(windows),
+                                e,
+                            )
+                            # On any window failure, revert to single-call behavior
+                            merged_sentences = []
+                            total_tokens = 0
+                            raise
+
+                    # De-duplicate adjacent duplicates conservatively by normalized text
+                    seen = set()
+                    deduped = []
+                    for s in merged_sentences:
+                        key = (s.get("normalized") or s.get("original") or "")[:200]
+                        if key and key not in seen:
+                            seen.add(key)
+                            deduped.append(s)
+                    # Do not set _fallback_method here; windowing is a preprocessing strategy, not an error fallback
+                    result = {"sentences": deduped, "tokens": total_tokens}
+            except Exception:
+                # Safety fallback: single-call
+                result = gemini_service.normalize_text(text, prompt)
+        else:
+            result = gemini_service.normalize_text(text, prompt)
 
         mem_after_gemini = get_memory_usage_kib()
         if mem_after_gemini:
@@ -1441,8 +1497,6 @@ def process_pdf_async(
             # Cleanup reconstructed file and chunks if any
             if reconstructed_path and os.path.exists(reconstructed_path):
                 os.remove(reconstructed_path)
-        except Exception:
-            pass
         except Exception:
             pass
 
