@@ -11,7 +11,11 @@ from app.pdf_compat import PdfReader
 from celery import group, chord
 from celery.exceptions import SoftTimeLimitExceeded
 
+# Import structured logging for Project Battleship
+from app.utils.structured_logger import get_logger, set_job_context
+
 logger = logging.getLogger(__name__)
+structured_logger = get_logger(__name__)
 
 
 def get_memory_usage_kib() -> Optional[int]:
@@ -495,6 +499,21 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
 
         return error_result
     except Exception as e:
+        # Log error with structured context before deciding to retry
+        structured_logger.error(
+            "Chunk processing failed with exception",
+            exception=e,
+            job_id=chunk_info.get("job_id"),
+            chunk_id=chunk_info.get("chunk_id"),
+            user_id=user_id,
+            start_page=chunk_info.get("start_page"),
+            end_page=chunk_info.get("end_page"),
+            processing_settings=settings,
+            text_length=len(text) if 'text' in locals() else 0,
+            memory_usage_kib=get_memory_usage_kib(),
+            error_category="chunk_processing_error"
+        )
+        
         # Decide whether to retry on transient errors
         from flask import current_app
 
