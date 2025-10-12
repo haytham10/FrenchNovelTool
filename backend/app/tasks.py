@@ -273,6 +273,61 @@ def process_chunk(self, chunk_info: Dict, user_id: int, settings: Dict) -> Dict:
         if mem_after_gemini:
             logger.info(f"process_chunk: memory_after_gemini={mem_after_gemini} KiB delta={mem_after_gemini - (mem_before_gemini or mem_after_gemini)}")
         
+        # ═══════════════════════════════════════════════════════════════
+        # BATTLESHIP PHASE 1.3b: Apply Quality Gate to ensure audio-ready sentences
+        # ═══════════════════════════════════════════════════════════════
+        from app.services.quality_gate import quality_gate
+        
+        raw_sentence_count = len(result.get('sentences', []))
+        if raw_sentence_count > 0:
+            # Extract normalized sentence strings from the result
+            raw_sentences = []
+            for sentence_dict in result['sentences']:
+                if isinstance(sentence_dict, dict):
+                    normalized = sentence_dict.get('normalized', '')
+                elif isinstance(sentence_dict, str):
+                    normalized = sentence_dict
+                else:
+                    continue
+                if normalized:
+                    raw_sentences.append(normalized)
+            
+            # Apply quality gate validation
+            validated_sentences = quality_gate.validate_sentences(raw_sentences)
+            rejected_count = raw_sentence_count - len(validated_sentences)
+            
+            if rejected_count > 0:
+                logger.info(
+                    f"Quality Gate: chunk {chunk_info.get('chunk_id')} (job {chunk_info.get('job_id')}) - "
+                    f"Rejected {rejected_count}/{raw_sentence_count} sentences "
+                    f"({rejected_count/raw_sentence_count*100:.1f}%) that failed quality checks"
+                )
+            
+            # Rebuild result with only validated sentences
+            # Keep the original structure (dict with 'normalized' and 'original' keys)
+            validated_sentence_dicts = []
+            for sentence_dict in result['sentences']:
+                if isinstance(sentence_dict, dict):
+                    normalized = sentence_dict.get('normalized', '')
+                elif isinstance(sentence_dict, str):
+                    normalized = sentence_dict
+                    sentence_dict = {'normalized': normalized, 'original': normalized}
+                else:
+                    continue
+                
+                # Only include if it passed quality gate
+                if normalized in validated_sentences:
+                    validated_sentence_dicts.append(sentence_dict)
+            
+            result['sentences'] = validated_sentence_dicts
+            result['_quality_gate_stats'] = {
+                'raw_count': raw_sentence_count,
+                'validated_count': len(validated_sentences),
+                'rejected_count': rejected_count,
+                'rejection_rate': rejected_count / raw_sentence_count if raw_sentence_count > 0 else 0
+            }
+        # ═══════════════════════════════════════════════════════════════
+        
         # Check if a fallback method was used and persist marker to DB
         fallback_method = result.get('_fallback_method')
         if fallback_method and chunk_db_record:
