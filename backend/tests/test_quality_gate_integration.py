@@ -16,15 +16,15 @@ from app.services.quality_gate_service import QualityGateService
 @pytest.fixture
 def mock_flask_app():
     """Mock Flask current_app for testing."""
-    with patch('flask.current_app') as mock_app:
+    with patch("flask.current_app") as mock_app:
         # Mock config
         mock_app.config = {
-            'GEMINI_API_KEY': 'test-key',
-            'GEMINI_MODEL': 'gemini-2.5-flash-lite',
-            'GEMINI_MAX_RETRIES': 3,
-            'GEMINI_RETRY_DELAY': 1,
-            'QUALITY_GATE_ENABLED': True,  # Enable quality gate
-            'GEMINI_ENABLE_REPAIR': False,  # Disable repair for simpler testing
+            "GEMINI_API_KEY": "test-key",
+            "GEMINI_MODEL": "gemini-2.5-flash-lite",
+            "GEMINI_MAX_RETRIES": 3,
+            "GEMINI_RETRY_DELAY": 1,
+            "QUALITY_GATE_ENABLED": True,  # Enable quality gate
+            "GEMINI_ENABLE_REPAIR": False,  # Disable repair for simpler testing
         }
         mock_app.logger = Mock()
         yield mock_app
@@ -34,9 +34,7 @@ def mock_flask_app():
 def gemini_service_with_quality_gate(mock_flask_app):
     """Create GeminiService with quality gate enabled."""
     service = GeminiService(
-        sentence_length_limit=8,
-        min_sentence_length=4,
-        model_preference='speed'
+        sentence_length_limit=8, min_sentence_length=4, model_preference="speed"
     )
     return service
 
@@ -44,11 +42,9 @@ def gemini_service_with_quality_gate(mock_flask_app):
 @pytest.fixture
 def gemini_service_without_quality_gate(mock_flask_app):
     """Create GeminiService with quality gate disabled."""
-    mock_flask_app.config['QUALITY_GATE_ENABLED'] = False
+    mock_flask_app.config["QUALITY_GATE_ENABLED"] = False
     service = GeminiService(
-        sentence_length_limit=8,
-        min_sentence_length=4,
-        model_preference='speed'
+        sentence_length_limit=8, min_sentence_length=4, model_preference="speed"
     )
     return service
 
@@ -79,9 +75,9 @@ class TestQualityGateIntegration:
         mock_sentences = [
             "Il marche lentement dehors.",  # Valid
             "Dans la rue sombre.",  # Fragment (no verb)
-            "Elle est très belle.",  # Valid
-            "Pour toujours et à jamais.",  # Fragment (no verb)
-            "Il faisait très froid.",  # Valid
+            "Elle est trï¿½s belle.",  # Valid
+            "Pour toujours et ï¿½ jamais.",  # Fragment (no verb)
+            "Il faisait trï¿½s froid.",  # Valid
         ]
 
         # Call _post_process_sentences (the integration point)
@@ -90,12 +86,12 @@ class TestQualityGateIntegration:
         # Verify: Only valid sentences should pass through
         assert len(result) == 3, f"Expected 3 valid sentences, got {len(result)}: {result}"
         assert "Il marche lentement dehors." in result
-        assert "Elle est très belle." in result
-        assert "Il faisait très froid." in result
+        assert "Elle est trï¿½s belle." in result
+        assert "Il faisait trï¿½s froid." in result
 
         # Verify: Fragments should be rejected
         assert "Dans la rue sombre." not in result
-        assert "Pour toujours et à jamais." not in result
+        assert "Pour toujours et ï¿½ jamais." not in result
 
         # Verify: Rejection stats tracked
         assert service.quality_gate_rejections >= 2
@@ -115,10 +111,10 @@ class TestQualityGateIntegration:
         # Verify rejection tracking
         assert len(service.rejected_sentences) >= 1
         rejected = service.rejected_sentences[0]
-        assert 'text' in rejected
-        assert 'reason' in rejected
-        assert 'index' in rejected
-        assert 'verb' in rejected['reason'].lower()
+        assert "text" in rejected
+        assert "reason" in rejected
+        assert "index" in rejected
+        assert "verb" in rejected["reason"].lower()
 
     def test_quality_gate_disabled_accepts_all(self, gemini_service_without_quality_gate):
         """Test that when quality gate is disabled, fragments pass through."""
@@ -140,8 +136,8 @@ class TestQualityGateIntegration:
         service = gemini_service_with_quality_gate
 
         mock_sentences = [
-            "Où vas-tu maintenant ?",  # Valid question
-            "Il faisait très froid.",  # Valid statement
+            "Oï¿½ vas-tu maintenant ?",  # Valid question
+            "Il faisait trï¿½s froid.",  # Valid statement
             "",  # Empty (should be filtered before quality gate)
             "  \t  ",  # Whitespace (should be filtered)
         ]
@@ -149,8 +145,8 @@ class TestQualityGateIntegration:
         result = service._post_process_sentences(mock_sentences)
 
         # Valid sentences should pass
-        assert "Où vas-tu maintenant ?" in result or "Où vas-tu maintenant?" in result
-        assert "Il faisait très froid." in result
+        assert "Oï¿½ vas-tu maintenant ?" in result or "Oï¿½ vas-tu maintenant?" in result
+        assert "Il faisait trï¿½s froid." in result
 
     def test_quality_gate_respects_sentence_length_limits(self, gemini_service_with_quality_gate):
         """Test that quality gate respects configured length limits."""
@@ -159,7 +155,7 @@ class TestQualityGateIntegration:
         mock_sentences = [
             "Bon.",  # Too short (1 word, min 4)
             "Il marche lentement dehors.",  # Valid (4 words)
-            "Il mange des pommes rouges et délicieuses maintenant.",  # Too long (9 words, max 8)
+            "Il mange des pommes rouges et dï¿½licieuses maintenant.",  # Too long (9 words, max 8)
         ]
 
         result = service._post_process_sentences(mock_sentences)
@@ -174,7 +170,9 @@ class TestQualityGateIntegration:
 class TestQualityGatePerformance:
     """Test performance characteristics of quality gate integration."""
 
-    def test_quality_gate_doesnt_significantly_slow_processing(self, gemini_service_with_quality_gate):
+    def test_quality_gate_doesnt_significantly_slow_processing(
+        self, gemini_service_with_quality_gate
+    ):
         """Test that quality gate adds minimal overhead to processing."""
         import time
 
@@ -183,8 +181,8 @@ class TestQualityGatePerformance:
         # Large batch of sentences
         mock_sentences = [
             "Il marche lentement dehors.",
-            "Elle est très belle.",
-            "Il faisait très froid.",
+            "Elle est trï¿½s belle.",
+            "Il faisait trï¿½s froid.",
         ] * 100  # 300 sentences
 
         start = time.time()
@@ -204,11 +202,11 @@ class TestQualityGateConfiguration:
     def test_quality_gate_initialization_failure_fallback(self, mock_flask_app):
         """Test that GeminiService continues if quality gate fails to initialize."""
         # Force quality gate initialization to fail
-        with patch('app.services.gemini_service.QualityGateService', side_effect=Exception("spaCy not installed")):
-            service = GeminiService(
-                sentence_length_limit=8,
-                min_sentence_length=4
-            )
+        with patch(
+            "app.services.gemini_service.QualityGateService",
+            side_effect=Exception("spaCy not installed"),
+        ):
+            service = GeminiService(sentence_length_limit=8, min_sentence_length=4)
 
             # Service should still be created, but quality gate disabled
             assert service.quality_gate_enabled == False
@@ -237,11 +235,11 @@ class TestEndToEndScenarios:
         # Realistic output that might come from Gemini
         mock_gemini_output = [
             "Il marchait lentement dans la rue.",  # Valid
-            "La rue était sombre et froide.",  # Valid (6 words)
+            "La rue ï¿½tait sombre et froide.",  # Valid (6 words)
             "dans la rue sombre",  # Fragment (no capital, no punct, no verb)
-            "Il pensait à elle constamment.",  # Valid
-            "Pour toujours et à jamais.",  # Fragment (no verb)
-            "Elle était partie depuis longtemps.",  # Valid (6 words)
+            "Il pensait ï¿½ elle constamment.",  # Valid
+            "Pour toujours et ï¿½ jamais.",  # Fragment (no verb)
+            "Elle ï¿½tait partie depuis longtemps.",  # Valid (6 words)
         ]
 
         result = service._post_process_sentences(mock_gemini_output)
@@ -263,9 +261,9 @@ class TestEndToEndScenarios:
 
         all_valid = [
             "Il marche lentement dehors.",
-            "Elle est très belle.",
-            "La rue était très sombre.",
-            "Il faisait très froid.",
+            "Elle est trï¿½s belle.",
+            "La rue ï¿½tait trï¿½s sombre.",
+            "Il faisait trï¿½s froid.",
             "Les enfants jouent dehors joyeusement.",
         ]
 
@@ -282,7 +280,7 @@ class TestEndToEndScenarios:
 
         all_fragments = [
             "Dans la rue sombre.",  # No verb
-            "Pour toujours et à jamais.",  # No verb
+            "Pour toujours et ï¿½ jamais.",  # No verb
             "Avec le temps qui passe.",  # No main verb
             "De retour dans la chambre.",  # No verb
         ]

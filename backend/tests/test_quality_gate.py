@@ -19,26 +19,22 @@ from app.services.quality_gate_service import QualityGateService
 @pytest.fixture
 def quality_gate():
     """Create a Quality Gate Service instance with default config."""
-    with patch('flask.current_app') as mock_app:
+    with patch("flask.current_app") as mock_app:
         mock_app.logger = Mock()
-        service = QualityGateService(config={
-            'min_length': 4,
-            'max_length': 8,
-            'require_verb': True
-        })
+        service = QualityGateService(
+            config={"min_length": 4, "max_length": 8, "require_verb": True}
+        )
         return service
 
 
 @pytest.fixture
 def quality_gate_lenient():
     """Create a Quality Gate Service with lenient verb requirement."""
-    with patch('flask.current_app') as mock_app:
+    with patch("flask.current_app") as mock_app:
         mock_app.logger = Mock()
-        service = QualityGateService(config={
-            'min_length': 2,
-            'max_length': 8,
-            'require_verb': False
-        })
+        service = QualityGateService(
+            config={"min_length": 2, "max_length": 8, "require_verb": False}
+        )
         return service
 
 
@@ -50,7 +46,7 @@ class TestFragmentRejection:
         """Reject: 'Dans la rue sombre.' (no verb)"""
         is_valid, reason = quality_gate.validate_sentence("Dans la rue sombre.")
         assert not is_valid, "Should reject prepositional phrase without verb"
-        assert 'No verb found' in reason or 'verb' in reason.lower()
+        assert "No verb found" in reason or "verb" in reason.lower()
 
     def test_reject_conjunction_fragment(self, quality_gate):
         """Reject: 'et froide' (conjunction fragment, too short)"""
@@ -64,33 +60,33 @@ class TestFragmentRejection:
         is_valid, reason = quality_gate.validate_sentence("Pour toujours et à jamais.")
         assert not is_valid, "Should reject idiomatic fragment without verb"
         # Length is 5 words (valid range), but should fail verb check
-        assert 'verb' in reason.lower()
+        assert "verb" in reason.lower()
 
     def test_reject_adverbial_phrase(self, quality_gate):
         """Reject: 'Avec le temps' (no verb)"""
         is_valid, reason = quality_gate.validate_sentence("Avec le temps.")
         assert not is_valid, "Should reject adverbial phrase without verb"
         # 3 words, below minimum of 4
-        assert 'short' in reason.lower() or 'verb' in reason.lower()
+        assert "short" in reason.lower() or "verb" in reason.lower()
 
     def test_reject_time_expression(self, quality_gate):
         """Reject: 'Dans quinze ans' (time expression, no verb)"""
         is_valid, reason = quality_gate.validate_sentence("Dans quinze ans.")
         assert not is_valid, "Should reject time expression without verb"
         # 3 words, below minimum
-        assert 'short' in reason.lower() or 'verb' in reason.lower()
+        assert "short" in reason.lower() or "verb" in reason.lower()
 
     def test_reject_participial_phrase(self, quality_gate):
         """Reject: 'De retour dans la chambre' (participial phrase, no auxiliary)"""
         is_valid, reason = quality_gate.validate_sentence("De retour dans la chambre.")
         assert not is_valid, "Should reject participial phrase without verb"
-        assert 'verb' in reason.lower()
+        assert "verb" in reason.lower()
 
     def test_reject_too_short(self, quality_gate):
         """Reject: 'Bon.' (too short, 1 word, min 4)"""
         is_valid, reason = quality_gate.validate_sentence("Bon.")
         assert not is_valid, "Should reject sentence too short"
-        assert 'short' in reason.lower() or '1 word' in reason
+        assert "short" in reason.lower() or "1 word" in reason
 
     def test_reject_too_long(self, quality_gate):
         """Reject: 'Il mange des pommes rouges et délicieuses maintenant.' (9 words, max 8)"""
@@ -98,19 +94,19 @@ class TestFragmentRejection:
             "Il mange des pommes rouges et délicieuses maintenant."
         )
         assert not is_valid, "Should reject sentence too long"
-        assert 'long' in reason.lower() or '9 words' in reason
+        assert "long" in reason.lower() or "9 words" in reason
 
     def test_reject_missing_punctuation(self, quality_gate):
         """Reject: 'Il marche lentement' (missing period)"""
         is_valid, reason = quality_gate.validate_sentence("Il marche lentement")
         assert not is_valid, "Should reject missing end punctuation"
-        assert 'punctuation' in reason.lower()
+        assert "punctuation" in reason.lower()
 
     def test_reject_no_capital(self, quality_gate):
         """Reject: 'il marche lentement.' (no capital letter)"""
         is_valid, reason = quality_gate.validate_sentence("il marche lentement.")
         assert not is_valid, "Should reject sentence not starting with capital"
-        assert 'capital' in reason.lower()
+        assert "capital" in reason.lower()
 
 
 # Valid Sentence Tests (Should Accept)
@@ -159,7 +155,7 @@ class TestEdgeCases:
         # This should pass if spaCy recognizes it as a verb or if min_length=2
         # For now, we expect it might fail due to length with strict config
         # With lenient (min=2, no verb requirement), should pass
-        assert is_valid or 'short' in reason.lower()
+        assert is_valid or "short" in reason.lower()
 
     def test_accept_question_with_verb(self, quality_gate):
         """Accept: 'Où vas-tu maintenant ?' (question with verb)"""
@@ -213,7 +209,7 @@ class TestSpacyVerbDetection:
         is_valid, reason = quality_gate.validate_sentence("Très belle et élégante aujourd'hui.")
         # No verb, should be rejected
         assert not is_valid, "spaCy should reject adjective phrase without verb"
-        assert 'verb' in reason.lower()
+        assert "verb" in reason.lower()
 
     def test_spacy_complex_sentence_with_verb(self, quality_gate):
         """Verify spaCy handles complex sentences with verb."""
@@ -238,10 +234,10 @@ class TestBatchValidation:
         results = quality_gate.batch_validate(sentences)
 
         assert len(results) == 4
-        assert results[0]['is_valid'] == True
-        assert results[1]['is_valid'] == False
-        assert results[2]['is_valid'] == True
-        assert results[3]['is_valid'] == False
+        assert results[0]["is_valid"] == True
+        assert results[1]["is_valid"] == False
+        assert results[2]["is_valid"] == True
+        assert results[3]["is_valid"] == False
 
     def test_batch_validation_stats(self, quality_gate):
         """Test validation statistics calculation."""
@@ -255,11 +251,11 @@ class TestBatchValidation:
         results = quality_gate.batch_validate(sentences)
         stats = quality_gate.get_validation_stats(results)
 
-        assert stats['total'] == 4
-        assert stats['valid'] == 2
-        assert stats['rejected'] == 2
-        assert stats['rejection_rate'] == 50.0
-        assert isinstance(stats['rejection_reasons'], dict)
+        assert stats["total"] == 4
+        assert stats["valid"] == 2
+        assert stats["rejected"] == 2
+        assert stats["rejection_rate"] == 50.0
+        assert isinstance(stats["rejection_reasons"], dict)
 
 
 # Performance Tests
@@ -291,7 +287,9 @@ class TestPerformance:
         elapsed = (time.time() - start) * 1000  # milliseconds
 
         avg_per_sentence = elapsed / len(sentences)
-        assert avg_per_sentence < 10, f"Average {avg_per_sentence:.2f}ms per sentence, should be <10ms"
+        assert (
+            avg_per_sentence < 10
+        ), f"Average {avg_per_sentence:.2f}ms per sentence, should be <10ms"
 
 
 # Configuration Tests
@@ -300,13 +298,11 @@ class TestConfiguration:
 
     def test_custom_length_limits(self):
         """Test custom min/max length configuration."""
-        with patch('flask.current_app') as mock_app:
+        with patch("flask.current_app") as mock_app:
             mock_app.logger = Mock()
-            service = QualityGateService(config={
-                'min_length': 3,
-                'max_length': 10,
-                'require_verb': True
-            })
+            service = QualityGateService(
+                config={"min_length": 3, "max_length": 10, "require_verb": True}
+            )
 
             # 3 words - should pass minimum
             is_valid, _ = service.validate_sentence("Il mange bien.")
@@ -320,13 +316,11 @@ class TestConfiguration:
 
     def test_verb_requirement_disabled(self):
         """Test disabling verb requirement."""
-        with patch('flask.current_app') as mock_app:
+        with patch("flask.current_app") as mock_app:
             mock_app.logger = Mock()
-            service = QualityGateService(config={
-                'min_length': 4,
-                'max_length': 8,
-                'require_verb': False
-            })
+            service = QualityGateService(
+                config={"min_length": 4, "max_length": 8, "require_verb": False}
+            )
 
             # Should pass even without verb (if other criteria met)
             is_valid, reason = service.validate_sentence("Dans la rue sombre maintenant.")
@@ -334,7 +328,7 @@ class TestConfiguration:
             # Should still check other criteria (length, punctuation, capital)
             # Since verb check is disabled, should pass if other criteria OK
             if not is_valid:
-                assert 'verb' not in reason.lower()
+                assert "verb" not in reason.lower()
 
 
 # Error Handling Tests
@@ -345,13 +339,13 @@ class TestErrorHandling:
         """Test handling of empty sentence."""
         is_valid, reason = quality_gate.validate_sentence("")
         assert not is_valid
-        assert 'empty' in reason.lower() or 'whitespace' in reason.lower()
+        assert "empty" in reason.lower() or "whitespace" in reason.lower()
 
     def test_whitespace_only(self, quality_gate):
         """Test handling of whitespace-only sentence."""
         is_valid, reason = quality_gate.validate_sentence("   \t\n  ")
         assert not is_valid
-        assert 'empty' in reason.lower() or 'whitespace' in reason.lower()
+        assert "empty" in reason.lower() or "whitespace" in reason.lower()
 
 
 # Real-World Fragment Examples
@@ -363,7 +357,7 @@ class TestRealWorldFragments:
         is_valid, reason = quality_gate.validate_sentence("Le standard d'Elvis Presley.")
         assert not is_valid, "Should reject noun phrase"
         # 4 words exactly, at minimum, but no verb
-        assert 'verb' in reason.lower()
+        assert "verb" in reason.lower()
 
     def test_accept_noun_phrase_with_verb(self, quality_gate):
         """Accept: 'Le standard d'Elvis Presley joue.' (complete sentence)"""
@@ -378,7 +372,5 @@ class TestRealWorldFragments:
 
     def test_accept_title_with_context(self, quality_gate):
         """Accept: 'La chanson résonne partout.' (title + context)"""
-        is_valid, reason = quality_gate.validate_sentence(
-            "La chanson résonne partout maintenant."
-        )
+        is_valid, reason = quality_gate.validate_sentence("La chanson résonne partout maintenant.")
         assert is_valid, f"Should accept title with context: {reason}"

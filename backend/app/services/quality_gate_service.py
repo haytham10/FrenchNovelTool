@@ -39,28 +39,29 @@ class QualityGateService:
                 - require_verb: Require verb presence (default: True)
         """
         config = config or {}
-        self.min_length = config.get('min_length', 4)
-        self.max_length = config.get('max_length', 8)
-        self.require_verb = config.get('require_verb', True)
+        self.min_length = config.get("min_length", 4)
+        self.max_length = config.get("max_length", 8)
+        self.require_verb = config.get("require_verb", True)
 
         # Load spaCy French model
         try:
             import spacy
+
             try:
-                self.nlp = spacy.load('fr_core_news_sm')
+                self.nlp = spacy.load("fr_core_news_sm")
                 current_app.logger.info(
-                    'QualityGateService initialized with fr_core_news_sm model '
-                    f'(min_length={self.min_length}, max_length={self.max_length}, '
-                    f'require_verb={self.require_verb})'
+                    "QualityGateService initialized with fr_core_news_sm model "
+                    f"(min_length={self.min_length}, max_length={self.max_length}, "
+                    f"require_verb={self.require_verb})"
                 )
             except OSError:
                 current_app.logger.error(
-                    'spaCy model fr_core_news_sm not found. '
-                    'Install with: python -m spacy download fr_core_news_sm'
+                    "spaCy model fr_core_news_sm not found. "
+                    "Install with: python -m spacy download fr_core_news_sm"
                 )
                 raise
         except ImportError:
-            current_app.logger.error('spaCy not installed. Install with: pip install spacy')
+            current_app.logger.error("spaCy not installed. Install with: pip install spacy")
             raise
 
     def validate_sentence(self, sentence: str) -> Tuple[bool, Optional[str]]:
@@ -101,7 +102,7 @@ class QualityGateService:
             return False, "Does not start with capital letter"
 
         # 3. Punctuation check (must end with proper punctuation)
-        if not sentence.endswith(('.', '!', '?', '…')):
+        if not sentence.endswith((".", "!", "?", "…")):
             return False, f"Missing proper end punctuation (ends with '{sentence[-1]}')"
 
         # 4. Verb presence check using spaCy POS tagging
@@ -135,32 +136,30 @@ class QualityGateService:
             doc = self.nlp(sentence)
 
             # Look for main verbs (VERB tag, not AUX)
-            verbs = [token for token in doc if token.pos_ == 'VERB']
+            verbs = [token for token in doc if token.pos_ == "VERB"]
 
             if verbs:
                 current_app.logger.debug(
-                    f'Found {len(verbs)} verb(s) in sentence: {[v.text for v in verbs]}'
+                    f"Found {len(verbs)} verb(s) in sentence: {[v.text for v in verbs]}"
                 )
                 return True, None
 
             # Check for imperative forms (which might be tagged differently)
             # Imperatives are still valid sentences
-            aux_verbs = [token for token in doc if token.pos_ == 'AUX']
+            aux_verbs = [token for token in doc if token.pos_ == "AUX"]
             if aux_verbs:
                 # Auxiliary verbs alone (être, avoir) can form valid sentences
                 # e.g., "Elle est belle." - "est" is AUX but forms complete sentence
-                current_app.logger.debug(
-                    f'Found auxiliary verb(s): {[v.text for v in aux_verbs]}'
-                )
+                current_app.logger.debug(f"Found auxiliary verb(s): {[v.text for v in aux_verbs]}")
                 return True, None
 
             # No verb found
             token_pos = [(t.text, t.pos_) for t in doc]
-            current_app.logger.debug(f'No verb found. Token POS tags: {token_pos}')
+            current_app.logger.debug(f"No verb found. Token POS tags: {token_pos}")
             return False, f"No verb found (POS tags: {token_pos})"
 
         except Exception as e:
-            current_app.logger.exception(f'Error in spaCy verb detection: {e}')
+            current_app.logger.exception(f"Error in spaCy verb detection: {e}")
             # If spaCy fails, fall back to heuristic check
             return self._heuristic_verb_check(sentence.split())
 
@@ -178,33 +177,135 @@ class QualityGateService:
         """
         # Common French verb forms (exact matches)
         exact_verb_forms = {
-            'a', 'ai', 'as', 'ont', 'ez', 'est', 'sont', 'était', 'étaient',
-            'sera', 'seront', 'avait', 'avaient', 'aura', 'auront',
-            'fut', 'furent', 'soit', 'soient', 'fût', 'suis', 'sommes',
-            'va', 'vais', 'vas', 'vont', 'allait', 'allaient', 'ira', 'iront',
-            'fait', 'fais', 'font', 'faisait', 'faisaient', 'fera', 'feront',
-            'dit', 'dis', 'disent', 'disait', 'disaient', 'dira', 'diront',
-            'peut', 'peux', 'peuvent', 'pouvait', 'pouvaient', 'pourra', 'pourront',
-            'doit', 'dois', 'doivent', 'devait', 'devaient', 'devra', 'devront',
-            'voit', 'vois', 'voient', 'voyait', 'voyaient', 'verra', 'verront',
-            'vient', 'viens', 'viennent', 'venait', 'venaient', 'viendra', 'viendront',
-            'prend', 'prends', 'prennent', 'prenait', 'prenaient', 'prendra', 'prendront',
-            'veut', 'veux', 'veulent', 'voulait', 'voulaient', 'voudra', 'voudront',
-            'marche', 'marches', 'marchent', 'marchait', 'marchaient', 'marchera', 'marcheront',
-            'pense', 'penses', 'pensent', 'pensait', 'pensaient', 'pensera', 'penseront',
+            "a",
+            "ai",
+            "as",
+            "ont",
+            "ez",
+            "est",
+            "sont",
+            "était",
+            "étaient",
+            "sera",
+            "seront",
+            "avait",
+            "avaient",
+            "aura",
+            "auront",
+            "fut",
+            "furent",
+            "soit",
+            "soient",
+            "fût",
+            "suis",
+            "sommes",
+            "va",
+            "vais",
+            "vas",
+            "vont",
+            "allait",
+            "allaient",
+            "ira",
+            "iront",
+            "fait",
+            "fais",
+            "font",
+            "faisait",
+            "faisaient",
+            "fera",
+            "feront",
+            "dit",
+            "dis",
+            "disent",
+            "disait",
+            "disaient",
+            "dira",
+            "diront",
+            "peut",
+            "peux",
+            "peuvent",
+            "pouvait",
+            "pouvaient",
+            "pourra",
+            "pourront",
+            "doit",
+            "dois",
+            "doivent",
+            "devait",
+            "devaient",
+            "devra",
+            "devront",
+            "voit",
+            "vois",
+            "voient",
+            "voyait",
+            "voyaient",
+            "verra",
+            "verront",
+            "vient",
+            "viens",
+            "viennent",
+            "venait",
+            "venaient",
+            "viendra",
+            "viendront",
+            "prend",
+            "prends",
+            "prennent",
+            "prenait",
+            "prenaient",
+            "prendra",
+            "prendront",
+            "veut",
+            "veux",
+            "veulent",
+            "voulait",
+            "voulaient",
+            "voudra",
+            "voudront",
+            "marche",
+            "marches",
+            "marchent",
+            "marchait",
+            "marchaient",
+            "marchera",
+            "marcheront",
+            "pense",
+            "penses",
+            "pensent",
+            "pensait",
+            "pensaient",
+            "pensera",
+            "penseront",
         }
 
         # Common verb endings
         verb_suffixes = (
-            'er', 'ir', 'oir', 're',  # Infinitives
-            'ais', 'ait', 'aient', 'iez', 'ions',  # Imperfect
-            'era', 'erai', 'eras', 'erez', 'eront',  # Future
-            'é', 'ée', 'és', 'ées',  # Past participles
-            'ent', 'es', 'e',  # Present
+            "er",
+            "ir",
+            "oir",
+            "re",  # Infinitives
+            "ais",
+            "ait",
+            "aient",
+            "iez",
+            "ions",  # Imperfect
+            "era",
+            "erai",
+            "eras",
+            "erez",
+            "eront",  # Future
+            "é",
+            "ée",
+            "és",
+            "ées",  # Past participles
+            "ent",
+            "es",
+            "e",  # Present
         )
 
         for word in words:
-            clean_word = word.lower().strip('.,;:!?…')
+            clean_word = word.lower().strip(".,;:!?…")
 
             # Check exact matches
             if clean_word in exact_verb_forms:
@@ -217,7 +318,9 @@ class QualityGateService:
 
         return False, "No verb found (heuristic check)"
 
-    def _check_fragment_heuristics(self, sentence: str, words: List[str]) -> Tuple[bool, Optional[str]]:
+    def _check_fragment_heuristics(
+        self, sentence: str, words: List[str]
+    ) -> Tuple[bool, Optional[str]]:
         """Check for common fragment patterns using heuristics.
 
         Detects fragments that start with:
@@ -242,8 +345,20 @@ class QualityGateService:
 
         # 1. Preposition-starting fragments (very common)
         preposition_starts = [
-            'dans', 'sur', 'sous', 'avec', 'sans', 'pour', 'de', 'à',
-            'vers', 'chez', 'par', 'parmi', 'contre', 'entre'
+            "dans",
+            "sur",
+            "sous",
+            "avec",
+            "sans",
+            "pour",
+            "de",
+            "à",
+            "vers",
+            "chez",
+            "par",
+            "parmi",
+            "contre",
+            "entre",
         ]
         if first_word_lower in preposition_starts:
             # These are often fragments unless they have proper structure
@@ -252,7 +367,7 @@ class QualityGateService:
             return False, None  # Let verb check handle this
 
         # 2. Conjunction-starting fragments
-        conjunction_starts = ['et', 'mais', 'donc', 'car', 'or', 'ni', 'puis']
+        conjunction_starts = ["et", "mais", "donc", "car", "or", "ni", "puis"]
         if first_word_lower in conjunction_starts:
             # Conjunctions at start are often fragments unless very short imperative
             # or question
@@ -260,26 +375,38 @@ class QualityGateService:
                 return True, f"Conjunction fragment: starts with '{first_word_lower}' but too short"
 
         # 3. Temporal expression fragments
-        temporal_starts = ['quand', 'lorsque', 'pendant', 'durant', 'avant', 'après', 'depuis']
+        temporal_starts = ["quand", "lorsque", "pendant", "durant", "avant", "après", "depuis"]
         if first_word_lower in temporal_starts and len(words) < 5:
             return True, f"Temporal fragment: starts with '{first_word_lower}' without main clause"
 
         # 4. Relative pronoun fragments
-        relative_starts = ['qui', 'que', 'dont', 'où', 'lequel', 'laquelle', 'lesquels', 'lesquelles']
+        relative_starts = [
+            "qui",
+            "que",
+            "dont",
+            "où",
+            "lequel",
+            "laquelle",
+            "lesquels",
+            "lesquelles",
+        ]
         if first_word_lower in relative_starts and len(words) < 4:
-            return True, f"Relative clause fragment: starts with '{first_word_lower}' without main clause"
+            return (
+                True,
+                f"Relative clause fragment: starts with '{first_word_lower}' without main clause",
+            )
 
         # 5. Check for idiomatic fragments
         sentence_lower = sentence.lower()
 
         # "Pour toujours" pattern
-        if sentence_lower.startswith('pour toujours'):
+        if sentence_lower.startswith("pour toujours"):
             return True, "Idiomatic fragment: 'pour toujours' without verb"
 
         # Participial phrases without auxiliary
-        if words[0].endswith(('ant', 'é', 'ée', 'és', 'ées')):
+        if words[0].endswith(("ant", "é", "ée", "és", "ées")):
             # Check if there's an auxiliary verb
-            aux_verbs = ['est', 'sont', 'a', 'ont', 'était', 'étaient', 'avait', 'avaient']
+            aux_verbs = ["est", "sont", "a", "ont", "était", "étaient", "avait", "avaient"]
             has_auxiliary = any(word.lower() in aux_verbs for word in words)
             if not has_auxiliary and len(words) < 6:
                 return True, "Participial fragment: starts with participle without auxiliary"
@@ -303,11 +430,7 @@ class QualityGateService:
 
         for sentence in sentences:
             is_valid, reason = self.validate_sentence(sentence)
-            results.append({
-                'sentence': sentence,
-                'is_valid': is_valid,
-                'rejection_reason': reason
-            })
+            results.append({"sentence": sentence, "is_valid": is_valid, "rejection_reason": reason})
 
         return results
 
@@ -326,21 +449,21 @@ class QualityGateService:
             - rejection_reasons: Dict of reason -> count
         """
         total = len(validation_results)
-        valid = sum(1 for r in validation_results if r['is_valid'])
+        valid = sum(1 for r in validation_results if r["is_valid"])
         rejected = total - valid
         rejection_rate = (rejected / total * 100) if total > 0 else 0.0
 
         # Count rejection reasons
         rejection_reasons = {}
         for result in validation_results:
-            if not result['is_valid']:
-                reason = result['rejection_reason']
+            if not result["is_valid"]:
+                reason = result["rejection_reason"]
                 rejection_reasons[reason] = rejection_reasons.get(reason, 0) + 1
 
         return {
-            'total': total,
-            'valid': valid,
-            'rejected': rejected,
-            'rejection_rate': rejection_rate,
-            'rejection_reasons': rejection_reasons
+            "total": total,
+            "valid": valid,
+            "rejected": rejected,
+            "rejection_rate": rejection_rate,
+            "rejection_reasons": rejection_reasons,
         }

@@ -20,20 +20,23 @@ _flask_app = create_app()
 # environments (like small Railway containers) may cause the worker to be OOM-killed.
 # Make this behavior opt-in via the PRELOAD_SPACY env var (default: false).
 try:
-    preload_enabled = os.getenv('PRELOAD_SPACY', 'false').lower() in ('1', 'true', 'yes')
+    preload_enabled = os.getenv("PRELOAD_SPACY", "false").lower() in ("1", "true", "yes")
     if preload_enabled:
         from app.utils.linguistics import preload_spacy  # noqa: E402
+
         try:
-            logging.getLogger(__name__).info('Preloading spaCy model in parent process')
+            logging.getLogger(__name__).info("Preloading spaCy model in parent process")
             preload_spacy()  # Uses env vars SPACY_MODEL and SPACY_DISABLE defaults
-            logging.getLogger(__name__).info('spaCy preload completed')
+            logging.getLogger(__name__).info("spaCy preload completed")
         except Exception as e:  # noqa: E722 - best-effort preload; don't block worker start
-            logging.getLogger(__name__).warning('spaCy preload failed (continuing without preload): %s', e)
+            logging.getLogger(__name__).warning(
+                "spaCy preload failed (continuing without preload): %s", e
+            )
     else:
-        logging.getLogger(__name__).info('PRELOAD_SPACY not enabled; skipping spaCy preload')
+        logging.getLogger(__name__).info("PRELOAD_SPACY not enabled; skipping spaCy preload")
 except Exception as e:
     # In the unlikely event the import machinery fails, log but continue startup
-    logging.getLogger(__name__).warning('Error checking PRELOAD_SPACY env var: %s', e)
+    logging.getLogger(__name__).warning("Error checking PRELOAD_SPACY env var: %s", e)
 
 # Import the configured Celery instance from the app package.
 from app import celery  # noqa: E402  (import after create_app)
@@ -43,6 +46,5 @@ try:
     import app.tasks  # noqa: F401,E402
 except Exception as e:
     # Log the error and re-raise so the worker process fails visibly
-    logging.getLogger(__name__).exception('Failed to import Celery tasks during startup: %s', e)
+    logging.getLogger(__name__).exception("Failed to import Celery tasks during startup: %s", e)
     raise
-

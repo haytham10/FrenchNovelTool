@@ -88,9 +88,7 @@ If NO to any → REWRITE or REJECT."""
     # Additional rules if needed
     additional_rules = []
     if ignore_dialogue:
-        additional_rules.append(
-            "DIALOGUE: Keep quoted dialogue intact, regardless of length."
-        )
+        additional_rules.append("DIALOGUE: Keep quoted dialogue intact, regardless of length.")
     if fix_hyphenation:
         additional_rules.append(
             "HYPHENATION: Rejoin words split by hyphens (e.g., 'ex- ample' → 'exemple')."
@@ -140,7 +138,7 @@ def build_minimal_prompt(
         f"Rewrite this French text into grammatically complete, independent sentences "
         f"({min_sentence_length}-{sentence_length_limit} words each). "
         f"Each sentence MUST have a subject and conjugated verb. "
-        f"Return ONLY JSON: {{\"sentences\": [\"Sentence 1.\", \"Sentence 2.\"]}}"
+        f'Return ONLY JSON: {{"sentences": ["Sentence 1.", "Sentence 2."]}}'
     )
 
 
