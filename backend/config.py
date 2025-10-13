@@ -49,6 +49,10 @@ class Config:
     GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
     GEMINI_MAX_RETRIES = int(os.getenv("GEMINI_MAX_RETRIES", "3"))
     GEMINI_RETRY_DELAY = int(os.getenv("GEMINI_RETRY_DELAY", "1"))
+    # When Gemini exhausts all retries or returns empty/blocked responses,
+    # allow a conservative local segmentation fallback to avoid hard-failing chunks.
+    # Default: True (can be disabled via env if strict behavior is desired)
+    GEMINI_ALLOW_LOCAL_FALLBACK = os.getenv("GEMINI_ALLOW_LOCAL_FALLBACK", "True").lower() == "true"
 
     # Quality Gate Configuration - Post-processing validation layer
     QUALITY_GATE_ENABLED = os.getenv("QUALITY_GATE_ENABLED", "True").lower() == "true"
@@ -56,6 +60,11 @@ class Config:
     MIN_VERB_COUNT = int(os.getenv("MIN_VERB_COUNT", "1"))
     MIN_SENTENCE_LENGTH = int(os.getenv("MIN_SENTENCE_LENGTH", "4"))
     MAX_SENTENCE_LENGTH = int(os.getenv("MAX_SENTENCE_LENGTH", "8"))
+
+    # Optional pre-segmentation with sentence windows (Phase 1 - Preprocessing)
+    ENABLE_SENTENCE_WINDOWING = os.getenv("ENABLE_SENTENCE_WINDOWING", "False").lower() == "true"
+    WINDOW_SIZE = int(os.getenv("WINDOW_SIZE", "3"))
+    WINDOW_STRIDE = int(os.getenv("WINDOW_STRIDE", "2"))
 
     # Google APIs
     CLIENT_SECRETS_FILE = os.getenv(

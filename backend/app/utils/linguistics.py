@@ -9,6 +9,76 @@ logger = logging.getLogger(__name__)
 # Lazy loading of spaCy to avoid import errors if not installed
 _nlp = None
 
+# Minimal set of common English stopwords to ignore during coverage computations.
+# Purpose: avoid penalizing in-list ratios when mixed-language content appears.
+ENGLISH_STOPWORDS: Set[str] = {
+    # Articles/Determiners
+    "the",
+    "a",
+    "an",
+    # Conjunctions/Preps
+    "and",
+    "or",
+    "but",
+    "to",
+    "in",
+    "on",
+    "for",
+    "with",
+    "of",
+    "at",
+    "by",
+    "from",
+    "as",
+    "that",
+    "this",
+    "these",
+    "those",
+    # Pronouns
+    "it",
+    "its",
+    "he",
+    "she",
+    "they",
+    "we",
+    "you",
+    "your",
+    "yours",
+    "i",
+    "me",
+    "my",
+    "mine",
+    # Aux/Be/Have
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "been",
+    "being",
+    "am",
+    "do",
+    "does",
+    "did",
+    "done",
+}
+
+
+def is_english_stopword(token_norm: str) -> bool:
+    """Return True if the normalized token is a common English stopword.
+
+    Notes:
+        - Input must be lowercase and diacritics-folded (which callers in this module ensure).
+        - This is a conservative list aimed at filtering obvious English glue words that
+          otherwise lower ratios unfairly. It does not attempt full language detection.
+    """
+    if not token_norm:
+        return False
+    # Quick length guard; most content words are 3+ chars, but keep small stopwords (a, an)
+    if len(token_norm) == 1 and token_norm not in {"a", "i"}:
+        return False
+    return token_norm in ENGLISH_STOPWORDS
+
 
 def get_nlp():
     """Lazy load spaCy French model.
@@ -116,6 +186,29 @@ def preload_spacy(model_name: Optional[str] = None) -> None:
 
 class LinguisticsUtils:
     """Utilities for French text processing, tokenization, and lemmatization"""
+
+    @staticmethod
+    def heuristic_lemmatize(word: str) -> str:
+        """Lightweight heuristic to map common present-tense forms to infinitive for -er verbs.
+
+        Applied only when spaCy POS/lemma are unavailable. Keeps nouns/articles intact.
+        Examples: mange -> manger, manges -> manger, mangent -> manger, mangeons -> manger, mangez -> manger
+        """
+        if not word:
+            return word
+        w = word.strip().lower()
+        # Skip short function words to avoid false positives (e.g., 'le' -> 'ler')
+        if w in {"le", "de", "ce", "se", "ne", "que", "je", "me", "te", "se", "tu", "il", "elle"}:
+            return w
+        # Only consider simple alphabetic tokens
+        if not re.match(r"^[a-zàâçéèêëîïôûùüÿñæœ-]+$", w):
+            return w
+        # Map common present-tense suffixes to infinitive -er
+        for suf in ("ent", "ons", "ez", "es", "e"):
+            if w.endswith(suf) and len(w) - len(suf) >= 3:
+                base = w[: -len(suf)]
+                return base + "er"
+        return w
 
     @staticmethod
     def normalize_text(text: str, fold_diacritics: bool = True) -> str:
@@ -272,9 +365,11 @@ class LinguisticsUtils:
 
             # Apply French-specific lemma normalization first (handles elisions, reflexives)
             # then apply general text normalization (diacritics, etc.)
-            lemma_normalized = LinguisticsUtils.normalize_french_lemma(
-                lemma if lemma else surface_for_norm
-            )
+            # Apply heuristic lemmatization if POS/lemma are likely unavailable
+            lemma_source = lemma if lemma else surface_for_norm
+            if pos is None:
+                lemma_source = LinguisticsUtils.heuristic_lemmatize(lemma_source)
+            lemma_normalized = LinguisticsUtils.normalize_french_lemma(lemma_source)
             normalized = LinguisticsUtils.normalize_text(
                 lemma_normalized, fold_diacritics=fold_diacritics
             )
@@ -287,9 +382,11 @@ class LinguisticsUtils:
                 f"Token: surface='{surface}', lemma='{lemma}', normalized='{normalized}', pos='{pos}'"
             )
 
-            tokens.append(
-                {"surface": surface, "lemma": lemma, "normalized": normalized, "pos": pos}
-            )
+            # Skip common English stopwords entirely to avoid polluting ratios
+            if is_english_stopword(normalized):
+                continue
+
+            tokens.append({"surface": surface, "lemma": lemma, "normalized": normalized, "pos": pos})
 
         return tokens
 

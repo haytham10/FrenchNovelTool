@@ -14,8 +14,8 @@ COPY requirements.txt ./
 # Optimized for 8GB RAM / 8 vCPU: Upgrade pip and install python dependencies in a single layer
 RUN pip install --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt \
-    # Download spaCy French model at build time for memory sharing across workers
-    && python -m spacy download fr_core_news_md
+    # Install only the small spaCy French model to reduce RAM usage by ~50-60%
+    && python -m spacy download fr_core_news_sm
 
 # Copy application code
 COPY . .
@@ -23,6 +23,13 @@ COPY . .
 # Copy Railway-optimized entrypoint
 COPY railway-worker-entrypoint.sh /railway-worker-entrypoint.sh
 RUN chmod +x /railway-worker-entrypoint.sh
+
+# Default runtime env knobs (can be overridden at deploy time)
+# Use small model by default and disable heavy components to save RAM.
+ENV SPACY_MODEL=fr_core_news_sm \
+    SPACY_DISABLE=parser,ner \
+    PRELOAD_SPACY=false \
+    CELERY_CONCURRENCY=8
 
 # Use Railway-optimized entrypoint
 ENTRYPOINT ["/railway-worker-entrypoint.sh"]

@@ -72,10 +72,12 @@ def create_app(config_class=Config, skip_logging=False):
         limiter.init_app(app)
 
     # Use the parsed origins list for both Socket.IO and Flask-CORS
+    # Disable external message queue in tests to avoid Redis dependency
+    mq_url = None if app.config.get("TESTING", False) else app.config.get("CELERY_BROKER_URL")
     socketio.init_app(
         app,
         cors_allowed_origins=origins,
-        message_queue=app.config.get("CELERY_BROKER_URL"),
+        message_queue=mq_url,
         async_mode="eventlet",
     )
     CORS(
@@ -138,7 +140,8 @@ def create_app(config_class=Config, skip_logging=False):
         # Initialize global wordlist (ensure default exists)
         # Run this in a background daemon thread to avoid blocking app startup
         # and healthchecks. The initializer is idempotent and logs failures.
-        if not app.config.get("TESTING", False):
+        should_init_global_wl = not app.config.get("TESTING", False)
+        if should_init_global_wl:
             try:
                 import threading
 
@@ -201,13 +204,17 @@ def initialize_global_wordlist(app):
 
 
 def configure_logging(app):
-    """Configure application logging"""
+    """Configure application logging with safe fallback for local/tests"""
     if not app.debug and not app.testing:
-        # The Dockerfile creates /app/logs and chowns it to appuser.
-        # This path is guaranteed to be writable.
+        # Prefer container path but fall back to a local writable directory if needed
         log_dir = "/app/logs"
-        if not os.path.exists(log_dir):
-            os.makedirs(log_dir)
+        try:
+            if not os.path.exists(log_dir):
+                os.makedirs(log_dir)
+        except Exception:
+            # Fallback for non-container or restricted environments (e.g., unit tests)
+            log_dir = os.path.abspath(os.path.join(os.getcwd(), "logs"))
+            os.makedirs(log_dir, exist_ok=True)
 
         log_file = os.path.join(log_dir, "app.log")
 

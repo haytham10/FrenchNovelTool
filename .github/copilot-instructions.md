@@ -1,15 +1,17 @@
 # Copilot Instructions: French Novel Tool
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to AI coding agents when working with code in this repository.
 
 ## Project Overview
 
 **French Novel Tool** is an AI-powered full-stack application for processing French novel PDFs using Google Gemini AI to normalize sentence length and export results to Google Sheets. The system includes a vocabulary coverage analysis feature for optimized language learning.
 
+**Current Focus:** "Project Battleship" - eliminating sentence fragments through enhanced prompt engineering and quality validation.
+
 **Tech Stack:**
 - **Backend:** Flask 3.0 + SQLAlchemy + PostgreSQL + Celery (async task processing) + Redis + Flask-SocketIO
 - **Frontend:** Next.js 15 (App Router) + React 19 + TypeScript + Material-UI v7 + TanStack Query + Zustand
-- **AI/NLP:** Google Gemini AI, spaCy (French lemmatization)
+- **AI/NLP:** Google Gemini AI, spaCy (French lemmatization), Quality Gate validation
 - **Deployment:** Railway (backend + Celery + Flower) + Vercel (frontend)
 
 ## Architecture
@@ -31,6 +33,8 @@ The backend follows an **Application Factory Pattern** with service layer encaps
    - `wordlist_service.py` - Word list management
    - `history_service.py` - Processing history tracking
    - `user_settings_service.py` - User preferences
+   - `quality_gate.py` - **NEW**: Post-processing validation with spaCy verb detection
+   - `prompts/` - **NEW**: Modular prompt system with few-shot learning
 
 3. **Blueprint-Based Routing:** Routes organized into blueprints at `/api/v1`:
    - `routes.py` (main_bp) - PDF processing, jobs, history, settings
@@ -152,6 +156,11 @@ dev-setup.bat       # Windows
 # Or manually:
 docker-compose -f docker-compose.dev.yml up --build
 
+# Makefile shortcuts:
+make dev           # Development environment
+make test          # Run backend tests
+make clean         # Clean all containers and volumes
+
 # Database migrations in container:
 docker-compose -f docker-compose.dev.yml exec backend flask db migrate -m "Description"
 docker-compose -f docker-compose.dev.yml exec backend flask db upgrade
@@ -203,6 +212,12 @@ pytest tests/test_specific_file.py::test_function_name -v
    - Non-transient errors fail chunk immediately
    - Watchdog tasks detect stuck chunks and force retry/fail
 
+8. **Quality Gate Integration:**
+   - All AI output must pass `QualityGate.validate()` checks
+   - Verb detection via spaCy POS tagging (`has_verb()`)
+   - Fragment detection with fallback to comprehensive verb list
+   - Only validated sentences are saved to database
+
 ### Frontend
 
 1. **Component Structure:** Use functional components with hooks (no class components)
@@ -226,6 +241,7 @@ pytest tests/test_specific_file.py::test_function_name -v
 - Test service layer directly (unit tests)
 - Test routes with Flask test client (integration tests)
 - Coverage target: 80%+
+- **Project Battleship Testing:** `test_battleship_pipeline.py`, `test_quality_gate_*.py`
 
 **Example Test Pattern:**
 ```python
@@ -240,6 +256,19 @@ def test_process_pdf_success(client, auth_headers, mock_gemini):
         )
     assert response.status_code == 200
     assert 'job_id' in response.json
+```
+
+**Quality Gate Testing Pattern:**
+```python
+def test_quality_gate_rejects_fragments():
+    """Test quality gate properly rejects sentence fragments"""
+    quality_gate = QualityGate()
+    
+    # Should reject - no verb
+    assert not quality_gate.validate("Dans la rue.")
+    
+    # Should accept - complete sentence
+    assert quality_gate.validate("Il marche dans la rue.")
 ```
 
 ### Pre-Commit Hooks
@@ -333,6 +362,8 @@ Check Socket.IO connection in browser console:
 - `backend/app/tasks.py` - Celery async tasks with retry logic
 - `backend/app/services/gemini_service.py` - AI normalization with fallback cascade
 - `backend/app/services/chunking_service.py` - Adaptive PDF chunking
+- `backend/app/services/quality_gate.py` - **NEW**: Post-processing validation
+- `backend/app/services/prompts/` - **NEW**: Modular prompt system
 - `backend/app/celery_app.py` - Celery factory with Flask context
 - `backend/config.py` - Environment-driven configuration
 - `frontend/src/lib/api.ts` - Centralized API client with token refresh
@@ -412,4 +443,34 @@ Check Socket.IO connection in browser console:
 - `backend/Dockerfile.dev` - Local development (hot reload)
 
 **Note:** Docker Compose (`docker-compose.yml`, `docker-compose.dev.yml`) is for local development only, not used in production.
-- don't write summarizing documents everytime you change something
+
+## Current Development Focus: Project Battleship
+
+**Objective:** Eliminate sentence fragments (<0.5% rate) through improved AI prompt engineering and quality validation.
+
+**Current Branch:** `battleship-phase1-preprocessing`
+
+**Key Components:**
+1. **Quality Gate Service** (`backend/app/services/quality_gate.py`)
+   - spaCy-based verb detection with POS tagging
+   - Comprehensive French verb list fallback (200+ verbs)
+   - Fragment detection with configurable validation rules
+   - Usage: `quality_gate.validate(sentence)` returns boolean
+
+2. **Modular Prompt System** (`backend/app/services/prompts/`)
+   - Few-shot learning approach vs. lengthy rule explanations  
+   - `sentence_normalizer_prompt.py` - V2 prompt with examples
+   - Target: <50 lines (down from 170-line legacy prompt)
+   - A/B testing framework for prompt optimization
+
+3. **Enhanced Testing Framework**
+   - `test_battleship_pipeline.py` - End-to-end validation
+   - `test_quality_gate_*.py` - Quality gate unit tests
+   - Fragment rate monitoring and acceptance criteria
+   - Fixtures for "Stan-ready" audio content validation
+
+**Development Patterns:**
+- All AI output must pass Quality Gate validation before database storage
+- Use `safe_db_commit()` for transient error handling in tasks
+- Feature flags for gradual prompt rollout (0% → 10% → 100%)
+- Monitor fragment rates in production via logging
