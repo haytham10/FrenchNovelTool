@@ -83,7 +83,8 @@ class History(db.Model):
         db.String(256), nullable=True
     )  # URL if exported separately from spreadsheet_url
     chunk_ids = db.Column(db.JSON, nullable=True)  # Array of JobChunk IDs for drill-down
-    status = db.Column(db.String(20), nullable=False, default="complete", index=True)
+    # TODO: Add status column via migration - temporarily commented out for production
+    # status = db.Column(db.String(20), nullable=False, default="complete", index=True)
 
     def __repr__(self):
         return f"<History {self.original_filename} - {self.timestamp}>"
@@ -103,7 +104,8 @@ class History(db.Model):
             "settings": self.processing_settings,
             "exported_to_sheets": self.exported_to_sheets,
             "export_sheet_url": self.export_sheet_url,
-                "status": self.status,
+            # TODO: Re-enable after adding status column via migration
+            # "status": self.status,
         }
 
     def to_dict_with_sentences(self):
