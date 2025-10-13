@@ -1,6 +1,8 @@
 # Copilot Instructions: French Novel Tool
 
 This file provides guidance to AI coding agents when working with code in this repository.
+IT SHOULD NEVER RUN "FLASK" "DOCKER" "DOCKER-COMPOSE" OR "RAILWAY" COMMANDS DIRECTLY.
+It should only modify code files, tests, and documentation as needed.
 
 ## Project Overview
 

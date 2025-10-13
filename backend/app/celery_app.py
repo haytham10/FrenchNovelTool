@@ -31,9 +31,9 @@ def make_celery(app: Flask) -> Celery:
         task_track_started=True,
         task_send_sent_event=True,
         worker_send_task_events=True,
-        result_expires=7200,  # 2 hours - longer retention for complex jobs
-        task_time_limit=3600,  # 60 minutes max per task - handle large PDFs
-        task_soft_time_limit=3300,  # Soft limit at 55 minutes
+    result_expires=7200,  # 2 hours - longer retention for complex jobs
+    task_time_limit=1200,  # 20 minutes max per task
+    task_soft_time_limit=1140,  # Soft limit at 19 minutes
         # Prefetch fewer tasks to reduce memory bursts on large PDFs
         worker_prefetch_multiplier=1,
         # Recycle children more frequently to mitigate memory growth
