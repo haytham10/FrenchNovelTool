@@ -10,13 +10,15 @@ def cors_preflight(f):
     Decorator to handle OPTIONS preflight requests with proper CORS headers.
     Use this on routes that need explicit CORS handling.
     """
+
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if request.method == 'OPTIONS':
+        if request.method == "OPTIONS":
             response = jsonify({})
             response.status_code = 204
             return response
         return f(*args, **kwargs)
+
     return decorated_function
 
 

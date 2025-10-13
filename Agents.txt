@@ -1,0 +1,388 @@
+  Project Battleship — Agent Delegation Plan
+
+  Based on my analysis of your codebase, I've identified that the current sentence
+  normalization system has significant issues with fragment generation. Here's my
+  strategic agent assignment plan:
+
+  ---
+  Critical Dependencies & Execution Order
+
+  Execution Sequence:
+  1. Phase 1.2 (Prompt Engineering) → MUST COMPLETE FIRST
+    - The prompt is the root cause of fragments
+    - All other work depends on correct AI instructions
+  2. Phase 1.3 (Quality Gate) → RUN IN PARALLEL with prompt testing
+    - Can be developed independently
+    - Validates output from any prompt version
+  3. Phase 1.1 (Pre-Processing) → LOWER PRIORITY
+    - Current chunking works adequately
+    - Optional optimization, not critical path
+  4. Phase 2.1 & 2.2 (Infrastructure) → AFTER Phase 1 completes
+    - Polish and production hardening
+    - User experience improvements
+
+  ---
+  Agent Assignments
+
+  🔴 CRITICAL PATH — Agent 1: AI/Prompt Engineering Specialist
+
+  Branch: battleship/phase1-prompt-engineering
+
+  Task: Redesign the Gemini prompt to eliminate fragment generation
+
+  Current Problem Analysis:
+  - backend/app/services/gemini_service.py:92-262 contains a 170-line prompt that's
+   being ignored by the AI
+  - The prompt says "ZERO TOLERANCE FOR FRAGMENTS" but the AI still produces
+  fragments
+  - Fragment detection in _is_likely_fragment() (lines 660-816) catches ~3-5%
+  fragment rate
+  - The service has complex fallback cascades (lines 1039-1265) that mask the core
+  issue
+
+  Root Cause: The prompt is too long (170 lines), contains contradictory
+  instructions, and doesn't use effective few-shot examples.
+
+  Implementation Plan:
+
+  1. Create New Prompt Architecture
+  (backend/app/services/prompts/sentence_normalizer_prompt.py):
+  """
+  Modular prompt system with:
+  - System role (15 lines max)
+  - Few-shot examples (5 examples: 2 good, 3 bad corrections)
+  - Task instruction (5 lines max)
+  - JSON schema
+  """
+  2. Implement Prompt Testing Framework (backend/tests/test_prompt_validation.py):
+  """
+  Test cases:
+  - Fragment inputs (e.g., "Dans la rue.") → Expect rejection or completion
+  - Long sentences → Expect splitting with NO fragments
+  - Edge cases (dialogue, ellipses, quotes)
+  - Run against 50 test sentences from actual PDFs
+  """
+  3. A/B Test Prompts (Use test fixtures):
+    - Test new prompt against 100 real sentences from
+  tests/fixtures/stan_test_novel.pdf
+    - Measure fragment rate (target: <0.5%)
+    - Compare against current prompt baseline
+  4. Configuration Management:
+    - Add GEMINI_PROMPT_VERSION config flag
+    - Allow A/B testing in production via feature flag
+    - Keep old prompt as fallback during rollout
+
+  Acceptance Criteria:
+  - Fragment rate drops below 0.5% on test suite (current: 3-5%)
+  - Test case: Input "Dans la rue." → Either rejected (empty array) or completed to
+   "Il marche dans la rue."
+  - Test case: Input "Il marchait lentement dans la rue sombre et froide, pensant à
+   elle." → Produces 3 complete sentences, ZERO fragments
+  - All 50 test sentences from fixtures pass fragment detection
+  - Prompt length ≤ 50 lines (currently 170 lines)
+  - Integration test with actual Gemini API succeeds
+  - A/B test shows >90% improvement over current prompt
+
+  Risk Mitigation:
+  - Keep old prompt as legacy_prompt.py for instant rollback
+  - Use feature flag to gradually roll out (0% → 10% → 50% → 100% traffic)
+  - Monitor fragment rate metrics in production
+
+  Estimated Duration: 3-4 days
+  Priority: 🔴 CRITICAL — START IMMEDIATELY
+
+  ---
+  🟡 HIGH PRIORITY — Agent 2: Backend/Quality Gate Specialist
+
+  Branch: battleship/phase1-quality-gate
+
+  Task: Build bulletproof post-processing validation layer
+
+  Current Problem Analysis:
+  - backend/app/services/gemini_service.py:436-577 has _post_process_sentences()
+  with fragment detection
+  - Fragment detection exists but doesn't reject bad output — only logs warnings
+  - The service has _is_likely_fragment() (lines 660-816) but doesn't enforce
+  rejection
+
+  Implementation Plan:
+
+  1. Create Quality Gate Service (backend/app/services/quality_gate_service.py):
+  """
+  Quality Gate Service:
+  - Verb detection using spaCy POS tagging (VERB token required)
+  - Length validation (4-8 words)
+  - Fragment heuristics (enhanced from current _is_likely_fragment)
+  - Sentence completeness check (subject + verb + punctuation)
+  - Returns: (is_valid: bool, rejection_reason: str | None)
+  """
+  2. spaCy Integration:
+    - Load French model: fr_core_news_sm
+    - POS tag each sentence
+    - Require at least one VERB token (not AUX, actual conjugated verb)
+    - Validate sentence structure (not just word count)
+  3. Integration Points:
+    - Hook into gemini_service._post_process_sentences() (line 436)
+    - Before appending to processed list, run quality gate
+    - If validation fails: log detailed rejection reason + skip sentence
+    - Track rejection rate for monitoring
+  4. Configuration:
+    - QUALITY_GATE_ENABLED (default: True)
+    - QUALITY_GATE_STRICT_MODE (default: False, reject on any suspicion)
+    - MIN_VERB_COUNT (default: 1)
+    - MIN_SENTENCE_LENGTH (default: 4)
+    - MAX_SENTENCE_LENGTH (default: 8)
+
+  Acceptance Criteria:
+  - spaCy POS tagging correctly identifies verbs in French sentences
+  - Test case: "Dans la rue sombre." → Rejected (no verb detected)
+  - Test case: "Il marche lentement." → Accepted (verb: "marche")
+  - Test case: "Pour toujours et à jamais" → Rejected (no verb, idiomatic fragment)
+  - Test case: "Elle est belle et intelligente et drôle et gentille et
+  sympathique." → Rejected (>8 words)
+  - Unit tests cover 20+ edge cases (see test_quality_gate.py for examples)
+  - Integration test: Process 100 sentences, confirm 0 fragments pass quality gate
+  - Performance: Quality gate adds <10ms per sentence overhead
+
+  Dependencies:
+  - Requires fr_core_news_sm spaCy model (already in Docker:
+  backend/Dockerfile.railway-worker:27)
+  - Can develop in parallel with Agent 1 (works with any prompt output)
+
+  Estimated Duration: 2-3 days
+  Priority: 🟡 HIGH — START IN PARALLEL WITH AGENT 1
+
+  ---
+  🟢 MEDIUM PRIORITY — Agent 3: NLP/Preprocessing Specialist
+
+  Branch: battleship/phase1-preprocessing
+
+  Task: OPTIONAL — Enhance chunking with spaCy sentence segmentation
+
+  Current Status:
+  - backend/app/services/chunking_service.py works well (splits PDFs into 30-50
+  page chunks)
+  - Page-level chunking is already context-aware with 2-page overlap
+  - NOT a critical bottleneck
+
+  Recommendation: DEFER THIS TASK
+  - Current chunking is adequate for production
+  - Focus on Phases 1.2 and 1.3 first
+  - Revisit only if batch processing shows context issues
+
+  If Implemented (Low Priority):
+  - Use spaCy to pre-segment text into sentences before sending to Gemini
+  - Create 2-3 sentence context windows instead of page-based chunks
+  - Measure impact on fragment rate (may be minimal)
+
+  Acceptance Criteria (If Implemented):
+  - spaCy sentence segmentation produces clean sentence boundaries
+  - Context windows contain 2-3 complete sentences
+  - Integration test: Chunked processing produces same results as full-text
+  processing
+  - Performance: Adds <5% processing time overhead
+
+  Estimated Duration: 2 days (if needed)
+  Priority: 🟢 DEFER — Only if time permits after Phases 1.2 & 1.3
+
+  ---
+  🔵 POLISH — Agent 4: DevOps/Logging Specialist
+
+  Branch: battleship/phase2-logging
+
+  Task: Centralized error logging and monitoring
+
+  Current Status:
+  - Logging exists but is scattered across services
+  - No centralized error tracking
+  - Fragment warnings logged but not aggregated
+
+  Implementation Plan:
+
+  1. Structured Logging (backend/app/utils/structured_logger.py):
+    - JSON-formatted logs with context (job_id, chunk_id, user_id)
+    - Log levels: DEBUG, INFO, WARNING, ERROR, CRITICAL
+    - Integration with Railway/Sentry (optional)
+  2. Error Tracking:
+    - Catch all GeminiAPIError exceptions
+    - Log with full context (PDF name, page range, settings)
+    - Track fragment rate per job (store in Job.processing_metadata)
+  3. Monitoring Dashboards (Use existing Flower):
+    - Fragment rate metric (already tracked: gemini_service.last_fragment_rate)
+    - Failed chunk rate
+    - Gemini API latency
+
+  Acceptance Criteria:
+  - All errors logged with structured context (JSON format)
+  - Test: Intentional LLM failure produces log with full stack trace + context
+  - Fragment rate tracked per job in DB (Job.processing_metadata)
+  - Logs queryable by job_id, user_id, error_code
+
+  Estimated Duration: 1-2 days
+  Priority: 🔵 AFTER Phase 1 completes
+
+  ---
+  🔵 POLISH — Agent 5: Frontend/UX Specialist
+
+  Branch: battleship/phase2-user-errors
+
+  Task: User-friendly error messages
+
+  Current Status:
+  - Generic error messages in frontend
+  - No mapping of backend error codes to user-friendly text
+
+  Implementation Plan:
+
+  1. Error Code Mapping (frontend/src/lib/errorMessages.ts):
+  const ERROR_MESSAGES = {
+    'GEMINI_API_ERROR': 'The AI service is temporarily unavailable. Please try
+  again.',
+    'PDF_CORRUPTED': 'This PDF appears corrupted. Please try another file.',
+    'NO_TEXT': 'This PDF contains no extractable text (may be scanned images).',
+    'RATE_LIMIT': 'Processing limit reached. Please wait a few minutes.',
+    // ... etc
+  }
+  2. Frontend Integration:
+    - Update frontend/src/components/ProcessingStatus.tsx to display friendly
+  errors
+    - Show actionable advice (e.g., "Try a different PDF format")
+
+  Acceptance Criteria:
+  - Test: Upload corrupted PDF → Frontend shows: "This PDF appears corrupted.
+  Please try another file."
+  - Test: Rate limit error → Frontend shows: "Processing limit reached. Please wait
+   a few minutes and try again."
+  - All error codes from backend have user-friendly mappings
+
+  Estimated Duration: 1 day
+  Priority: 🔵 AFTER Phase 1 completes
+
+  ---
+  End-to-End Testing Strategy
+
+  Test Script: backend/tests/test_battleship_pipeline.py
+
+  """
+  End-to-end test for Project Battleship.
+
+  Tests the complete pipeline:
+  1. Upload tests/fixtures/stan_test_novel.pdf
+  2. Process through new prompt + quality gate
+  3. Assert:
+     - Sentence count > 0
+     - Fragment rate = 0.0%
+     - All sentences pass quality gate checks
+     - Processing completes without errors
+  """
+
+  def test_battleship_full_pipeline():
+      # Upload PDF
+      job = create_job('tests/fixtures/stan_test_novel.pdf')
+
+      # Process with new prompt
+      result = process_pdf_async(job.id)
+
+      # Validate results
+      assert result['status'] == 'success'
+      assert len(result['sentences']) > 0
+
+      # Quality gate checks
+      quality_gate = QualityGateService()
+      for sentence in result['sentences']:
+          is_valid, reason = quality_gate.validate(sentence)
+          assert is_valid, f"Sentence failed quality gate: {sentence} ({reason})"
+
+      # Fragment rate
+      assert result['fragment_rate'] < 0.005  # <0.5%
+
+      # "Stan-Ready" criteria
+      assert result['audio_ready'] == True
+      assert result['semantic_density_score'] > 0.8
+
+  ---
+  Success Metrics
+
+  Before Battleship (Current State):
+  - Fragment rate: 3-5% (logged in gemini_service)
+  - Manual post-processing required
+  - User complaints about unusable sentences
+
+  After Battleship (Target State):
+  - Fragment rate: <0.5% ✅
+  - Zero manual post-processing ✅
+  - 100% audio-ready sentences ✅
+  - Batch processing: 500 PDFs in single run ✅
+
+  ---
+  Recommended Execution Plan
+
+  Week 1:
+  - 🔴 Agent 1 (Prompt Engineering): Days 1-4
+  - 🟡 Agent 2 (Quality Gate): Days 1-3 (parallel)
+
+  Week 2:
+  - ✅ Integration testing (Days 5-6)
+  - 🔵 Agent 4 (Logging): Days 6-7
+  - 🔵 Agent 5 (UX): Day 8
+
+  Week 3:
+  - End-to-end testing with test_battleship_pipeline.py
+  - Production rollout with feature flag (0% → 10% → 100%)
+  - Monitor fragment rate metrics
+
+  Contingency:
+  - 🟢 Agent 3 (Preprocessing): Only if fragment rate still >1% after Week 2
+
+  ---
+
+● Summary
+
+  I've created a comprehensive, production-ready agent delegation plan for Project
+  Battleship. Here are the key strategic decisions:
+
+  Critical Insights from Codebase Analysis:
+
+  1. Root Cause Identified: The 170-line prompt in gemini_service.py is being
+  ignored by the AI, causing 3-5% fragment generation despite "ZERO TOLERANCE"
+  instructions.
+  2. Quality Gate Gap: Fragment detection exists (_is_likely_fragment()) but only
+  logs warnings — doesn't reject bad output.
+  3. Current Chunking Works: The chunking service is already well-optimized for
+  your Railway infrastructure (8GB/8vCPU) — no urgent need to refactor.
+
+  Strategic Execution Order:
+
+  🔴 CRITICAL PATH (Start Immediately):
+  - Agent 1 (AI Specialist): Redesign prompt using few-shot examples, reduce from
+  170 → 50 lines, implement A/B testing framework
+  - Agent 2 (Backend): Build QualityGateService with spaCy POS tagging for verb
+  detection
+
+  🔵 POLISH (After Core):
+  - Agent 4 (DevOps): Structured logging + monitoring
+  - Agent 5 (Frontend): User-friendly error messages
+
+  🟢 DEFER:
+  - Agent 3 (NLP Preprocessing): Only if fragment rate stays high after Agents 1 &
+  2
+
+  Key Risk Mitigations:
+
+  - Feature Flags: Gradual rollout (0% → 10% → 100% traffic)
+  - Rollback Safety: Keep legacy prompt as legacy_prompt.py
+  - Parallel Development: Agents 1 & 2 can work simultaneously
+  - Clear Metrics: Fragment rate <0.5% target, measurable via existing logging
+
+  Why This Plan Works:
+
+  1. Addresses Root Cause: Fixes the prompt (Agent 1) instead of band-aiding
+  symptoms
+  2. Defense in Depth: Quality gate (Agent 2) catches any remaining issues
+  3. Production-Safe: Feature flags + A/B testing + rollback plan
+  4. Realistic Scope: 2-3 weeks for core work, tested execution order
+  5. Based on Real Code: Every recommendation references actual line numbers from
+  your codebase
+
+  The plan is ready for immediate execution. Start with Agents 1 & 2 in parallel,
+  and you'll have a bulletproof sentence normalizer within 2 weeks.

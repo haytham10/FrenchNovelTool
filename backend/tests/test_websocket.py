@@ -7,7 +7,7 @@ from flask import Flask
 from flask_socketio import SocketIOTestClient
 
 # Add the backend directory to the Python path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from app import create_app, socketio
 from app.models import Job, User
@@ -18,8 +18,8 @@ from config import Config
 def app():
     """Create test Flask app with SocketIO"""
     app = create_app(Config)
-    app.config['TESTING'] = True
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
+    app.config["TESTING"] = True
+    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:"
     return app
 
 
@@ -41,15 +41,15 @@ def mock_job():
     job = MagicMock(spec=Job)
     job.id = 1
     job.user_id = 123
-    job.status = 'processing'
+    job.status = "processing"
     job.progress_percent = 50
-    job.current_step = 'Processing '
+    job.current_step = "Processing "
     job.to_dict.return_value = {
-        'id': 1,
-        'user_id': 123,
-        'status': 'processing',
-        'progress_percent': 50,
-        'current_step': 'Processing '
+        "id": 1,
+        "user_id": 123,
+        "status": "processing",
+        "progress_percent": 50,
+        "current_step": "Processing ",
     }
     return job
 
@@ -57,17 +57,17 @@ def mock_job():
 def test_socketio_initialized(app):
     """Test that SocketIO is properly initialized"""
     assert socketio is not None
-    assert hasattr(socketio, 'emit')
-    assert hasattr(socketio, 'on')
+    assert hasattr(socketio, "emit")
+    assert hasattr(socketio, "on")
 
 
 def test_emit_job_progress_helper():
     """Test the emit_job_progress helper function"""
     from app.socket_events import emit_job_progress
-    
+
     # Should not raise an exception even without database
     # (will log warning but continue gracefully)
-    with patch('app.socket_events.Job') as mock_job_model:
+    with patch("app.socket_events.Job") as mock_job_model:
         mock_job_model.query.get.return_value = None
         emit_job_progress(999)  # Non-existent job
 
@@ -77,29 +77,33 @@ def test_websocket_connect_requires_token(app):
     from app.socket_events import handle_connect
 
     # Patch decode_token and disconnect locally so the test doesn't need a request context
-    with patch('app.socket_events.decode_token') as mock_decode, patch('app.socket_events.disconnect') as mock_disconnect:
+    with patch("app.socket_events.decode_token") as mock_decode, patch(
+        "app.socket_events.disconnect"
+    ) as mock_disconnect:
         # Test with no token provided in auth dict
         result = handle_connect({})
         assert result is False
         mock_disconnect.assert_called_once()
 
     # Now test with a valid token
-    with patch('app.socket_events.decode_token') as mock_decode, patch('app.socket_events.disconnect') as mock_disconnect:
-        mock_decode.return_value = {'sub': '123'}
-        result = handle_connect({'token': 'valid_token'})
+    with patch("app.socket_events.decode_token") as mock_decode, patch(
+        "app.socket_events.disconnect"
+    ) as mock_disconnect:
+        mock_decode.return_value = {"sub": "123"}
+        result = handle_connect({"token": "valid_token"})
         assert result is True
 
 
 def test_emit_progress_in_tasks():
     """Test that tasks.py has emit_progress calls"""
     from app import tasks
-    
+
     # Verify the helper function exists
-    assert hasattr(tasks, 'emit_progress')
-    
+    assert hasattr(tasks, "emit_progress")
+
     # Verify it's callable
     assert callable(tasks.emit_progress)
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

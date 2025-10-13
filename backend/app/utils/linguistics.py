@@ -26,22 +26,27 @@ def get_nlp():
         # memory-constrained hosts where loading any spaCy model would cause
         # worker OOMs). Set SPACY_FORCE_DUMMY=true to enable.
         import os
-        force_dummy = os.environ.get('SPACY_FORCE_DUMMY', 'false').lower() in ('1', 'true', 'yes')
+
+        force_dummy = os.environ.get("SPACY_FORCE_DUMMY", "false").lower() in ("1", "true", "yes")
         if force_dummy:
-            logger.info('SPACY_FORCE_DUMMY is set; using DummyNLP to avoid loading spaCy model')
+            logger.info("SPACY_FORCE_DUMMY is set; using DummyNLP to avoid loading spaCy model")
+
             class DummyNLP:
                 def __call__(self, text):
                     class DummyDoc:
                         def __iter__(self):
                             # Simple whitespace tokenization fallback
                             for word in text.split():
-                                yield type('Token', (), {'text': word, 'lemma_': word.lower()})()
+                                yield type("Token", (), {"text": word, "lemma_": word.lower()})()
+
                     return DummyDoc()
+
             _nlp = DummyNLP()
             return _nlp
 
         try:
             import spacy
+
             # Prefer the medium French model, but fall back to the small model if the
             # medium model isn't available. Avoid attempting an automatic download
             # inside worker processes because network access or pip installs can
@@ -49,6 +54,7 @@ def get_nlp():
             # errors). If neither model is available, fall back to the DummyNLP
             # which provides a graceful degradation.
             import os
+
             preferred = os.environ.get("SPACY_MODEL", "fr_core_news_md")
             tried = []
             # Determine disabled components to save RAM
@@ -61,12 +67,15 @@ def get_nlp():
                 tried.append(model)
                 try:
                     _nlp = spacy.load(model, disable=disable)
-                    logger.info("Loaded spaCy French model: %s (disable=%s)", model, ",".join(disable))
+                    logger.info(
+                        "Loaded spaCy French model: %s (disable=%s)", model, ",".join(disable)
+                    )
                     break
                 except OSError:
                     logger.warning("spaCy model %s not found, will try next fallback", model)
         except Exception as e:
             logger.error(f"Failed to load spaCy model: {e}")
+
             # Return a dummy object that will cause graceful degradation
             class DummyNLP:
                 def __call__(self, text):
@@ -74,8 +83,10 @@ def get_nlp():
                         def __iter__(self):
                             # Simple whitespace tokenization fallback
                             for word in text.split():
-                                yield type('Token', (), {'text': word, 'lemma_': word.lower()})()
+                                yield type("Token", (), {"text": word, "lemma_": word.lower()})()
+
                     return DummyDoc()
+
             _nlp = DummyNLP()
     return _nlp
 
@@ -93,6 +104,7 @@ def preload_spacy(model_name: Optional[str] = None) -> None:
     # If a specific model is requested, honor it via environment override for this load
     if model_name:
         import os
+
         os.environ.setdefault("SPACY_MODEL", model_name)
     nlp = get_nlp()
     # Touch the pipeline to ensure it's fully initialized
@@ -104,40 +116,39 @@ def preload_spacy(model_name: Optional[str] = None) -> None:
 
 class LinguisticsUtils:
     """Utilities for French text processing, tokenization, and lemmatization"""
-    
+
     @staticmethod
     def normalize_text(text: str, fold_diacritics: bool = True) -> str:
         """
         Normalize text for matching.
-        
+
         Args:
             text: Input text
             fold_diacritics: Whether to remove diacritics
-            
+
         Returns:
             Normalized text
         """
         if not text:
             return ""
-        
+
         # Trim and casefold
         text = text.strip().casefold()
-        
+
         # Remove zero-width characters
-        text = re.sub(r'[\u200b-\u200f\ufeff]', '', text)
-        
+        text = re.sub(r"[\u200b-\u200f\ufeff]", "", text)
+
         # Fold diacritics if requested
         if fold_diacritics:
-            text = ''.join(
-                c for c in unicodedata.normalize('NFD', text)
-                if unicodedata.category(c) != 'Mn'
+            text = "".join(
+                c for c in unicodedata.normalize("NFD", text) if unicodedata.category(c) != "Mn"
             )
-        
+
         # Strip apostrophes which can cause matching issues
         text = text.replace("'", "")
-        
+
         return text
-    
+
     @staticmethod
     def handle_elision(word: str) -> str:
         """
@@ -156,7 +167,7 @@ class LinguisticsUtils:
         word_lower = word.lower()
         for prefix in elision_prefixes:
             if word_lower.startswith(prefix):
-                return word[len(prefix):]
+                return word[len(prefix) :]
 
         return word
 
@@ -183,7 +194,7 @@ class LinguisticsUtils:
         # Trim and lowercase
         lemma = lemma.strip().lower()
 
-    # Handle reflexive pronouns FIRST: spaCy often lemmatizes reflexive verbs
+        # Handle reflexive pronouns FIRST: spaCy often lemmatizes reflexive verbs
         # with a "se_" or "s'" prefix (e.g., "se_laver", "s'appeler").
         # Strip this prefix to match against word lists that contain the base verb form.
         # Note: "s'" as an elision of "si" (e.g., "s'il" = "si il") won't appear in
@@ -209,7 +220,7 @@ class LinguisticsUtils:
         for contraction, expansion in elision_expansions.items():
             if lemma.startswith(contraction):
                 # Replace the contraction with the full form
-                lemma = expansion + lemma[len(contraction):]
+                lemma = expansion + lemma[len(contraction) :]
                 break
 
         # Remove any remaining apostrophes that might interfere with matching
@@ -219,21 +230,19 @@ class LinguisticsUtils:
         lemma = " ".join(lemma.split())
 
         return lemma
-    
+
     @staticmethod
     def tokenize_and_lemmatize(
-        text: str,
-        fold_diacritics: bool = True,
-        handle_elisions: bool = True
+        text: str, fold_diacritics: bool = True, handle_elisions: bool = True
     ) -> List[Dict[str, str]]:
         """
         Tokenize and lemmatize French text using spaCy.
-        
+
         Args:
             text: Input text to process
             fold_diacritics: Whether to remove diacritics
             handle_elisions: Whether to handle elisions
-            
+
         Returns:
             List of dicts with 'surface', 'lemma', 'normalized' keys
         """
@@ -243,7 +252,7 @@ class LinguisticsUtils:
         tokens = []
         for token in doc:
             # Skip punctuation and whitespace
-            if getattr(token, 'is_punct', False) or getattr(token, 'is_space', False):
+            if getattr(token, "is_punct", False) or getattr(token, "is_space", False):
                 continue
 
             surface = token.text
@@ -251,8 +260,8 @@ class LinguisticsUtils:
             # For performance, avoid creating a temporary doc per-token.
             # Use the token's lemma_ provided by spaCy and include POS information so
             # callers can make content-word decisions without re-running the pipeline.
-            lemma = getattr(token, 'lemma_', surface).lower()
-            pos = getattr(token, 'pos_', None)
+            lemma = getattr(token, "lemma_", surface).lower()
+            pos = getattr(token, "pos_", None)
 
             # If requested, apply simple elision handling to the surface before
             # normalizing. We do not re-run the pipeline here for performance.
@@ -263,111 +272,106 @@ class LinguisticsUtils:
 
             # Apply French-specific lemma normalization first (handles elisions, reflexives)
             # then apply general text normalization (diacritics, etc.)
-            lemma_normalized = LinguisticsUtils.normalize_french_lemma(lemma if lemma else surface_for_norm)
-            normalized = LinguisticsUtils.normalize_text(lemma_normalized, fold_diacritics=fold_diacritics)
+            lemma_normalized = LinguisticsUtils.normalize_french_lemma(
+                lemma if lemma else surface_for_norm
+            )
+            normalized = LinguisticsUtils.normalize_text(
+                lemma_normalized, fold_diacritics=fold_diacritics
+            )
 
             if not normalized:
                 logger.debug(f"Skipping empty normalized token from lemma '{lemma}'")
                 continue
 
-            logger.debug(f"Token: surface='{surface}', lemma='{lemma}', normalized='{normalized}', pos='{pos}'")
+            logger.debug(
+                f"Token: surface='{surface}', lemma='{lemma}', normalized='{normalized}', pos='{pos}'"
+            )
 
-            tokens.append({
-                'surface': surface,
-                'lemma': lemma,
-                'normalized': normalized,
-                'pos': pos
-            })
+            tokens.append(
+                {"surface": surface, "lemma": lemma, "normalized": normalized, "pos": pos}
+            )
 
         return tokens
-    
+
     @staticmethod
     def match_tokens_to_wordlist(
-        tokens: List[Dict[str, str]],
-        wordlist_keys: Set[str]
+        tokens: List[Dict[str, str]], wordlist_keys: Set[str]
     ) -> Tuple[List[str], List[str]]:
         """
         Match tokenized sentence against word list keys.
-        
+
         Args:
             tokens: List of token dicts from tokenize_and_lemmatize
             wordlist_keys: Set of normalized word keys from word list
-            
+
         Returns:
             Tuple of (matched_words, unmatched_words) as normalized keys
         """
         matched = []
         unmatched = []
-        
+
         for token in tokens:
-            normalized = token['normalized']
+            normalized = token["normalized"]
             if normalized in wordlist_keys:
                 matched.append(normalized)
             else:
                 unmatched.append(normalized)
-        
+
         return matched, unmatched
-    
+
     @staticmethod
     def calculate_in_list_ratio(
         sentence: str,
         wordlist_keys: Set[str],
         fold_diacritics: bool = True,
-        handle_elisions: bool = True
+        handle_elisions: bool = True,
     ) -> Tuple[float, int, int]:
         """
         Calculate the ratio of tokens in a sentence that are in the word list.
-        
+
         Args:
             sentence: Input sentence
             wordlist_keys: Set of normalized word keys
             fold_diacritics: Whether to fold diacritics
             handle_elisions: Whether to handle elisions
-            
+
         Returns:
             Tuple of (ratio, matched_count, total_count)
         """
         tokens = LinguisticsUtils.tokenize_and_lemmatize(
-            sentence,
-            fold_diacritics=fold_diacritics,
-            handle_elisions=handle_elisions
+            sentence, fold_diacritics=fold_diacritics, handle_elisions=handle_elisions
         )
-        
+
         if not tokens:
             return 0.0, 0, 0
-        
+
         matched, _ = LinguisticsUtils.match_tokens_to_wordlist(tokens, wordlist_keys)
-        
+
         ratio = len(matched) / len(tokens) if tokens else 0.0
         return ratio, len(matched), len(tokens)
-    
+
     @staticmethod
     def find_word_in_sentence(
-        word_key: str,
-        sentence: str,
-        fold_diacritics: bool = True,
-        handle_elisions: bool = True
+        word_key: str, sentence: str, fold_diacritics: bool = True, handle_elisions: bool = True
     ) -> Optional[str]:
         """
         Find if a word key appears in a sentence and return the surface form.
-        
+
         Args:
             word_key: Normalized word key to find
             sentence: Sentence to search in
             fold_diacritics: Whether to fold diacritics
             handle_elisions: Whether to handle elisions
-            
+
         Returns:
             Surface form if found, None otherwise
         """
         tokens = LinguisticsUtils.tokenize_and_lemmatize(
-            sentence,
-            fold_diacritics=fold_diacritics,
-            handle_elisions=handle_elisions
+            sentence, fold_diacritics=fold_diacritics, handle_elisions=handle_elisions
         )
-        
+
         for token in tokens:
-            if token['normalized'] == word_key:
-                return token['surface']
-        
+            if token["normalized"] == word_key:
+                return token["surface"]
+
         return None

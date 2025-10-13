@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 _backend = None
 
+
 def _load_backend():
     global _backend
     if _backend is not None:
@@ -23,21 +24,21 @@ def _load_backend():
 
     # Try pypdf first
     try:
-        _backend = import_module('pypdf')
-        logger.debug('Using pypdf as PDF backend')
+        _backend = import_module("pypdf")
+        logger.debug("Using pypdf as PDF backend")
         return _backend
     except Exception:
         pass
 
     # Fall back to PyPDF2 for environments that still have it installed
     try:
-        _backend = import_module('PyPDF2')
-        logger.debug('Falling back to PyPDF2 as PDF backend')
+        _backend = import_module("PyPDF2")
+        logger.debug("Falling back to PyPDF2 as PDF backend")
         return _backend
     except Exception:
         pass
 
-    raise ImportError('No suitable PDF backend found: install pypdf or PyPDF2')
+    raise ImportError("No suitable PDF backend found: install pypdf or PyPDF2")
 
 
 def PdfReader(stream, *args, **kwargs):
@@ -51,7 +52,7 @@ def PdfReader(stream, *args, **kwargs):
     except Exception:
         # If the preferred backend was pypdf, try PyPDF2 explicitly
         try:
-            py2 = import_module('PyPDF2')
+            py2 = import_module("PyPDF2")
             return py2.PdfReader(stream, *args, **kwargs)
         except Exception:
             # Re-raise original exception if fallback failed
@@ -63,9 +64,9 @@ def PdfWriter(*args, **kwargs):
     # present in sys.modules), prefer that implementation so tests that
     # mock PyPDF2.PdfWriter continue to work. Otherwise use the preferred
     # backend chosen by _load_backend().
-    if 'PyPDF2' in sys.modules:
+    if "PyPDF2" in sys.modules:
         try:
-            py2 = import_module('PyPDF2')
+            py2 = import_module("PyPDF2")
             return py2.PdfWriter(*args, **kwargs)
         except Exception:
             pass
@@ -82,11 +83,14 @@ class errors:
     different exception classes; we normalise to a common name when
     available.
     """
+
     try:
         _err_mod = _load_backend()
-        PdfReadError = getattr(_err_mod, 'errors', None) and getattr(_err_mod.errors, 'PdfReadError', None)
+        PdfReadError = getattr(_err_mod, "errors", None) and getattr(
+            _err_mod.errors, "PdfReadError", None
+        )
         if PdfReadError is None:
             # pypdf may expose PdfReadError at top-level or use generic exceptions
-            PdfReadError = getattr(_err_mod, 'PdfReadError', Exception)
+            PdfReadError = getattr(_err_mod, "PdfReadError", Exception)
     except Exception:
         PdfReadError = Exception

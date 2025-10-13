@@ -6,7 +6,7 @@ import sys
 import os
 
 # Add the backend directory to the Python path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import pytest
 from unittest.mock import MagicMock, patch
@@ -27,7 +27,7 @@ def app_context():
 class TestPhase1PromptImprovements:
     """Test cases for Phase 1 prompt improvements"""
 
-    @patch('google.genai.Client')
+    @patch("google.genai.Client")
     def test_prompt_includes_grammatical_rules(self, mock_client, app_context):
         """Test that prompt includes linguistic rewriting requirements"""
         with app_context.test_request_context():
@@ -57,7 +57,7 @@ class TestPhase1PromptImprovements:
             assert "JSON object" in prompt
             assert "VALIDATION CHECKLIST" in prompt
 
-    @patch('google.genai.Client')
+    @patch("google.genai.Client")
     def test_prompt_forbids_segmentation(self, mock_client, app_context):
         """Test that prompt explicitly forbids simple splitting/segmentation"""
         with app_context.test_request_context():
@@ -67,28 +67,28 @@ class TestPhase1PromptImprovements:
             assert "NEVER split at commas, conjunctions, or punctuation alone" in prompt
             assert "FORBIDDEN OUTPUT PATTERNS" in prompt
             assert "CORRECT OUTPUT PATTERNS" in prompt
-            
+
             # Verify explicit examples of forbidden fragments
             assert '"le standard d\'Elvis Presley"' in prompt
             assert '"dans la rue sombre"' in prompt
             assert '"et froide"' in prompt
             assert "Pour toujours et à jamais" in prompt
             assert "Avec le temps" in prompt
-            
+
             # Verify examples of correct complete sentences
             assert "Le standard d'Elvis Presley joue à la radio" in prompt
             assert "La rue était sombre" in prompt
-            
+
             # Verify transformation examples
             assert "WRONG (Segmentation approach)" in prompt
             assert "CORRECT (Rewriting approach)" in prompt
 
-    @patch('google.genai.Client')
+    @patch("google.genai.Client")
     def test_fragment_detection(self, mock_client, app_context):
         """Test that the service can detect sentence fragments"""
         with app_context.test_request_context():
             service = GeminiService(sentence_length_limit=8)
-            
+
             # Test cases: fragments that should be detected
             fragments = [
                 "le standard d'Elvis Presley,",  # Ends with comma
@@ -104,11 +104,12 @@ class TestPhase1PromptImprovements:
                 "dans sa collection",  # Prepositional phrase
                 "avec son iPod",  # Prepositional phrase
             ]
-            
+
             for fragment in fragments:
-                assert service._is_likely_fragment(fragment), \
-                    f"Should detect as fragment: {fragment}"
-            
+                assert service._is_likely_fragment(
+                    fragment
+                ), f"Should detect as fragment: {fragment}"
+
             # Test cases: complete sentences that should NOT be flagged
             complete_sentences = [
                 "Il marchait lentement dans la rue.",
@@ -120,12 +121,13 @@ class TestPhase1PromptImprovements:
                 "Le temps passera lentement.",
                 "Dans quinze ans, ce sera différent.",
             ]
-            
-            for sentence in complete_sentences:
-                assert not service._is_likely_fragment(sentence), \
-                    f"Should NOT detect as fragment: {sentence}"
 
-    @patch('google.genai.Client')
+            for sentence in complete_sentences:
+                assert not service._is_likely_fragment(
+                    sentence
+                ), f"Should NOT detect as fragment: {sentence}"
+
+    @patch("google.genai.Client")
     def test_json_output_validation(self, mock_client, app_context, tmp_path):
         """Test that the service properly validates JSON output"""
         # Mock the Gemini client
@@ -153,12 +155,12 @@ class TestPhase1PromptImprovements:
         assert sentences[0] == "Première phrase."
         assert sentences[1] == "Deuxième phrase."
 
-    @patch('google.genai.Client')
+    @patch("google.genai.Client")
     def test_invalid_json_handling(self, mock_client, app_context, tmp_path):
         """Test that the service handles invalid JSON gracefully"""
         # Mock the Gemini client to return invalid JSON
         mock_response = MagicMock()
-        mock_response.text = 'This is not valid JSON'
+        mock_response.text = "This is not valid JSON"
 
         mock_model = MagicMock()
         mock_model.generate_content.return_value = mock_response
@@ -176,15 +178,16 @@ class TestPhase1PromptImprovements:
         prompt = "Test prompt"
         # Now raises GeminiAPIError instead of ValueError
         from app.services.gemini_service import GeminiAPIError
+
         with pytest.raises(GeminiAPIError, match="Failed to parse Gemini JSON response"):
             gemini_service.generate_content_from_pdf(prompt, str(temp_path))
 
-    @patch('google.genai.Client')
+    @patch("google.genai.Client")
     def test_empty_response_handling(self, mock_client, app_context, tmp_path):
         """Test that the service handles empty responses gracefully"""
         # Mock the Gemini client to return empty response
         mock_response = MagicMock()
-        mock_response.text = ''
+        mock_response.text = ""
 
         mock_model = MagicMock()
         mock_model.generate_content.return_value = mock_response
@@ -202,6 +205,7 @@ class TestPhase1PromptImprovements:
         prompt = "Test prompt"
         # Now raises GeminiAPIError instead of ValueError
         from app.services.gemini_service import GeminiAPIError
+
         with pytest.raises(GeminiAPIError, match="Gemini returned an empty response"):
             gemini_service.generate_content_from_pdf(prompt, str(temp_path))
 
@@ -214,15 +218,16 @@ class TestPromptExamples:
         """Test that dialogue examples follow expected format"""
         # Test data representing dialogue that should be preserved
         dialogue_examples = [
-            '« Bonjour, comment allez-vous aujourd\'hui ? »',
+            "« Bonjour, comment allez-vous aujourd'hui ? »",
             '"Il fait beau", dit-elle en souriant.',
-            '\'Je ne sais pas\', répondit-il.'
+            "'Je ne sais pas', répondit-il.",
         ]
 
         for example in dialogue_examples:
             # Verify dialogue markers are present
-            assert any(marker in example for marker in ['«', '»', '"', "'"]), \
-                f"Dialogue example should contain quotation marks: {example}"
+            assert any(
+                marker in example for marker in ["«", "»", '"', "'"]
+            ), f"Dialogue example should contain quotation marks: {example}"
 
     def test_long_sentence_split_example(self):
         """Test example of how a long sentence should be split"""
@@ -243,14 +248,15 @@ class TestPromptExamples:
         context_example = [
             "Marie ouvrit la porte avec précaution.",
             "Elle aperçut une silhouette dans l'obscurité.",
-            "La silhouette s'avança lentement vers elle."
+            "La silhouette s'avança lentement vers elle.",
         ]
 
         # Verify these form a coherent narrative
         assert len(context_example) == 3
         # Each sentence should relate to the previous one
-        assert all(len(s.split()) <= 10 for s in context_example), \
-            "Example sentences should be reasonably short"
+        assert all(
+            len(s.split()) <= 10 for s in context_example
+        ), "Example sentences should be reasonably short"
 
 
 # DISABLED: Phase 1 features have been rolled back
@@ -262,22 +268,23 @@ class TestCompleteness:
         """Test that prompt explicitly requires processing ALL sentences"""
         # Test the prompt directly without needing API key
         sentence_length_limit = 8
-        
+
         # This is the expected prompt structure based on our implementation
         prompt_start = (
             "You are a literary assistant specialized in processing French novels. "
             "Your task is to extract and process EVERY SINGLE SENTENCE from the entire document. "
             "You must process the complete text from beginning to end without skipping any content. "
         )
-        
+
         # Verify the critical completeness instructions are present
-        assert "EVERY SINGLE SENTENCE" in prompt_start, \
-            "Prompt must explicitly state to process every single sentence"
-        assert "entire document" in prompt_start, \
-            "Prompt must reference processing the entire document"
-        assert "complete text" in prompt_start, \
-            "Prompt must reference processing the complete text"
-        assert "beginning to end" in prompt_start, \
-            "Prompt must specify processing from beginning to end"
-        assert "without skipping" in prompt_start, \
-            "Prompt must explicitly forbid skipping content"
+        assert (
+            "EVERY SINGLE SENTENCE" in prompt_start
+        ), "Prompt must explicitly state to process every single sentence"
+        assert (
+            "entire document" in prompt_start
+        ), "Prompt must reference processing the entire document"
+        assert "complete text" in prompt_start, "Prompt must reference processing the complete text"
+        assert (
+            "beginning to end" in prompt_start
+        ), "Prompt must specify processing from beginning to end"
+        assert "without skipping" in prompt_start, "Prompt must explicitly forbid skipping content"

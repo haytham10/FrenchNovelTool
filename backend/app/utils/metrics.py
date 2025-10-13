@@ -3,43 +3,43 @@ from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTEN
 
 # Coverage run metrics
 coverage_runs_total = Counter(
-    'coverage_runs_total',
-    'Total number of coverage runs',
-    ['mode', 'status']  # coverage/filter, completed/failed/cancelled
+    "coverage_runs_total",
+    "Total number of coverage runs",
+    ["mode", "status"],  # coverage/filter, completed/failed/cancelled
 )
 
 coverage_build_duration_seconds = Histogram(
-    'coverage_build_duration_seconds',
-    'Time to build coverage analysis',
-    ['mode'],  # coverage/filter
-    buckets=[1, 5, 10, 30, 60, 120, 300, 600]  # Up to 10 minutes
+    "coverage_build_duration_seconds",
+    "Time to build coverage analysis",
+    ["mode"],  # coverage/filter
+    buckets=[1, 5, 10, 30, 60, 120, 300, 600],  # Up to 10 minutes
 )
 
 # Word list metrics
 wordlists_total = Gauge(
-    'wordlists_total',
-    'Total number of word lists',
-    ['source_type', 'is_global']  # csv/google_sheet/manual, true/false
+    "wordlists_total",
+    "Total number of word lists",
+    ["source_type", "is_global"],  # csv/google_sheet/manual, true/false
 )
 
 wordlists_created_total = Counter(
-    'wordlists_created_total',
-    'Total number of word lists created',
-    ['source_type']  # csv/google_sheet/manual
+    "wordlists_created_total",
+    "Total number of word lists created",
+    ["source_type"],  # csv/google_sheet/manual
 )
 
 # Coverage assignment metrics
 coverage_assignments_total = Gauge(
-    'coverage_assignments_total',
-    'Total number of coverage assignments',
-    ['mode']  # coverage/filter
+    "coverage_assignments_total",
+    "Total number of coverage assignments",
+    ["mode"],  # coverage/filter
 )
 
 # Word list operations
 wordlist_ingestion_errors_total = Counter(
-    'wordlist_ingestion_errors_total',
-    'Total number of word list ingestion errors',
-    ['source_type', 'error_type']
+    "wordlist_ingestion_errors_total",
+    "Total number of word list ingestion errors",
+    ["source_type", "error_type"],
 )
 
 

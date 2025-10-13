@@ -204,11 +204,6 @@ export default function NormalizeControls({
               ))}
             </Select>
           </FormControl>
-          <Box sx={{ mt: 1 }}>
-            <Typography variant="caption" sx={{ color: 'warning.main', fontWeight: 600 }}>
-              Quality mode: disabled. My wallet: crying.
-            </Typography>
-          </Box>
         </Box>
       )}
 
