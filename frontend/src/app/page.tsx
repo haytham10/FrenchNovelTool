@@ -5,7 +5,6 @@ import dynamic from 'next/dynamic';
 import FileUpload from '@/components/FileUpload';
 import ResultsTable from '@/components/ResultsTable';
 import NormalizeControls from '@/components/NormalizeControls';
-import ProcessingStatus from '@/components/ProcessingStatus';
 import { getEnhancedApiErrorMessage } from '@/lib/errorMessages';
 import { useProcessPdf, useExportToSheet, useEstimatePdfCost, useStartPdfProcessingJob, useCredits } from '@/lib/queries';
 import { CircularProgress, Button, Typography, Box, Container, Paper, Divider, List, ListItem, ListItemText, LinearProgress, Skeleton } from '@mui/material';
