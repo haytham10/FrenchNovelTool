@@ -14,6 +14,12 @@ from app.services.prompts.sentence_normalizer_prompt import (
     build_minimal_prompt as build_minimal_prompt_v2,
 )
 
+# Import structured logging for Project Battleship
+from app.utils.structured_logger import get_logger, set_job_context
+
+# Initialize structured logger
+logger = get_logger(__name__)
+
 
 class GeminiAPIError(Exception):
     """Raised when Gemini returns an empty, malformed or unparseable response.
@@ -264,17 +270,36 @@ class GeminiService:
         cleaned_response = response_text.strip().replace("```json", "").replace("```", "")
 
         if not cleaned_response:
-            current_app.logger.error("Received empty response from Gemini API.")
+            logger.error(
+                "Received empty response from Gemini API",
+                model_name=self.model_name,
+                prompt_length=len(prompt) if prompt else 0,
+                pdf_size_kb=pdf_size_kb,
+                error_category="empty_response"
+            )
             raise GeminiAPIError("Gemini returned an empty response.", response_text)
 
         try:
             data = json.loads(cleaned_response)
-        except json.JSONDecodeError:
-            current_app.logger.warning("Initial JSON parsing failed, attempting recovery...")
+        except json.JSONDecodeError as e:
+            logger.warning(
+                "Initial JSON parsing failed, attempting recovery",
+                model_name=self.model_name,
+                response_length=len(cleaned_response),
+                json_error=str(e),
+                error_category="json_parse_error"
+            )
             try:
                 data = self._recover_json(cleaned_response)
-            except Exception:
-                # _recover_json will log details; raise a GeminiAPIError attaching raw response
+            except Exception as recovery_error:
+                # Log the JSON recovery failure with structured context
+                logger.error(
+                    "Failed to parse Gemini JSON response after recovery attempt",
+                    exception=recovery_error,
+                    model_name=self.model_name,
+                    response_preview=cleaned_response[:500],
+                    error_category="json_recovery_failed"
+                )
                 raise GeminiAPIError("Failed to parse Gemini JSON response.", response_text)
 
         sentences = self._extract_sentence_list(data)
@@ -507,21 +532,22 @@ class GeminiService:
         self.last_processed_sentences = [s.strip() for s in processed if s and s.strip()]
 
         if fragment_count > 0:
-            current_app.logger.warning(
-                "Fragment detection summary: %d potential fragments found out of %d sentences (%.1f%%)",
-                fragment_count,
-                len(processed),
-                fragment_rate,
+            # Use structured logging for fragment rate tracking
+            fragment_sentences = [f["text"] for f in fragment_details]
+            logger.fragment_rate_warning(
+                fragment_rate=fragment_rate,
+                fragment_count=fragment_count,
+                total_sentences=len(processed),
+                fragments=fragment_sentences,
+                model_name=self.model_name,
+                chunk_size=len(str(processed)),  # Approximate chunk size
+                processing_settings={
+                    "sentence_length_limit": self.sentence_length_limit,
+                    "ignore_dialogue": self.ignore_dialogue,
+                    "quality_gate_enabled": self.quality_gate_enabled,
+                    "model_preference": self.model_preference,
+                }
             )
-
-            # Log sample fragments for debugging
-            if fragment_details:
-                sample_size = min(5, len(fragment_details))
-                current_app.logger.warning(
-                    "Sample fragments (first %d): %s",
-                    sample_size,
-                    [f["text"] for f in fragment_details[:sample_size]],
-                )
 
         # If configured to reject on high fragment rate, raise an error so callers
         # can attempt fallback strategies (model swap, stricter prompt, etc.)
@@ -530,7 +556,15 @@ class GeminiService:
                 f"HIGH FRAGMENT RATE DETECTED ({fragment_rate:.1f}%) - "
                 f"fragment_count={fragment_count}, threshold={self.fragment_rate_retry_threshold}"
             )
-            current_app.logger.error(msg)
+            # Use structured logging for critical fragment rate errors
+            logger.error(
+                msg,
+                fragment_rate=fragment_rate,
+                fragment_count=fragment_count,
+                threshold=self.fragment_rate_retry_threshold,
+                model_name=self.model_name,
+                error_category="high_fragment_rate"
+            )
             if self.reject_on_high_fragment_rate:
                 raise GeminiAPIError(msg)
 

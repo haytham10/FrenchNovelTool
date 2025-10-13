@@ -263,6 +263,9 @@ class Job(db.Model):
     processing_time_seconds = db.Column(db.Integer, nullable=True)
     gemini_api_calls = db.Column(db.Integer, default=0)
     gemini_tokens_used = db.Column(db.Integer, default=0)
+    
+    # Structured logging metadata for Project Battleship
+    processing_metadata = db.Column(db.JSON, nullable=True)  # Fragment rates, error context, quality metrics
 
     # Relationships
     ledger_entries = db.relationship("CreditLedger", backref="job", lazy="dynamic")
@@ -308,6 +311,7 @@ class Job(db.Model):
             "processing_time_seconds": self.processing_time_seconds,
             "gemini_api_calls": self.gemini_api_calls,
             "gemini_tokens_used": self.gemini_tokens_used,
+            "processing_metadata": self.processing_metadata,
         }
 
 
