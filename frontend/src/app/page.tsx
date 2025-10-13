@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import FileUpload from '@/components/FileUpload';
 import ResultsTable from '@/components/ResultsTable';
 import NormalizeControls from '@/components/NormalizeControls';
-import { getApiErrorMessage } from '@/lib/api';
+import { getEnhancedApiErrorMessage } from '@/lib/errorMessages';
 import { useProcessPdf, useExportToSheet, useEstimatePdfCost, useStartPdfProcessingJob, useCredits } from '@/lib/queries';
 import { CircularProgress, Button, Typography, Box, Container, Paper, Divider, List, ListItem, ListItemText, LinearProgress, Skeleton } from '@mui/material';
 import { useSnackbar } from 'notistack';
@@ -110,8 +110,27 @@ export default function Home() {
       setUploadProgress(0);
     },
     onError: (job: Job) => {
-      const errorMsg = job.error_message || 'Processing failed';
-      enqueueSnackbar(`Processing failed: ${errorMsg}`, { variant: 'error' });
+      // Use enhanced error handling with backend error codes
+      const enhancedError = getEnhancedApiErrorMessage({
+        response: {
+          data: {
+            error_code: job.error_code,
+            error_message: job.error_message
+          }
+        }
+      });
+      
+      enqueueSnackbar(enhancedError.message, { variant: 'error' });
+      
+      // Show suggestion if available and actionable
+      if (enhancedError.suggestion && enhancedError.actionable) {
+        setTimeout(() => {
+          enqueueSnackbar(enhancedError.suggestion!, { 
+            variant: 'info',
+            autoHideDuration: 8000 
+          });
+        }, 1000);
+      }
       
       // Reset state
       setWsJobId(null);
@@ -162,10 +181,20 @@ export default function Home() {
       
       setCostEstimate(estimate);
     } catch (error) {
-      enqueueSnackbar(
-        getApiErrorMessage(error, 'Failed to estimate cost'),
-        { variant: 'error' }
-      );
+      // Use enhanced error handling
+      const enhancedError = getEnhancedApiErrorMessage(error, 'Failed to estimate cost');
+      enqueueSnackbar(enhancedError.message, { variant: 'error' });
+      
+      // Show actionable suggestion if available
+      if (enhancedError.suggestion && enhancedError.actionable) {
+        setTimeout(() => {
+          enqueueSnackbar(enhancedError.suggestion!, { 
+            variant: 'info',
+            autoHideDuration: 6000 
+          });
+        }, 1000);
+      }
+      
       setPreflightModalOpen(false);
     } finally {
       setEstimating(false);
@@ -217,10 +246,19 @@ export default function Home() {
       setLoading(true, 'Processing PDF in background...');
       
     } catch (error) {
-      enqueueSnackbar(
-        getApiErrorMessage(error, 'Failed to process PDF'),
-        { variant: 'error' }
-      );
+      // Use enhanced error handling
+      const enhancedError = getEnhancedApiErrorMessage(error, 'Failed to process PDF');
+      enqueueSnackbar(enhancedError.message, { variant: 'error' });
+      
+      // Show actionable suggestion if available
+      if (enhancedError.suggestion && enhancedError.actionable) {
+        setTimeout(() => {
+          enqueueSnackbar(enhancedError.suggestion!, { 
+            variant: 'info',
+            autoHideDuration: 8000 
+          });
+        }, 1000);
+      }
       
       // If we have a job ID, the backend will have handled the refund
       if (currentJobId) {
@@ -269,10 +307,19 @@ export default function Home() {
         window.location.href = spreadsheetUrl;
       }
     } catch (error) {
-      enqueueSnackbar(
-        getApiErrorMessage(error, 'An unexpected error occurred during the export.'),
-        { variant: 'error' }
-      );
+      // Use enhanced error handling
+      const enhancedError = getEnhancedApiErrorMessage(error, 'An unexpected error occurred during the export.');
+      enqueueSnackbar(enhancedError.message, { variant: 'error' });
+      
+      // Show actionable suggestion if available
+      if (enhancedError.suggestion && enhancedError.actionable) {
+        setTimeout(() => {
+          enqueueSnackbar(enhancedError.suggestion!, { 
+            variant: 'info',
+            autoHideDuration: 8000 
+          });
+        }, 1000);
+      }
     } finally {
       setLoading(false, '');
     }

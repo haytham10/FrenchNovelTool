@@ -4,7 +4,7 @@ import base64
 from datetime import datetime
 from flask import Blueprint, request, jsonify, current_app, Response
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from marshmallow import ValidationError
+from marshmallow import ValidationError as MarshmallowValidationError
 from app import limiter, db
 from .services.pdf_service import PDFService
 from .services.gemini_service import GeminiService
@@ -19,7 +19,14 @@ from .schemas import (
     EstimatePdfSchema,
     EstimatePdfResponseSchema,
 )
-from .utils.validators import validate_pdf_file
+from .utils.validators import validate_pdf_file, ValidationError
+from .utils.error_responses import (
+    create_error_json_response,
+    handle_validation_error,
+    handle_file_error,
+    handle_processing_error,
+    handle_unknown_error,
+)
 from .models import User, Job
 from .constants import (
     JOB_STATUS_PENDING,
@@ -267,7 +274,8 @@ def extract_pdf_text():
         return jsonify({"error": "User not found or inactive"}), 401
 
     if "pdf_file" not in request.files:
-        return jsonify({"error": "No PDF file provided"}), 400
+        from app.constants import ERROR_INVALID_FILE_TYPE
+        return create_error_json_response(ERROR_INVALID_FILE_TYPE, "No PDF file provided")
 
     file = request.files["pdf_file"]
 
@@ -275,7 +283,8 @@ def extract_pdf_text():
     try:
         validate_pdf_file(file)
     except ValidationError as e:
-        return jsonify({"error": str(e)}), 400
+        from app.constants import ERROR_INVALID_PDF
+        return create_error_json_response(ERROR_INVALID_PDF, str(e))
 
     pdf_service = PDFService(file)
 
@@ -289,7 +298,8 @@ def extract_pdf_text():
 
     except Exception as e:
         current_app.logger.exception("Failed to extract PDF text")
-        return jsonify({"error": str(e)}), 500
+        from app.constants import ERROR_PROCESSING
+        return create_error_json_response(ERROR_PROCESSING, f"Failed to extract PDF text: {str(e)}")
     finally:
         pdf_service.delete_temp_file()
 
