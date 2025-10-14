@@ -1,7 +1,7 @@
 """Add UserSession model for robust server-side session management
 
 Revision ID: user_session_v1
-Revises: vocab_coverage_v2
+Revises: fix_chain_001
 Create Date: 2025-10-14 00:00:00.000000
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'user_session_v1'
-down_revision = 'vocab_coverage_v2'
+down_revision = 'fix_chain_001'
 branch_labels = None
 depends_on = None
 
