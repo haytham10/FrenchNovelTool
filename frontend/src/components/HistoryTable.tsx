@@ -256,7 +256,7 @@ export default function HistoryTable() {
     if (!entryToExport) return;
 
     try {
-      await exportMutation.mutateAsync({ entryId: entryToExport.id, data: { sheetName: options.sheetName, folderId: options.folderId } });
+      await exportMutation.mutateAsync({ entryId: entryToExport.id, data: { sheetName: options.sheetName } });
       setExportDialogOpen(false);
       setEntryToExport(null);
     } catch {

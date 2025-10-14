@@ -250,7 +250,6 @@ export default function Home() {
       const spreadsheetUrl = await exportMutation.mutateAsync({
         sentences,
         sheetName: options.sheetName,
-        folderId: options.folderId,
         mode: options.mode,
         existingSheetId: options.existingSheetId,
         tabName: options.tabName,

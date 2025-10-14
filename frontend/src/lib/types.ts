@@ -61,7 +61,6 @@ export interface LoginResponse {
 export interface ExportToSheetRequest {
   sentences: string[];
   sheetName: string;
-  folderId?: string | null;
 }
 
 // Credit System Types
@@ -339,6 +338,5 @@ export interface CancelJobResponse {
 // History export request
 export interface ExportHistoryRequest {
   sheetName?: string;
-  folderId?: string | null;
 }
 

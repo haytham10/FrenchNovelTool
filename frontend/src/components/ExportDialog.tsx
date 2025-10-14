@@ -27,7 +27,6 @@ import {
 } from '@mui/material';
 import Icon from './Icon';
 import { Download, ChevronDown, Plus, Users, Link as LinkIcon } from 'lucide-react';
-import DriveFolderPicker from './DriveFolderPicker';
 
 interface ExportDialogProps {
   open: boolean;
@@ -39,8 +38,6 @@ interface ExportDialogProps {
 
 export interface ExportOptions {
   sheetName: string;
-  folderId?: string | null;
-  folderName?: string | null;
   mode: 'new' | 'append';
   existingSheetId?: string;
   tabName?: string;
@@ -66,8 +63,6 @@ export default function ExportDialog({
 }: ExportDialogProps) {
   const [sheetName, setSheetName] = useState(defaultSheetName);
   const [mode, setMode] = useState<'new' | 'append'>('new');
-  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
-  const [selectedFolderName, setSelectedFolderName] = useState<string | null>(null);
   const [existingSheetId] = useState('');
   const [tabName, setTabName] = useState('Sheet1');
   const [createNewTab] = useState(true);
@@ -77,26 +72,6 @@ export default function ExportDialog({
   const [collaboratorEmails, setCollaboratorEmails] = useState('');
   const [publicLink, setPublicLink] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [isPickerOpen, setIsPickerOpen] = useState(false);
-
-  const handleFolderSelect = (folderId: string, folderName: string) => {
-    setSelectedFolderId(folderId);
-    setSelectedFolderName(folderName);
-    setIsPickerOpen(false);
-  };
-
-  const handlePickerOpen = () => {
-    setIsPickerOpen(true);
-  };
-
-  const handlePickerCancel = () => {
-    setIsPickerOpen(false);
-  };
-
-  const handleClearFolder = () => {
-    setSelectedFolderId(null);
-    setSelectedFolderName(null);
-  };
 
   const handleExport = () => {
     // Map simple string headers used in the UI into the object shape expected by the backend
@@ -104,8 +79,6 @@ export default function ExportDialog({
 
     const options: ExportOptions = {
       sheetName,
-      folderId: selectedFolderId,
-      folderName: selectedFolderName,
       mode,
       existingSheetId: mode === 'append' ? existingSheetId : undefined,
       tabName: mode === 'append' ? tabName : undefined,
@@ -129,17 +102,12 @@ export default function ExportDialog({
 
   return (
     <Dialog 
-      open={open && !isPickerOpen} 
+      open={open} 
       onClose={onClose} 
       maxWidth="md" 
       fullWidth
       aria-labelledby="export-dialog-title"
       aria-describedby="export-dialog-description"
-      slotProps={{
-        backdrop: {
-          sx: { opacity: isPickerOpen ? 0 : undefined }
-        }
-      }}
     >
       <DialogTitle id="export-dialog-title">
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -249,14 +217,6 @@ export default function ExportDialog({
             )}
           </Box>
         )}
-
-        <DriveFolderPicker 
-          onFolderSelect={handleFolderSelect}
-          selectedFolderName={selectedFolderName}
-          onClearSelection={handleClearFolder}
-          onPickerOpen={handlePickerOpen}
-          onPickerCancel={handlePickerCancel}
-        />
 
         <Divider sx={{ my: 3 }} />
 
@@ -391,7 +351,6 @@ export default function ExportDialog({
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 1.5 }}>
             <Chip label={mode === 'new' ? 'New Sheet' : 'Append'} size="small" color="primary" />
             <Chip label={sheetName || 'Unnamed'} size="small" color="primary" variant="outlined" />
-            {selectedFolderName && <Chip label={`📁 ${selectedFolderName}`} size="small" variant="outlined" />}
             {publicLink && <Chip label="🔗 Public Link" size="small" variant="outlined" />}
             {addCollaborators && collaboratorEmails && (
               <Chip label={`👥 ${collaboratorEmails.split(',').filter(e => e.trim()).length} Collaborators`} size="small" variant="outlined" />

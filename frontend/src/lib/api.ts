@@ -259,7 +259,6 @@ export async function processPdf(file: File, options?: ProcessPdfOptions): Promi
 export interface ExportToSheetRequest {
   sentences: string[];
   sheetName: string;
-  folderId?: string | null;
   mode?: 'new' | 'append';
   existingSheetId?: string;
   tabName?: string;
@@ -324,7 +323,6 @@ export async function refreshHistoryFromChunks(entryId: number): Promise<{
  */
 export interface ExportHistoryRequest {
   sheetName?: string;
-  folderId?: string | null;
 }
 
 export async function exportHistoryToSheets(entryId: number, data?: ExportHistoryRequest): Promise<{ 
@@ -859,12 +857,10 @@ export const swapCoverageAssignment = async (
  */
 export const exportCoverageRun = async (
   runId: number,
-  sheetName: string,
-  folderId?: string
+  sheetName: string
 ): Promise<{ message: string; spreadsheet_id?: string; spreadsheet_url?: string }> => {
   const response = await api.post(`/coverage/runs/${runId}/export`, {
     sheet_name: sheetName,
-    folder_id: folderId,
   });
   return response.data;
 };
