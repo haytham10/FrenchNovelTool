@@ -3,7 +3,7 @@
  */
 
 import axios, { AxiosError } from 'axios';
-import { getAccessToken, getRefreshToken, setTokens, clearTokens } from './auth';
+import { getAccessToken, getRefreshToken, getSessionToken, setTokens, clearTokens } from './auth';
 import type { Job } from './types';
 
 const _rawApiBase = (() => {
@@ -51,10 +51,14 @@ api.interceptors.response.use(
         const refreshToken = getRefreshToken();
         const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
           refresh_token: refreshToken,
+        }, {
+          headers: {
+            Authorization: `Bearer ${refreshToken}`
+          }
         });
         
-        const { access_token, refresh_token } = response.data;
-        setTokens(access_token, refresh_token);
+        const { access_token, refresh_token, session_token } = response.data;
+        setTokens(access_token, refresh_token, session_token);
         
         // Retry original request with new token
         originalRequest.headers.Authorization = `Bearer ${access_token}`;
@@ -81,6 +85,7 @@ export interface User {
 export interface LoginResponse {
   access_token: string;
   refresh_token: string;
+  session_token: string;
   user: User;
   has_sheets_access: boolean;
 }
@@ -155,6 +160,16 @@ export async function refreshAccessToken(): Promise<LoginResponse> {
   const refreshToken = getRefreshToken();
   const response = await api.post('/auth/refresh', { refresh_token: refreshToken });
   return response.data;
+}
+
+export async function logout(): Promise<void> {
+  const sessionToken = getSessionToken();
+  try {
+    await api.post('/auth/logout', { session_token: sessionToken });
+  } catch (error) {
+    // Log but don't throw - we'll clear tokens regardless
+    console.error('Logout request failed:', error);
+  }
 }
 
 /**

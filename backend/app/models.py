@@ -1,6 +1,7 @@
 from datetime import datetime
 from sqlalchemy import Index
 from .extensions import db
+import secrets
 
 
 class User(db.Model):
@@ -25,6 +26,7 @@ class User(db.Model):
     credit_ledger = db.relationship('CreditLedger', backref='user', lazy='dynamic', cascade='all, delete-orphan')
     jobs = db.relationship('Job', backref='user', lazy='dynamic', cascade='all, delete-orphan', foreign_keys='Job.user_id')
     cancelled_jobs = db.relationship('Job', backref='canceller', lazy='dynamic', foreign_keys='Job.cancelled_by')
+    sessions = db.relationship('UserSession', backref='user', lazy='dynamic', cascade='all, delete-orphan')
     
     def __repr__(self):
         return f'<User {self.email}>'
@@ -37,6 +39,66 @@ class User(db.Model):
             'picture': self.picture,
             'created_at': self.created_at.isoformat() + 'Z',
             'last_login': self.last_login.isoformat() + 'Z' if self.last_login else None
+        }
+
+
+class UserSession(db.Model):
+    """Model for server-side session management with long expiry"""
+    __tablename__ = 'user_sessions'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    session_token = db.Column(db.String(128), unique=True, nullable=False, index=True)
+    refresh_token_jti = db.Column(db.String(128), unique=True, nullable=False, index=True)  # JWT ID from refresh token
+    
+    # Session metadata
+    user_agent = db.Column(db.String(512))
+    ip_address = db.Column(db.String(45))  # IPv6 max length
+    
+    # Timestamps
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    last_activity = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False, index=True)
+    
+    # Status
+    is_active = db.Column(db.Boolean, default=True, nullable=False, index=True)
+    revoked_at = db.Column(db.DateTime, nullable=True)
+    
+    def __repr__(self):
+        return f'<UserSession user_id={self.user_id} expires_at={self.expires_at}>'
+    
+    @staticmethod
+    def generate_session_token():
+        """Generate a cryptographically secure session token"""
+        return secrets.token_urlsafe(64)
+    
+    def is_expired(self):
+        """Check if session has expired"""
+        return datetime.utcnow() > self.expires_at
+    
+    def is_valid(self):
+        """Check if session is valid (active and not expired)"""
+        return self.is_active and not self.is_expired()
+    
+    def update_activity(self):
+        """Update last activity timestamp"""
+        self.last_activity = datetime.utcnow()
+    
+    def revoke(self):
+        """Revoke this session"""
+        self.is_active = False
+        self.revoked_at = datetime.utcnow()
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'created_at': self.created_at.isoformat() + 'Z',
+            'last_activity': self.last_activity.isoformat() + 'Z',
+            'expires_at': self.expires_at.isoformat() + 'Z',
+            'is_active': self.is_active,
+            'user_agent': self.user_agent,
+            'ip_address': self.ip_address
         }
 
 

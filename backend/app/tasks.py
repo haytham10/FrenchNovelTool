@@ -1750,3 +1750,39 @@ def batch_coverage_build_async(self, run_id: int):
 
         raise
 
+
+@get_celery().task(bind=True, name='app.tasks.cleanup_expired_sessions')
+def cleanup_expired_sessions(self):
+    """
+    Periodic task to clean up expired user sessions from the database.
+    
+    This task should be scheduled to run daily via Celery Beat.
+    Removes sessions that have expired or been revoked to prevent database bloat.
+    
+    Returns:
+        dict: Status and count of cleaned up sessions
+    """
+    logger.info("Starting periodic session cleanup task")
+    
+    try:
+        from app.services.auth_service import AuthService
+        
+        auth_service = AuthService()
+        count = auth_service.cleanup_expired_sessions()
+        
+        logger.info(f"Session cleanup completed: removed {count} expired/inactive sessions")
+        return {
+            'status': 'completed',
+            'cleaned_up_count': count,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.exception(f"Session cleanup task failed: {e}")
+        return {
+            'status': 'failed',
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }
+
+

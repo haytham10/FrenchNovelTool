@@ -4,7 +4,7 @@ from google.auth.transport import requests
 from google.oauth2.credentials import Credentials
 from flask import current_app
 from app import db
-from app.models import User, UserSettings
+from app.models import User, UserSettings, UserSession
 from datetime import datetime, timedelta, timezone
 from googleapiclient.discovery import build
 
@@ -301,4 +301,183 @@ class AuthService:
             db.session.commit()
             return True
         return False
+    
+    def create_session(self, user_id, refresh_token_jti, user_agent=None, ip_address=None):
+        """
+        Create a new server-side session for the user.
+        
+        Args:
+            user_id: ID of the user
+            refresh_token_jti: JWT ID from the refresh token
+            user_agent: User agent string from request
+            ip_address: IP address of the client
+            
+        Returns:
+            UserSession: Created session object
+        """
+        # Calculate session expiry based on config
+        session_expiry_days = current_app.config.get('SESSION_EXPIRY_DAYS', 14)
+        expires_at = datetime.utcnow() + timedelta(days=session_expiry_days)
+        
+        # Generate secure session token
+        session_token = UserSession.generate_session_token()
+        
+        # Create session
+        session = UserSession(
+            user_id=user_id,
+            session_token=session_token,
+            refresh_token_jti=refresh_token_jti,
+            user_agent=user_agent,
+            ip_address=ip_address,
+            expires_at=expires_at
+        )
+        
+        db.session.add(session)
+        db.session.commit()
+        
+        current_app.logger.info(f"Created session for user {user_id}, expires at {expires_at}")
+        return session
+    
+    def validate_session(self, session_token):
+        """
+        Validate a session token and return the associated session.
+        
+        Args:
+            session_token: Session token to validate
+            
+        Returns:
+            UserSession or None: Valid session object or None if invalid
+        """
+        session = UserSession.query.filter_by(
+            session_token=session_token,
+            is_active=True
+        ).first()
+        
+        if not session:
+            return None
+        
+        # Check if session has expired
+        if session.is_expired():
+            current_app.logger.info(f"Session {session.id} expired")
+            session.revoke()
+            db.session.commit()
+            return None
+        
+        # Update last activity
+        session.update_activity()
+        db.session.commit()
+        
+        return session
+    
+    def validate_session_by_jti(self, refresh_token_jti):
+        """
+        Validate a session by refresh token JTI.
+        
+        Args:
+            refresh_token_jti: JWT ID from refresh token
+            
+        Returns:
+            UserSession or None: Valid session object or None if invalid
+        """
+        session = UserSession.query.filter_by(
+            refresh_token_jti=refresh_token_jti,
+            is_active=True
+        ).first()
+        
+        if not session:
+            return None
+        
+        # Check if session has expired
+        if session.is_expired():
+            current_app.logger.info(f"Session {session.id} expired")
+            session.revoke()
+            db.session.commit()
+            return None
+        
+        # Update last activity
+        session.update_activity()
+        db.session.commit()
+        
+        return session
+    
+    def revoke_session(self, session_token):
+        """
+        Revoke a session (logout).
+        
+        Args:
+            session_token: Session token to revoke
+            
+        Returns:
+            bool: True if successful
+        """
+        session = UserSession.query.filter_by(session_token=session_token).first()
+        if session:
+            session.revoke()
+            db.session.commit()
+            current_app.logger.info(f"Revoked session {session.id} for user {session.user_id}")
+            return True
+        return False
+    
+    def revoke_user_sessions(self, user_id, except_session_id=None):
+        """
+        Revoke all sessions for a user (except optionally one session).
+        
+        Args:
+            user_id: ID of the user
+            except_session_id: Optional session ID to exclude from revocation
+            
+        Returns:
+            int: Number of sessions revoked
+        """
+        query = UserSession.query.filter_by(user_id=user_id, is_active=True)
+        if except_session_id:
+            query = query.filter(UserSession.id != except_session_id)
+        
+        sessions = query.all()
+        count = 0
+        for session in sessions:
+            session.revoke()
+            count += 1
+        
+        db.session.commit()
+        current_app.logger.info(f"Revoked {count} sessions for user {user_id}")
+        return count
+    
+    def cleanup_expired_sessions(self):
+        """
+        Clean up expired sessions from the database.
+        Should be called periodically (e.g., daily via cron/celery).
+        
+        Returns:
+            int: Number of sessions cleaned up
+        """
+        # Delete expired and inactive sessions
+        count = UserSession.query.filter(
+            db.or_(
+                UserSession.expires_at < datetime.utcnow(),
+                UserSession.is_active == False
+            )
+        ).delete()
+        
+        db.session.commit()
+        current_app.logger.info(f"Cleaned up {count} expired/inactive sessions")
+        return count
+    
+    def get_user_sessions(self, user_id):
+        """
+        Get all active sessions for a user.
+        
+        Args:
+            user_id: ID of the user
+            
+        Returns:
+            list: List of active UserSession objects
+        """
+        return UserSession.query.filter_by(
+            user_id=user_id,
+            is_active=True
+        ).filter(
+            UserSession.expires_at > datetime.utcnow()
+        ).order_by(UserSession.last_activity.desc()).all()
+
 

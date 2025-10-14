@@ -2,7 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { setTokens, clearTokens, getAccessToken } from '@/lib/auth';
-import { loginWithGoogle, getCurrentUser, getApiErrorMessage } from '@/lib/api';
+import { loginWithGoogle, getCurrentUser, logout as logoutApi, getApiErrorMessage } from '@/lib/api';
 import { GoogleOAuthProvider, googleLogout, type CredentialResponse } from '@react-oauth/google';
 import { useSnackbar } from 'notistack';
 import AuthLoadingOverlay from './AuthLoadingOverlay';
@@ -86,8 +86,8 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       const loginResponse = await loginWithGoogle(response.credential);
       
   // Storing tokens in localStorage
-      // Store JWT tokens
-      setTokens(loginResponse.access_token, loginResponse.refresh_token);
+      // Store JWT tokens and session token
+      setTokens(loginResponse.access_token, loginResponse.refresh_token, loginResponse.session_token);
       
       // Set user from backend response
       setUser({
@@ -121,8 +121,8 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       const loginResponse = await loginWithGoogle(undefined, code);
       
   // Storing tokens in localStorage
-      // Store JWT tokens
-      setTokens(loginResponse.access_token, loginResponse.refresh_token);
+      // Store JWT tokens and session token
+      setTokens(loginResponse.access_token, loginResponse.refresh_token, loginResponse.session_token);
       
       // Set user from backend response
       setUser({
@@ -147,12 +147,19 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     }
   }, [enqueueSnackbar]);
 
-  const logout = useCallback(() => {
-    // Logging out
+  const logout = useCallback(async () => {
+    // Revoke session on backend
+    try {
+      await logoutApi();
+    } catch (error) {
+      console.error('Failed to revoke session on backend:', error);
+      // Continue with logout even if backend call fails
+    }
+    
+    // Clear frontend state
     googleLogout();
     clearTokens();
     setUser(null);
-    // Logout complete
   }, []);
 
   const value = useMemo<AuthContextValue>(() => ({ user, isLoading, isAuthenticating, loginWithCredential, loginWithCode, logout }), [user, isLoading, isAuthenticating, loginWithCredential, loginWithCode, logout]);

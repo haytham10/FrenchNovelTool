@@ -13,11 +13,15 @@ class Config:
     
     # JWT Configuration
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY") or SECRET_KEY
-    JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=int(os.getenv('JWT_ACCESS_TOKEN_EXPIRES_HOURS', '1')))
-    JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=int(os.getenv('JWT_REFRESH_TOKEN_EXPIRES_DAYS', '30')))
+    JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=int(os.getenv('JWT_ACCESS_TOKEN_EXPIRES_HOURS', '24')))
+    JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=int(os.getenv('JWT_REFRESH_TOKEN_EXPIRES_DAYS', '14')))  # Extended to 14 days for persistent sessions
     JWT_TOKEN_LOCATION = ['headers']
     JWT_HEADER_NAME = 'Authorization'
     JWT_HEADER_TYPE = 'Bearer'
+    
+    # Session Configuration
+    SESSION_EXPIRY_DAYS = int(os.getenv('SESSION_EXPIRY_DAYS', '14'))  # Server-side session expiry (7-14 days)
+    SESSION_CLEANUP_INTERVAL_HOURS = int(os.getenv('SESSION_CLEANUP_INTERVAL_HOURS', '24'))  # How often to cleanup expired sessions
     
     # Google OAuth 2.0
     GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
